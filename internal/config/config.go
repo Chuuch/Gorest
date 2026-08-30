@@ -6,58 +6,58 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/viper"
 	"github.com/joho/godotenv"
+	"github.com/spf13/viper"
 )
 
 type Config struct {
-	App AppConfig `mapstructure:"app"`
-	Server ServerConfig `mapstructure:"server"`
+	App      AppConfig      `mapstructure:"app"`
+	Server   ServerConfig   `mapstructure:"server"`
 	Database DatabaseConfig `mapstructure:"database"`
-	Auth AuthConfig `mapstructure:"auth"`
-	Logger LoggerConfig `mapstructure:"logger"`
+	Auth     AuthConfig     `mapstructure:"auth"`
+	Logger   LoggerConfig   `mapstructure:"logger"`
 }
 
 type AppConfig struct {
-	Name string `mapstructure:"name" validate:"required"`
+	Name        string `mapstructure:"name" validate:"required"`
 	Environment string `mapstructure:"environment" validate:"required,oneof=development staging production test"`
 }
 
 type ServerConfig struct {
-	Host string `mapstructure:"host" validate:"required"`
-	Port int `mapstructure:"port" validate:"required,min=1,max=65535"`
-	ReadTimeout time.Duration `mapstructure:"read_timeout" validate:"gt=0"`
-	WriteTimeout time.Duration `mapstructure:"write_timeout" validate:"gt=0"`
-	IdleTimeout time.Duration `mapstructure:"idle_timeout" validate:"gt=0"`
+	Host            string        `mapstructure:"host" validate:"required"`
+	Port            int           `mapstructure:"port" validate:"required,min=1,max=65535"`
+	ReadTimeout     time.Duration `mapstructure:"read_timeout" validate:"gt=0"`
+	WriteTimeout    time.Duration `mapstructure:"write_timeout" validate:"gt=0"`
+	IdleTimeout     time.Duration `mapstructure:"idle_timeout" validate:"gt=0"`
 	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout" validate:"gt=0"`
 }
 
 type DatabaseConfig struct {
-	Host string `mapstructure:"host" validate:"required"`
-	Port int `mapstructure:"port" validate:"required,min=1,max=65535"`
-	User string `mapstructure:"user" validate:"required"`
-	Password string `mapstructure:"password" validate:"required"`
-	Name string `mapstructure:"name" validate:"required"`
-	SSLMode string `mapstructure:"ssl_mode" validate:"required,oneof=disable require verify-ca verify-full"`
-	MaxConnections int32 `mapstructure:"max_connections" validate:"required,min=1"`
-	MinConnections int32 `mapstructure:"min_connections" validate:"gte=0"`
-	MaxConnLifetime time.Duration `mapstructure:"max_conn_lifetime" validate:"gt=0"`
-	MaxConnIdleTime time.Duration `mapstructure:"max_conn_idle_time" validate:"gt=0"`
+	Host              string        `mapstructure:"host" validate:"required"`
+	Port              int           `mapstructure:"port" validate:"required,min=1,max=65535"`
+	User              string        `mapstructure:"user" validate:"required"`
+	Password          string        `mapstructure:"password" validate:"required"`
+	Name              string        `mapstructure:"name" validate:"required"`
+	SSLMode           string        `mapstructure:"ssl_mode" validate:"required,oneof=disable require verify-ca verify-full"`
+	MaxConnections    int32         `mapstructure:"max_connections" validate:"required,min=1"`
+	MinConnections    int32         `mapstructure:"min_connections" validate:"gte=0"`
+	MaxConnLifetime   time.Duration `mapstructure:"max_conn_lifetime" validate:"gt=0"`
+	MaxConnIdleTime   time.Duration `mapstructure:"max_conn_idle_time" validate:"gt=0"`
 	HealthCheckPeriod time.Duration `mapstructure:"health_check_period" validate:"gt=0"`
 }
 
 type AuthConfig struct {
-	AccessTokenSecret string `mapstructure:"access_token_secret" validate:"required,min=32"`
-	RefreshTokenSecret string `mapstructure:"refresh_token_secret" validate:"required,min=32"`
-	AccessTokenTTL time.Duration `mapstructure:"access_token_ttl" validate:"gt=0"`
-	RefreshTokenTTL time.Duration `mapstructure:"refresh_token_ttl" validate:"gt=0"`
-	Issuer string `mapstructure:"issuer" validate:"required"`
+	AccessTokenSecret  string        `mapstructure:"access_token_secret" validate:"required,min=32"`
+	RefreshTokenSecret string        `mapstructure:"refresh_token_secret" validate:"required,min=32"`
+	AccessTokenTTL     time.Duration `mapstructure:"access_token_ttl" validate:"gt=0"`
+	RefreshTokenTTL    time.Duration `mapstructure:"refresh_token_ttl" validate:"gt=0"`
+	Issuer             string        `mapstructure:"issuer" validate:"required"`
 }
 
 type LoggerConfig struct {
-	Level string `mapstructure:"level" validate:"required,oneof=debug info warn error"`
-	Format string `mapstructure:"format" validate:"required,oneof=json text"`
-	AddSource bool `mapstructure:"add_source"`
+	Level     string `mapstructure:"level" validate:"required,oneof=debug info warn error"`
+	Format    string `mapstructure:"format" validate:"required,oneof=json text"`
+	AddSource bool   `mapstructure:"add_source"`
 }
 
 func Load() (*Config, error) {
@@ -98,7 +98,7 @@ func Load() (*Config, error) {
 }
 
 func setDefaults(v *viper.Viper) {
-	v.SetDefault("app.name","gorest")
+	v.SetDefault("app.name", "gorest")
 	v.SetDefault("app.environment", "development")
 
 	v.SetDefault("server.host", "0.0.0.0")
@@ -107,7 +107,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.write_timeout", 10*time.Second)
 	v.SetDefault("server.idle_timeout", 60*time.Second)
 	v.SetDefault("server.shutdown_timeout", 10*time.Second)
-	
+
 	v.SetDefault("database.host", "localhost")
 	v.SetDefault("database.port", 5432)
 	v.SetDefault("database.ssl_mode", "disable")

@@ -16,11 +16,11 @@ func NewPostgresPool(
 	dsn := fmt.Sprintf(
 		"postgres://%s:%s@%s:%d/%s?sslmode=$s",
 		cfg.User,
-					cfg.Password,
-					cfg.Host,
-					cfg.Port,
-					cfg.Name,
-					cfg.SSLMode,
+		cfg.Password,
+		cfg.Host,
+		cfg.Port,
+		cfg.Name,
+		cfg.SSLMode,
 	)
 
 	poolConfig, err := pgxpool.ParseConfig(dsn)
@@ -39,7 +39,7 @@ func NewPostgresPool(
 		return nil, fmt.Errorf("create postgres pool: %w", err)
 	}
 
-	pingCtx, cancel := context.WithTimeout(ctx,5*time.Second)
+	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	if err := pool.Ping(pingCtx); err != nil {
