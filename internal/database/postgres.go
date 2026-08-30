@@ -14,7 +14,7 @@ func NewPostgresPool(
 	cfg config.DatabaseConfig,
 ) (*pgxpool.Pool, error) {
 	dsn := fmt.Sprintf(
-		"postgres://%s:%s@%s:%d/%s?sslmode=$s",
+		"postgres://%s:%s@%s:%d/%s?sslmode=%s",
 		cfg.User,
 		cfg.Password,
 		cfg.Host,
@@ -45,7 +45,7 @@ func NewPostgresPool(
 	if err := pool.Ping(pingCtx); err != nil {
 		pool.Close()
 
-		return nil, fmt.Errorf("ping postgres: %w", &err)
+		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 
 	return pool, nil
