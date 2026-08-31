@@ -12,6 +12,7 @@ type Service interface {
 	Create(ctx context.Context, dto CreateUserRequest) (*User, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*User, error)
 	GetByEmail(ctx context.Context, email string) (*User, error)
+	ExistsByEmail(ctx context.Context, email string) (bool, error)
 	Update(ctx context.Context, id uuid.UUID, dto UpdateUserRequest) (*User, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 }
@@ -65,14 +66,30 @@ func (s *service) GetByID(
 	ctx context.Context,
 	id uuid.UUID,
 ) (*User, error) {
-	return s.repository.GetByID(ctx, id)
+	u, err := s.repository.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("get user by id: %w", err)
+	}
+
+	return u, nil
 }
 
 func (s *service) GetByEmail(
 	ctx context.Context,
 	email string,
 ) (*User, error) {
-	return s.repository.GetByEmail(ctx, email)
+	u, err := s.repository.GetByEmail(ctx, email)
+	if err != nil {
+		return nil, fmt.Errorf("get user by email: %w", err)
+	}
+	return u, nil
+}
+
+func (s *service) ExistsByEmail(
+	ctx context.Context,
+	email string,
+) (bool, error) {
+	return s.repository.ExistsByEmail(ctx, email)
 }
 
 func (s *service) Update(
