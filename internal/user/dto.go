@@ -11,6 +11,11 @@ type CreateUserRequest struct {
 	Password string `json:"password" validate:"required,min=8"`
 }
 
+type UpdateUserRequest struct {
+	Email string `json:"email" validate:"required,email"`
+	Password *string `json:"password,omitempty" validate:"omitempty,min=8"`
+}
+
 type LoginResponse struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required"`

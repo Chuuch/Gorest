@@ -52,6 +52,7 @@ type AuthConfig struct {
 	AccessTokenTTL     time.Duration `mapstructure:"access_token_ttl" validate:"gt=0"`
 	RefreshTokenTTL    time.Duration `mapstructure:"refresh_token_ttl" validate:"gt=0"`
 	Issuer             string        `mapstructure:"issuer" validate:"required"`
+	BcryptCost int `mapstructure:"bcrypt_cost" validate:"min=4,max=31"`
 }
 
 type LoggerConfig struct {
@@ -120,6 +121,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("auth.access_token_ttl", 15*time.Minute)
 	v.SetDefault("auth.refresh_token_ttl", 7*24*time.Hour)
 	v.SetDefault("auth.issuer", "gorest")
+	v.SetDefault("auth.bcrypt_cost", 12)
 
 	v.SetDefault("logger.level", "info")
 	v.SetDefault("logger.format", "json")
