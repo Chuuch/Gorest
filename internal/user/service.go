@@ -23,16 +23,16 @@ type PasswordHasher interface {
 
 type service struct {
 	repository UserRepository
-	hasher PasswordHasher
+	hasher     PasswordHasher
 }
 
 func NewService(
 	repository UserRepository,
 	hasher PasswordHasher,
 ) Service {
-	return &service {
+	return &service{
 		repository: repository,
-		hasher: hasher,
+		hasher:     hasher,
 	}
 }
 
@@ -47,11 +47,11 @@ func (s *service) Create(
 	now := time.Now().UTC()
 
 	u := &User{
-		ID: uuid.New(),
-		Email: dto.Email,
+		ID:           uuid.New(),
+		Email:        dto.Email,
 		PasswordHash: passwordHash,
-		CreatedAt: now,
-		UpdatedAt: now,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 
 	if err := s.repository.Create(ctx, u); err != nil {

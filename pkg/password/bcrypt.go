@@ -6,24 +6,22 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const defaultCost = bcrypt.DefaultCost
-
 var ErrPasswordMismatch = errors.New("password mismatch")
 
 type BcryptHasher struct {
 	cost int
 }
 
-func NewBcryptHasher() *BcryptHasher {
+func NewBcryptHasher(cost int) *BcryptHasher {
 	return &BcryptHasher{
-		cost: defaultCost,
+		cost: cost,
 	}
 }
 
 func (h *BcryptHasher) Hash(password string) (string, error) {
 	hash, err := bcrypt.GenerateFromPassword(
-	[]byte(password),
-	h.cost,
+		[]byte(password),
+		h.cost,
 	)
 	if err != nil {
 		return "", err

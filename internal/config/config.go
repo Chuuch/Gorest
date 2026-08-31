@@ -52,7 +52,7 @@ type AuthConfig struct {
 	AccessTokenTTL     time.Duration `mapstructure:"access_token_ttl" validate:"gt=0"`
 	RefreshTokenTTL    time.Duration `mapstructure:"refresh_token_ttl" validate:"gt=0"`
 	Issuer             string        `mapstructure:"issuer" validate:"required"`
-	BcryptCost int `mapstructure:"bcrypt_cost" validate:"min=4,max=31"`
+	BcryptCost         int           `mapstructure:"bcrypt_cost" validate:"min=4,max=31"`
 }
 
 type LoggerConfig struct {
