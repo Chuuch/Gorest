@@ -31,7 +31,7 @@ func (r *UserRepository) Create(
 				email,
 				password_hash,
 				created_at,
-				updated_at,
+				updated_at
 			)
 			VALUES ($1, $2, $3, $4, $5)
 		`
@@ -125,6 +125,27 @@ func (r *UserRepository) GetByEmail(
 	return &u, nil
 }
 
+func (r *UserRepository) ExistsByEmail(
+	ctx context.Context,
+	email string,
+) (bool, error) {
+	const query = `
+			SELECT EXISTS (
+				SELECT 1
+				FROM users
+				WHERE email = $1
+			)
+		`
+
+	var exists bool
+
+	if err := r.db.QueryRow(ctx, query, email).Scan(&exists); err != nil {
+		return false, fmt.Errorf("check user by email: %w", err)
+	}
+
+	return exists, nil
+}
+
 func (r *UserRepository) Delete(
 	ctx context.Context,
 	id uuid.UUID,
@@ -155,7 +176,7 @@ func (r *UserRepository) Update(
 			SET
 				email = $2,
 				password_hash = $3,
-				updated_at = $4,
+				updated_at = $4
 			WHERE id = $1
 		`
 
