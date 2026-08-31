@@ -12,12 +12,15 @@ import (
 
 	"github.com/chuuch/gorest/internal/config"
 	"github.com/chuuch/gorest/internal/database"
+	"github.com/chuuch/gorest/internal/user"
+	"github.com/chuuch/gorest/internal/user/postgres"
+	"github.com/chuuch/gorest/pkg/password"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Server struct {
 	httpServer *http.Server
-	db *pgxpool.Pool
+	db         *pgxpool.Pool
 }
 
 func New(cfg *config.Config) (*Server, error) {
@@ -26,17 +29,22 @@ func New(cfg *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("initialize database: %w", err)
 	}
 
+	userRepository := postgres.NewRepository(db)
+	passwordHasher := password.NewBcryptHasher(cfg.Auth.BcryptCost)
+	userService := user.NewService(userRepository, passwordHasher)
+	userHandler := user.NewHandler(userService)
+
 	httpServer := &http.Server{
-		Addr: fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
-		Handler: newRouter(),
-		ReadTimeout: cfg.Server.ReadTimeout,
+		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
+		Handler:      newRouter(userHandler),
+		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
-		IdleTimeout: cfg.Server.IdleTimeout,
+		IdleTimeout:  cfg.Server.IdleTimeout,
 	}
 
 	return &Server{
 		httpServer: httpServer,
-		db: db,
+		db:         db,
 	}, nil
 }
 
@@ -80,7 +88,7 @@ func (s *Server) Run(cfg config.Config) error {
 
 	serverErr := make(chan error, 1)
 
-	go func(){
+	go func() {
 		serverErr <- s.Start()
 	}()
 
@@ -88,7 +96,7 @@ func (s *Server) Run(cfg config.Config) error {
 	case err := <-serverErr:
 		return err
 
-	case <- shutdownCtx.Done():
+	case <-shutdownCtx.Done():
 		slog.Info(
 			"shutdown signal received",
 			"signal", shutdownCtx.Err(),
@@ -98,8 +106,8 @@ func (s *Server) Run(cfg config.Config) error {
 			context.Background(),
 			cfg.Server.ShutdownTimeout,
 		)
-	defer cancel()
+		defer cancel()
 
-	return s.Shutdown(ctx)
+		return s.Shutdown(ctx)
 	}
 }

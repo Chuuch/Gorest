@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'feature/**'
+      - 'fix/**'
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+
+        env:
+          POSTGRES_USER: gorest
+          POSTGRES_PASSWORD: gorest
+          POSTGRES_DB: gorest_test
+
+        ports:
+          - 5432:5432
+
+        options: >-
+          --health-cmd "pg_isready -U gorest -d gorest_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: .
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.27'
+          cache: true
+
+      - name: Verify formatting
+        run: |
+          test -z "$(gofmt -l .)"
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        env:
+          GOREST_APP_ENVIRONMENT: test
+          GOREST_DATABASE_HOST: localhost
+          GOREST_DATABASE_PORT: 5432
+          GOREST_DATABASE_USER: gorest
+          GOREST_DATABASE_PASSWORD: gorest
+          GOREST_DATABASE_NAME: gorest_test
+          GOREST_DATABASE_SSL_MODE: disable
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Build
+        run: go build -o /tmp/gorest ./cmd/api
+
