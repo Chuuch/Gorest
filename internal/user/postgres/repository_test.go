@@ -45,7 +45,7 @@ func setupTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 				updated_at TIMESTAMPTZ NOT NULL
 			)
 		`)
-	
+
 	require.NoError(t, err)
 
 	cleanup := func() {
@@ -59,11 +59,11 @@ func newTestUser() *user.User {
 	now := time.Now().UTC()
 
 	return &user.User{
-		ID: uuid.New(),
-		Email: "john@example.com",
+		ID:           uuid.New(),
+		Email:        "john@example.com",
 		PasswordHash: "hashed-password",
-		CreatedAt: now,
-		UpdatedAt: now,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 }
 
