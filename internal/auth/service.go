@@ -21,11 +21,11 @@ type PasswordVerifier interface {
 }
 
 type service struct {
-	users user.Service
-	refreshTokens RefreshTokenRepository
-	tokens TokenManager
-	passwords PasswordVerifier
-	accessTokenTTL time.Duration
+	users           user.Service
+	refreshTokens   RefreshTokenRepository
+	tokens          TokenManager
+	passwords       PasswordVerifier
+	accessTokenTTL  time.Duration
 	refreshTokenTTL time.Duration
 }
 
@@ -38,11 +38,11 @@ func NewService(
 	refreshTokenTTL time.Duration,
 ) Service {
 	return &service{
-		users: users,
-		refreshTokens: refreshTokens,
-		tokens: tokens,
-		passwords: passwords,
-		accessTokenTTL: accessTokenTTL,
+		users:           users,
+		refreshTokens:   refreshTokens,
+		tokens:          tokens,
+		passwords:       passwords,
+		accessTokenTTL:  accessTokenTTL,
 		refreshTokenTTL: refreshTokenTTL,
 	}
 }
@@ -61,7 +61,7 @@ func (s *service) Register(
 	}
 
 	u, err := s.users.Create(ctx, user.CreateUserRequest{
-		Email: req.Email,
+		Email:    req.Email,
 		Password: req.Password,
 	})
 	if err != nil {
@@ -155,7 +155,7 @@ func (s *service) issueTokens(
 	if err != nil {
 		return nil, fmt.Errorf("generate access  token: %w", err)
 	}
-	
+
 	refreshToken, err := s.tokens.GenerateRefreshToken()
 	if err != nil {
 		return nil, fmt.Errorf("generate refresh token: %w", err)
@@ -164,8 +164,8 @@ func (s *service) issueTokens(
 	now := time.Now().UTC()
 
 	storedToken := &RefreshToken{
-		ID: uuid.New(),
-		UserID: userID,
+		ID:        uuid.New(),
+		UserID:    userID,
 		TokenHash: s.tokens.HashRefreshToken(refreshToken),
 		ExpiresAt: now.Add(s.refreshTokenTTL),
 		CreatedAt: now,
@@ -176,7 +176,7 @@ func (s *service) issueTokens(
 	}
 
 	return &AuthResponse{
-		AccessToken: accessToken,
+		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	}, nil
 }

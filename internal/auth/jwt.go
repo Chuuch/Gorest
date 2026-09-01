@@ -14,8 +14,8 @@ import (
 
 type jwtManager struct {
 	accessTokenSecret []byte
-	issuer string
-	accessTokenTTL time.Duration
+	issuer            string
+	accessTokenTTL    time.Duration
 }
 
 type jwtClaims struct {
@@ -30,8 +30,8 @@ func NewJwtManager(
 ) TokenManager {
 	return &jwtManager{
 		accessTokenSecret: []byte(accessTokenSecret),
-		issuer: issuer,
-		accessTokenTTL: accessTokenTTL,
+		issuer:            issuer,
+		accessTokenTTL:    accessTokenTTL,
 	}
 }
 
@@ -41,9 +41,9 @@ func (m *jwtManager) GenerateAccessToken(userID uuid.UUID) (string, error) {
 	claims := jwtClaims{
 		UserID: userID.String(),
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer: m.issuer,
-			Subject: userID.String(),
-			IssuedAt: jwt.NewNumericDate(now),
+			Issuer:    m.issuer,
+			Subject:   userID.String(),
+			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(m.accessTokenTTL)),
 		},
 	}
@@ -68,7 +68,7 @@ func (m *jwtManager) ParseAccessToken(
 			return nil, fmt.Errorf("unexpected signing method: %s", token.Method.Alg())
 		}
 		return m.accessTokenSecret, nil
-	}, 
+	},
 		jwt.WithIssuer(m.issuer),
 	)
 
@@ -102,10 +102,10 @@ func (m *jwtManager) ParseAccessToken(
 	}
 
 	return &AccessTokenClaims{
-		UserID: userID,
-		Issuer: claims.Issuer,
+		UserID:    userID,
+		Issuer:    claims.Issuer,
 		ExpiresAt: claims.ExpiresAt.Time,
-		IssuedAt: claims.IssuedAt.Time,
+		IssuedAt:  claims.IssuedAt.Time,
 	}, nil
 }
 

@@ -14,8 +14,8 @@ type TokenManager interface {
 }
 
 type AccessTokenClaims struct {
-	UserID uuid.UUID
-	Issuer string
+	UserID    uuid.UUID
+	Issuer    string
 	ExpiresAt time.Time
-	IssuedAt time.Time
+	IssuedAt  time.Time
 }
