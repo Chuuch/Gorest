@@ -4,6 +4,7 @@ import "errors"
 
 var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrRefreshTokenInvalid = errors.New("invalid refresh token")
-	ErrRefreshTokenExpired = errors.New("refresh token expired")
+	ErrInvalidToken = errors.New("invalid token")
+	ErrTokenExpired = errors.New("token expired")
+	ErrTokenRevoked = errors.New("token revoked")
 )

@@ -12,4 +12,5 @@ type RefreshToken struct {
 	TokenHash string
 	ExpiresAt time.Time
 	CreatedAt time.Time
+	RevokedAt *time.Time
 }
