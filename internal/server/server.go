@@ -10,10 +10,12 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/chuuch/gorest/internal/auth"
+	authpostgres "github.com/chuuch/gorest/internal/auth/postgres"
 	"github.com/chuuch/gorest/internal/config"
 	"github.com/chuuch/gorest/internal/database"
 	"github.com/chuuch/gorest/internal/user"
-	"github.com/chuuch/gorest/internal/user/postgres"
+	userpostgres "github.com/chuuch/gorest/internal/user/postgres"
 	"github.com/chuuch/gorest/pkg/password"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -29,14 +31,42 @@ func New(cfg *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("initialize database: %w", err)
 	}
 
-	userRepository := postgres.NewRepository(db)
+	// -------------------------------------------------------------
+	// User domain
+	// -------------------------------------------------------------
+	userRepository := userpostgres.NewRepository(db)
 	passwordHasher := password.NewBcryptHasher(cfg.Auth.BcryptCost)
 	userService := user.NewService(userRepository, passwordHasher)
 	userHandler := user.NewHandler(userService)
 
+	// -------------------------------------------------------------
+	// Auth domain
+	// -------------------------------------------------------------
+	refreshTokenRepository := authpostgres.NewRepository(db)
+
+	tokenManager := auth.NewJwtManager(
+		cfg.Auth.AccessTokenSecret,
+		cfg.Auth.Issuer,
+		cfg.Auth.AccessTokenTTL,
+	)
+
+	authService := auth.NewService(
+		userService,
+		refreshTokenRepository,
+		tokenManager,
+		passwordHasher,
+		cfg.Auth.AccessTokenTTL,
+		cfg.Auth.RefreshTokenTTL,
+	)
+
+	authHandler := auth.NewHandler(authService)
+
+	// ------------------------------------------------------------
+	// HTTP Server
+	// ------------------------------------------------------------
 	httpServer := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
-		Handler:      newRouter(userHandler),
+		Handler:      newRouter(userHandler, authHandler),
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 		IdleTimeout:  cfg.Server.IdleTimeout,

@@ -3,19 +3,24 @@ package server
 import (
 	"net/http"
 
+	"github.com/chuuch/gorest/internal/auth"
 	"github.com/chuuch/gorest/internal/user"
 )
 
-func newRouter(userHandler *user.Handler) *http.ServeMux {
+func newRouter(
+	userHandler *user.Handler,
+	authHandler *auth.Handler,
+) *http.ServeMux {
 	mux := http.NewServeMux()
 
-	registerRoutes(mux, userHandler)
+	registerRoutes(mux, userHandler, authHandler)
 	return mux
 }
 
 func registerRoutes(
 	mux *http.ServeMux,
 	userHandler *user.Handler,
+	authHandler *auth.Handler,
 ) {
 	mux.HandleFunc(
 		"GET /api/v1/health",
@@ -40,6 +45,26 @@ func registerRoutes(
 	mux.HandleFunc(
 		"DELETE /api/v1/users/{id}",
 		userHandler.Delete,
+	)
+
+	mux.HandleFunc(
+		"POST /api/v1/auth/register",
+		authHandler.Register,
+	)
+
+	mux.HandleFunc(
+		"POST /api/v1/auth/login",
+		authHandler.Login,
+	)
+
+	mux.HandleFunc(
+		"POST /api/v1/auth/refresh",
+		authHandler.Refresh,
+	)
+
+	mux.HandleFunc(
+		"POST /api/v1/auth/logout",
+		authHandler.Logout,
 	)
 }
 
