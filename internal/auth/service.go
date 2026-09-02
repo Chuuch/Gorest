@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -77,7 +78,7 @@ func (s *service) Login(
 ) (*AuthResponse, error) {
 	u, err := s.users.GetByEmail(ctx, req.Email)
 	if err != nil {
-		if err == user.ErrUserNotFound {
+		if errors.Is(err, user.ErrUserNotFound) {
 			return nil, ErrInvalidCredentials
 		}
 

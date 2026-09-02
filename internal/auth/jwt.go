@@ -19,7 +19,6 @@ type jwtManager struct {
 }
 
 type jwtClaims struct {
-	UserID string `json:"sub"`
 	jwt.RegisteredClaims
 }
 
@@ -39,7 +38,6 @@ func (m *jwtManager) GenerateAccessToken(userID uuid.UUID) (string, error) {
 	now := time.Now().UTC()
 
 	claims := jwtClaims{
-		UserID: userID.String(),
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    m.issuer,
 			Subject:   userID.String(),
