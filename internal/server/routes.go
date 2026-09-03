@@ -31,13 +31,6 @@ func registerRoutes(
 	)
 
 	mux.Handle(
-		"/api/v1/users",
-		middleware.Auth(tokenManager)(
-			http.HandlerFunc(userHandler.Create),
-		),
-	)
-
-	mux.Handle(
 		"GET /api/v1/users/{id}",
 		middleware.Auth(tokenManager)(
 			http.HandlerFunc(userHandler.GetByID),

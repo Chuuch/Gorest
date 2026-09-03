@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chuuch/gorest/internal/requestcontext"
 	"github.com/google/uuid"
 )
 
@@ -232,6 +233,12 @@ func TestHandler_GetByID(t *testing.T) {
 
 			req.SetPathValue("id", tt.id)
 
+			if tt.id == userID.String() {
+				req = req.WithContext(
+					requestcontext.WithUserID(req.Context(), userID),
+				)
+			}
+
 			rec := httptest.NewRecorder()
 
 			handler.GetByID(rec, req)
@@ -347,6 +354,12 @@ func TestHandler_Update(t *testing.T) {
 
 			req.SetPathValue("id", tt.id)
 
+			if tt.id == userID.String() {
+				req = req.WithContext(
+					requestcontext.WithUserID(req.Context(), userID),
+				)
+			}
+
 			rec := httptest.NewRecorder()
 
 			handler.Update(rec, req)
@@ -433,6 +446,12 @@ func TestHandler_Delete(t *testing.T) {
 			)
 
 			req.SetPathValue("id", tt.id)
+
+			if tt.id == userID.String() {
+				req = req.WithContext(
+					requestcontext.WithUserID(req.Context(), userID),
+				)
+			}
 
 			rec := httptest.NewRecorder()
 

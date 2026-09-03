@@ -1,18 +1,13 @@
 package middleware
 
 import (
-	"context"
 	"net/http"
 	"strings"
 
 	"github.com/chuuch/gorest/internal/api"
 	"github.com/chuuch/gorest/internal/auth"
-	"github.com/google/uuid"
+	"github.com/chuuch/gorest/internal/requestcontext"
 )
-
-type contextKey string
-
-const userIDContextKey contextKey = "user_id"
 
 func Auth(tokens auth.TokenManager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -39,9 +34,8 @@ func Auth(tokens auth.TokenManager) func(http.Handler) http.Handler {
 				return
 			}
 
-			ctx := context.WithValue(
+			ctx := requestcontext.WithUserID(
 				r.Context(),
-				userIDContextKey,
 				claims.UserID,
 			)
 
@@ -66,9 +60,4 @@ func extractBearerToken(r *http.Request) (string, error) {
 	}
 
 	return token, nil
-}
-
-func UserIDFromContext(ctx context.Context) (uuid.UUID, bool) {
-	userID, ok := ctx.Value(userIDContextKey).(uuid.UUID)
-	return userID, ok
 }

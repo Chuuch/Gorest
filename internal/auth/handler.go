@@ -13,13 +13,13 @@ import (
 const refreshTokenCookieName = "refresh_token"
 
 type Handler struct {
-	service Service
+	service         Service
 	refreshTokenTTL time.Duration
 }
 
 func NewHandler(service Service, refreshTokenTTL time.Duration) *Handler {
 	return &Handler{
-		service: service,
+		service:         service,
 		refreshTokenTTL: refreshTokenTTL,
 	}
 }
