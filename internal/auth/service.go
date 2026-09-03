@@ -10,10 +10,15 @@ import (
 	"github.com/google/uuid"
 )
 
+type AuthResult struct {
+	AccessToken  string
+	RefreshToken string
+}
+
 type Service interface {
-	Register(ctx context.Context, req RegisterRequest) (*AuthResponse, error)
-	Login(ctx context.Context, req LoginRequest) (*AuthResponse, error)
-	Refresh(ctx context.Context, refreshToken string) (*AuthResponse, error)
+	Register(ctx context.Context, req RegisterRequest) (*AuthResult, error)
+	Login(ctx context.Context, req LoginRequest) (*AuthResult, error)
+	Refresh(ctx context.Context, refreshToken string) (*AuthResult, error)
 	Logout(ctx context.Context, refreshToken string) error
 }
 
@@ -51,7 +56,7 @@ func NewService(
 func (s *service) Register(
 	ctx context.Context,
 	req RegisterRequest,
-) (*AuthResponse, error) {
+) (*AuthResult, error) {
 	exists, err := s.users.ExistsByEmail(ctx, req.Email)
 	if err != nil {
 		return nil, fmt.Errorf("check user email: %w", err)
@@ -75,7 +80,7 @@ func (s *service) Register(
 func (s *service) Login(
 	ctx context.Context,
 	req LoginRequest,
-) (*AuthResponse, error) {
+) (*AuthResult, error) {
 	u, err := s.users.GetByEmail(ctx, req.Email)
 	if err != nil {
 		if errors.Is(err, user.ErrUserNotFound) {
@@ -95,7 +100,7 @@ func (s *service) Login(
 func (s *service) Refresh(
 	ctx context.Context,
 	refreshToken string,
-) (*AuthResponse, error) {
+) (*AuthResult, error) {
 	if refreshToken == "" {
 		return nil, ErrInvalidToken
 	}
@@ -151,10 +156,10 @@ func (s *service) Logout(
 func (s *service) issueTokens(
 	ctx context.Context,
 	userID uuid.UUID,
-) (*AuthResponse, error) {
+) (*AuthResult, error) {
 	accessToken, err := s.tokens.GenerateAccessToken(userID)
 	if err != nil {
-		return nil, fmt.Errorf("generate access  token: %w", err)
+		return nil, fmt.Errorf("generate access token: %w", err)
 	}
 
 	refreshToken, err := s.tokens.GenerateRefreshToken()
@@ -176,7 +181,7 @@ func (s *service) issueTokens(
 		return nil, fmt.Errorf("store refresh token: %w", err)
 	}
 
-	return &AuthResponse{
+	return &AuthResult{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	}, nil

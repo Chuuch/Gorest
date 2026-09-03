@@ -59,7 +59,7 @@ func New(cfg *config.Config) (*Server, error) {
 		cfg.Auth.RefreshTokenTTL,
 	)
 
-	authHandler := auth.NewHandler(authService)
+	authHandler := auth.NewHandler(authService, cfg.Auth.RefreshTokenTTL)
 
 	// ------------------------------------------------------------
 	// HTTP Server

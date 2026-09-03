@@ -8,36 +8,37 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/chuuch/gorest/internal/user"
 	"github.com/stretchr/testify/require"
 )
 
 type mockService struct {
-	registerFunc func(RegisterRequest) (*AuthResponse, error)
-	loginFunc    func(LoginRequest) (*AuthResponse, error)
-	refreshFunc  func(string) (*AuthResponse, error)
+	registerFunc func(RegisterRequest) (*AuthResult, error)
+	loginFunc    func(LoginRequest) (*AuthResult, error)
+	refreshFunc  func(string) (*AuthResult, error)
 	logoutFunc   func(string) error
 }
 
 func (m *mockService) Register(
 	_ context.Context,
 	req RegisterRequest,
-) (*AuthResponse, error) {
+) (*AuthResult, error) {
 	return m.registerFunc(req)
 }
 
 func (m *mockService) Login(
 	_ context.Context,
 	req LoginRequest,
-) (*AuthResponse, error) {
+) (*AuthResult, error) {
 	return m.loginFunc(req)
 }
 
 func (m *mockService) Refresh(
 	_ context.Context,
 	refreshToken string,
-) (*AuthResponse, error) {
+) (*AuthResult, error) {
 	return m.refreshFunc(refreshToken)
 }
 
@@ -50,18 +51,18 @@ func (m *mockService) Logout(
 
 func TestHandler_Register(t *testing.T) {
 	service := &mockService{
-		registerFunc: func(req RegisterRequest) (*AuthResponse, error) {
+		registerFunc: func(req RegisterRequest) (*AuthResult, error) {
 			require.Equal(t, "john@example.com", req.Email)
 			require.Equal(t, "password123", req.Password)
 
-			return &AuthResponse{
+			return &AuthResult{
 				AccessToken:  "access-token",
 				RefreshToken: "refresh-token",
 			}, nil
 		},
 	}
 
-	handler := NewHandler(service)
+	handler := NewHandler(service, 30*24*time.Hour)
 
 	body := `{
 		"email": "john@example.com",
@@ -85,18 +86,25 @@ func TestHandler_Register(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
 
 	require.Equal(t, "access-token", response.AccessToken)
-	require.Equal(t, "refresh-token", response.RefreshToken)
+
+	cookie := rec.Result().Cookies()[0]
+	require.Equal(t, refreshTokenCookieName, cookie.Name)
+	require.Equal(t, "refresh-token", cookie.Value)
+	require.True(t, cookie.HttpOnly)
+	require.True(t, cookie.Secure)
+	require.Equal(t, "/api/v1/auth", cookie.Path)
+	require.Equal(t, http.SameSiteLaxMode, cookie.SameSite)
 }
 
 func TestHandler_Register_InvalidBody(t *testing.T) {
 	service := &mockService{
-		registerFunc: func(RegisterRequest) (*AuthResponse, error) {
+		registerFunc: func(RegisterRequest) (*AuthResult, error) {
 			t.Fatal("service should not be called")
 			return nil, nil
 		},
 	}
 
-	handler := NewHandler(service)
+	handler := NewHandler(service, 30*24*time.Hour)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -113,12 +121,12 @@ func TestHandler_Register_InvalidBody(t *testing.T) {
 
 func TestHandler_Register_EmailAlreadyExists(t *testing.T) {
 	service := &mockService{
-		registerFunc: func(RegisterRequest) (*AuthResponse, error) {
+		registerFunc: func(RegisterRequest) (*AuthResult, error) {
 			return nil, user.ErrEmailAlreadyExists
 		},
 	}
 
-	handler := NewHandler(service)
+	handler := NewHandler(service, 30*24*time.Hour)
 
 	body := `{
 		"email": "john@example.com",
@@ -140,12 +148,12 @@ func TestHandler_Register_EmailAlreadyExists(t *testing.T) {
 
 func TestHandler_Register_InternalError(t *testing.T) {
 	service := &mockService{
-		registerFunc: func(RegisterRequest) (*AuthResponse, error) {
+		registerFunc: func(RegisterRequest) (*AuthResult, error) {
 			return nil, errors.New("database failure")
 		},
 	}
 
-	handler := NewHandler(service)
+	handler := NewHandler(service, 30*24*time.Hour)
 
 	body := `{
 		"email": "john@example.com",
@@ -167,18 +175,18 @@ func TestHandler_Register_InternalError(t *testing.T) {
 
 func TestHandler_Login(t *testing.T) {
 	service := &mockService{
-		loginFunc: func(req LoginRequest) (*AuthResponse, error) {
+		loginFunc: func(req LoginRequest) (*AuthResult, error) {
 			require.Equal(t, "john@example.com", req.Email)
 			require.Equal(t, "password123", req.Password)
 
-			return &AuthResponse{
+			return &AuthResult{
 				AccessToken:  "access-token",
 				RefreshToken: "refresh-token",
 			}, nil
 		},
 	}
 
-	handler := NewHandler(service)
+	handler := NewHandler(service, 30*24*time.Hour)
 
 	body := `{
 		"email": "john@example.com",
@@ -202,17 +210,24 @@ func TestHandler_Login(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
 
 	require.Equal(t, "access-token", response.AccessToken)
-	require.Equal(t, "refresh-token", response.RefreshToken)
+
+	cookie := rec.Result().Cookies()[0]
+	require.Equal(t, refreshTokenCookieName, cookie.Name)
+	require.Equal(t, "refresh-token", cookie.Value)
+	require.True(t, cookie.HttpOnly)
+	require.True(t, cookie.Secure)
+	require.Equal(t, "/api/v1/auth", cookie.Path)
+	require.Equal(t, http.SameSiteLaxMode, cookie.SameSite)
 }
 
 func TestHandler_Login_InvalidCredentials(t *testing.T) {
 	service := &mockService{
-		loginFunc: func(LoginRequest) (*AuthResponse, error) {
+		loginFunc: func(LoginRequest) (*AuthResult, error) {
 			return nil, ErrInvalidCredentials
 		},
 	}
 
-	handler := NewHandler(service)
+	handler := NewHandler(service, 30*24*time.Hour)
 
 	body := `{
 		"email": "john@example.com",
@@ -234,13 +249,13 @@ func TestHandler_Login_InvalidCredentials(t *testing.T) {
 
 func TestHandler_Login_InvalidBody(t *testing.T) {
 	service := &mockService{
-		loginFunc: func(LoginRequest) (*AuthResponse, error) {
+		loginFunc: func(LoginRequest) (*AuthResult, error) {
 			t.Fatal("service should not be called")
 			return nil, nil
 		},
 	}
 
-	handler := NewHandler(service)
+	handler := NewHandler(service, 30*24*time.Hour)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -257,27 +272,28 @@ func TestHandler_Login_InvalidBody(t *testing.T) {
 
 func TestHandler_Refresh(t *testing.T) {
 	service := &mockService{
-		refreshFunc: func(refreshToken string) (*AuthResponse, error) {
+		refreshFunc: func(refreshToken string) (*AuthResult, error) {
 			require.Equal(t, "refresh-token", refreshToken)
 
-			return &AuthResponse{
+			return &AuthResult{
 				AccessToken:  "new-access-token",
 				RefreshToken: "new-refresh-token",
 			}, nil
 		},
 	}
 
-	handler := NewHandler(service)
-
-	body := `{
-		"refresh_token": "refresh-token"
-	}`
+	handler := NewHandler(service, 30*24*time.Hour)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/auth/refresh",
-		bytes.NewBufferString(body),
+		nil,
 	)
+
+	req.AddCookie(&http.Cookie{
+		Name:  refreshTokenCookieName,
+		Value: "refresh-token",
+	})
 
 	rec := httptest.NewRecorder()
 
@@ -290,27 +306,57 @@ func TestHandler_Refresh(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
 
 	require.Equal(t, "new-access-token", response.AccessToken)
-	require.Equal(t, "new-refresh-token", response.RefreshToken)
+
+	cookies := rec.Result().Cookies()
+	require.Len(t, cookies, 1)
+	require.Equal(t, refreshTokenCookieName, cookies[0].Name)
+	require.Equal(t, "new-refresh-token", cookies[0].Value)
+	require.True(t, cookies[0].HttpOnly)
+	require.True(t, cookies[0].Secure)
 }
 
-func TestHandler_Refresh_InvalidToken(t *testing.T) {
+func TestHandler_Refresh_NoCookie(t *testing.T) {
 	service := &mockService{
-		refreshFunc: func(string) (*AuthResponse, error) {
-			return nil, ErrInvalidToken
+		refreshFunc: func(string) (*AuthResult, error) {
+			t.Fatal("service should not be called")
+			return nil, nil
 		},
 	}
 
-	handler := NewHandler(service)
-
-	body := `{
-		"refresh_token": "invalid-token"
-	}`
+	handler := NewHandler(service, 30*24*time.Hour)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/auth/refresh",
-		bytes.NewBufferString(body),
+		nil,
 	)
+
+	rec := httptest.NewRecorder()
+
+	handler.Refresh(rec, req)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestHandler_Refresh_InvalidToken(t *testing.T) {
+	service := &mockService{
+		refreshFunc: func(string) (*AuthResult, error) {
+			return nil, ErrInvalidToken
+		},
+	}
+
+	handler := NewHandler(service, 30*24*time.Hour)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/refresh",
+		nil,
+	)
+
+	req.AddCookie(&http.Cookie{
+		Name:  refreshTokenCookieName,
+		Value: "invalid-token",
+	})
 
 	rec := httptest.NewRecorder()
 
@@ -321,22 +367,23 @@ func TestHandler_Refresh_InvalidToken(t *testing.T) {
 
 func TestHandler_Refresh_ExpiredToken(t *testing.T) {
 	service := &mockService{
-		refreshFunc: func(string) (*AuthResponse, error) {
+		refreshFunc: func(string) (*AuthResult, error) {
 			return nil, ErrTokenExpired
 		},
 	}
 
-	handler := NewHandler(service)
-
-	body := `{
-		"refresh_token": "expired-token"
-	}`
+	handler := NewHandler(service, 30*24*time.Hour)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/auth/refresh",
-		bytes.NewBufferString(body),
+		nil,
 	)
+
+	req.AddCookie(&http.Cookie{
+		Name:  refreshTokenCookieName,
+		Value: "expired-token",
+	})
 
 	rec := httptest.NewRecorder()
 
@@ -347,22 +394,23 @@ func TestHandler_Refresh_ExpiredToken(t *testing.T) {
 
 func TestHandler_Refresh_RevokedToken(t *testing.T) {
 	service := &mockService{
-		refreshFunc: func(string) (*AuthResponse, error) {
+		refreshFunc: func(string) (*AuthResult, error) {
 			return nil, ErrTokenRevoked
 		},
 	}
 
-	handler := NewHandler(service)
-
-	body := `{
-		"refresh_token": "revoked-token"
-	}`
+	handler := NewHandler(service, 30*24*time.Hour)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/auth/refresh",
-		bytes.NewBufferString(body),
+		nil,
 	)
+
+	req.AddCookie(&http.Cookie{
+		Name:  refreshTokenCookieName,
+		Value: "revoked-token",
+	})
 
 	rec := httptest.NewRecorder()
 
@@ -379,17 +427,18 @@ func TestHandler_Logout(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(service)
-
-	body := `{
-		"refresh_token": "refresh-token"
-	}`
+	handler := NewHandler(service, 30*24*time.Hour)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/auth/logout",
-		bytes.NewBufferString(body),
+		nil,
 	)
+
+	req.AddCookie(&http.Cookie{
+		Name:  refreshTokenCookieName,
+		Value: "refresh-token",
+	})
 
 	rec := httptest.NewRecorder()
 
@@ -397,6 +446,13 @@ func TestHandler_Logout(t *testing.T) {
 
 	require.Equal(t, http.StatusNoContent, rec.Code)
 	require.Empty(t, rec.Body.String())
+
+	cookies := rec.Result().Cookies()
+	require.Len(t, cookies, 1)
+	require.Equal(t, refreshTokenCookieName, cookies[0].Name)
+	require.Equal(t, -1, cookies[0].MaxAge)
+	require.True(t, cookies[0].HttpOnly)
+	require.True(t, cookies[0].Secure)
 }
 
 func TestHandler_Logout_InvalidToken(t *testing.T) {
@@ -406,17 +462,18 @@ func TestHandler_Logout_InvalidToken(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(service)
-
-	body := `{
-		"refresh_token": "invalid-token"
-	}`
+	handler := NewHandler(service, 30*24*time.Hour)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/auth/logout",
-		bytes.NewBufferString(body),
+		nil,
 	)
+
+	req.AddCookie(&http.Cookie{
+		Name:  refreshTokenCookieName,
+		Value: "invalid-token",
+	})
 
 	rec := httptest.NewRecorder()
 
@@ -432,17 +489,18 @@ func TestHandler_Logout_RevokedToken(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(service)
-
-	body := `{
-		"refresh_token": "revoked-token"
-	}`
+	handler := NewHandler(service, 30*24*time.Hour)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/auth/logout",
-		bytes.NewBufferString(body),
+		nil,
 	)
+
+	req.AddCookie(&http.Cookie{
+		Name:  refreshTokenCookieName,
+		Value: "revoked-token",
+	})
 
 	rec := httptest.NewRecorder()
 
@@ -451,7 +509,7 @@ func TestHandler_Logout_RevokedToken(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
-func TestHandler_Logout_InvalidBody(t *testing.T) {
+func TestHandler_Logout_NoCookie(t *testing.T) {
 	service := &mockService{
 		logoutFunc: func(string) error {
 			t.Fatal("service should not be called")
@@ -459,47 +517,29 @@ func TestHandler_Logout_InvalidBody(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(service)
+	handler := NewHandler(service, 30*24*time.Hour)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/auth/logout",
-		bytes.NewBufferString(`invalid-json`),
+		nil,
 	)
 
 	rec := httptest.NewRecorder()
 
 	handler.Logout(rec, req)
 
-	require.Equal(t, http.StatusBadRequest, rec.Code)
-}
+	require.Equal(t, http.StatusNoContent, rec.Code)
 
-func TestHandler_Refresh_InvalidBody(t *testing.T) {
-	service := &mockService{
-		refreshFunc: func(string) (*AuthResponse, error) {
-			t.Fatal("service should not be called")
-			return nil, nil
-		},
-	}
-
-	handler := NewHandler(service)
-
-	req := httptest.NewRequest(
-		http.MethodPost,
-		"/api/v1/auth/refresh",
-		bytes.NewBufferString(`invalid-json`),
-	)
-
-	rec := httptest.NewRecorder()
-
-	handler.Refresh(rec, req)
-
-	require.Equal(t, http.StatusBadRequest, rec.Code)
+	cookies := rec.Result().Cookies()
+	require.Len(t, cookies, 1)
+	require.Equal(t, refreshTokenCookieName, cookies[0].Name)
+	require.Equal(t, -1, cookies[0].MaxAge)
 }
 
 func TestHandler_ErrorWrapping(t *testing.T) {
 	service := &mockService{
-		loginFunc: func(LoginRequest) (*AuthResponse, error) {
+		loginFunc: func(LoginRequest) (*AuthResult, error) {
 			return nil, errors.Join(
 				errors.New("some context"),
 				ErrInvalidCredentials,
@@ -507,7 +547,7 @@ func TestHandler_ErrorWrapping(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(service)
+	handler := NewHandler(service, 30*24*time.Hour)
 
 	body := `{
 		"email": "john@example.com",

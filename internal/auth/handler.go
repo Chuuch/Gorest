@@ -4,17 +4,23 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"net/http"
+	"time"
 
+	"github.com/chuuch/gorest/internal/api"
 	"github.com/chuuch/gorest/internal/user"
 )
 
+const refreshTokenCookieName = "refresh_token"
+
 type Handler struct {
 	service Service
+	refreshTokenTTL time.Duration
 }
 
-func NewHandler(service Service) *Handler {
+func NewHandler(service Service, refreshTokenTTL time.Duration) *Handler {
 	return &Handler{
 		service: service,
+		refreshTokenTTL: refreshTokenTTL,
 	}
 }
 
@@ -22,98 +28,192 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 
 	if err := json.UnmarshalRead(r.Body, &req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_request",
+			"invalid request body",
+		)
 		return
 	}
 
-	response, err := h.service.Register(r.Context(), req)
+	result, err := h.service.Register(r.Context(), req)
 	if err != nil {
 		h.handleError(w, err)
 		return
 	}
 
-	h.writeAuthResponse(w, http.StatusCreated, response)
+	h.setRefreshTokenCookie(w, result.RefreshToken)
+	h.writeAuthResponse(w, http.StatusCreated, result)
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 
 	if err := json.UnmarshalRead(r.Body, &req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_request",
+			"invalid request body",
+		)
 		return
 	}
 
-	response, err := h.service.Login(r.Context(), req)
+	result, err := h.service.Login(r.Context(), req)
 	if err != nil {
 		h.handleError(w, err)
 		return
 	}
 
-	h.writeAuthResponse(w, http.StatusOK, response)
+	h.setRefreshTokenCookie(w, result.RefreshToken)
+	h.writeAuthResponse(w, http.StatusOK, result)
 }
 
 func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
-	var req RefreshRequest
+	cookie, err := r.Cookie(refreshTokenCookieName)
+	if err != nil {
+		if errors.Is(err, http.ErrNoCookie) {
+			api.WriteError(
+				w,
+				http.StatusUnauthorized,
+				"invalid_token",
+				"invalid token",
+			)
+			return
+		}
 
-	if err := json.UnmarshalRead(r.Body, &req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_request",
+			"invalid request",
+		)
 		return
 	}
 
-	response, err := h.service.Refresh(r.Context(), req.RefreshToken)
+	result, err := h.service.Refresh(r.Context(), cookie.Value)
 	if err != nil {
 		h.handleError(w, err)
 		return
 	}
 
-	h.writeAuthResponse(w, http.StatusOK, response)
+	h.setRefreshTokenCookie(w, result.RefreshToken)
+	h.writeAuthResponse(w, http.StatusOK, result)
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
-	var req RefreshRequest
+	cookie, err := r.Cookie(refreshTokenCookieName)
+	if err != nil {
+		if errors.Is(err, http.ErrNoCookie) {
+			h.clearRefreshTokenCookie(w)
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 
-	if err := json.UnmarshalRead(r.Body, &req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_request",
+			"invalid request",
+		)
 		return
 	}
 
-	if err := h.service.Logout(r.Context(), req.RefreshToken); err != nil {
+	if err := h.service.Logout(r.Context(), cookie.Value); err != nil {
 		h.handleError(w, err)
 		return
 	}
 
+	h.clearRefreshTokenCookie(w)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) writeAuthResponse(
 	w http.ResponseWriter,
 	status int,
-	response *AuthResponse,
+	result *AuthResult,
 ) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
+	api.WriteJSON(w, status, AuthResponse{
+		AccessToken: result.AccessToken,
+	})
+}
 
-	_ = json.MarshalWrite(w, response)
+func (h *Handler) setRefreshTokenCookie(
+	w http.ResponseWriter,
+	refreshToken string,
+) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     refreshTokenCookieName,
+		Value:    refreshToken,
+		Path:     "/api/v1/auth",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+		Expires:  time.Now().UTC().Add(h.refreshTokenTTL),
+	})
+}
+
+func (h *Handler) clearRefreshTokenCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     refreshTokenCookieName,
+		Value:    "",
+		Path:     "/api/v1/auth",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
 }
 
 func (h *Handler) handleError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, user.ErrEmailAlreadyExists):
-		http.Error(w, "email already exists", http.StatusConflict)
+		api.WriteError(
+			w,
+			http.StatusConflict,
+			"email_already_exists",
+			"email already exists",
+		)
 
 	case errors.Is(err, ErrInvalidCredentials):
-		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		api.WriteError(
+			w,
+			http.StatusUnauthorized,
+			"invalid_credentials",
+			"invalid credentials",
+		)
 
 	case errors.Is(err, ErrInvalidToken):
-		http.Error(w, "invalid token", http.StatusUnauthorized)
+		api.WriteError(
+			w,
+			http.StatusUnauthorized,
+			"invalid_token",
+			"invalid token",
+		)
 
 	case errors.Is(err, ErrTokenExpired):
-		http.Error(w, "token expired", http.StatusUnauthorized)
+		api.WriteError(
+			w,
+			http.StatusUnauthorized,
+			"token_expired",
+			"token expired",
+		)
 
 	case errors.Is(err, ErrTokenRevoked):
-		http.Error(w, "token revoked", http.StatusUnauthorized)
+		api.WriteError(
+			w,
+			http.StatusUnauthorized,
+			"token_revoked",
+			"token revoked",
+		)
 
 	default:
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		api.WriteError(
+			w,
+			http.StatusInternalServerError,
+			"internal_error",
+			"internal server error",
+		)
 	}
 }
