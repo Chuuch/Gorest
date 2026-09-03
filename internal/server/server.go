@@ -66,7 +66,7 @@ func New(cfg *config.Config) (*Server, error) {
 	// ------------------------------------------------------------
 	httpServer := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
-		Handler:      newRouter(userHandler, authHandler),
+		Handler:      newRouter(userHandler, authHandler, tokenManager),
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 		IdleTimeout:  cfg.Server.IdleTimeout,
