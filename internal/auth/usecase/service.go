@@ -1,4 +1,4 @@
-package auth
+package usecase
 
 import (
 	"context"
@@ -6,7 +6,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/chuuch/gorest/internal/user"
+	authdomain "github.com/chuuch/gorest/internal/auth/domain"
+	"github.com/chuuch/gorest/internal/auth/repository"
+	"github.com/chuuch/gorest/internal/auth/security"
+	userdomain "github.com/chuuch/gorest/internal/user/domain"
+	userusecase "github.com/chuuch/gorest/internal/user/usecase"
 	"github.com/google/uuid"
 )
 
@@ -16,8 +20,8 @@ type AuthResult struct {
 }
 
 type Service interface {
-	Register(ctx context.Context, req RegisterRequest) (*AuthResult, error)
-	Login(ctx context.Context, req LoginRequest) (*AuthResult, error)
+	Register(ctx context.Context, req authdomain.RegisterRequest) (*AuthResult, error)
+	Login(ctx context.Context, req authdomain.LoginRequest) (*AuthResult, error)
 	Refresh(ctx context.Context, refreshToken string) (*AuthResult, error)
 	Logout(ctx context.Context, refreshToken string) error
 }
@@ -27,18 +31,18 @@ type PasswordVerifier interface {
 }
 
 type service struct {
-	users           user.Service
-	refreshTokens   RefreshTokenRepository
-	tokens          TokenManager
+	users           userusecase.Service
+	refreshTokens   repository.RefreshTokenRepository
+	tokens          security.TokenManager
 	passwords       PasswordVerifier
 	accessTokenTTL  time.Duration
 	refreshTokenTTL time.Duration
 }
 
 func NewService(
-	users user.Service,
-	refreshTokens RefreshTokenRepository,
-	tokens TokenManager,
+	users userusecase.Service,
+	refreshTokens repository.RefreshTokenRepository,
+	tokens security.TokenManager,
 	passwords PasswordVerifier,
 	accessTokenTTL time.Duration,
 	refreshTokenTTL time.Duration,
@@ -55,7 +59,7 @@ func NewService(
 
 func (s *service) Register(
 	ctx context.Context,
-	req RegisterRequest,
+	req authdomain.RegisterRequest,
 ) (*AuthResult, error) {
 	exists, err := s.users.ExistsByEmail(ctx, req.Email)
 	if err != nil {
@@ -63,10 +67,10 @@ func (s *service) Register(
 	}
 
 	if exists {
-		return nil, user.ErrEmailAlreadyExists
+		return nil, userdomain.ErrEmailAlreadyExists
 	}
 
-	u, err := s.users.Create(ctx, user.CreateUserRequest{
+	u, err := s.users.Create(ctx, userdomain.CreateUserRequest{
 		Email:    req.Email,
 		Password: req.Password,
 	})
@@ -79,19 +83,19 @@ func (s *service) Register(
 
 func (s *service) Login(
 	ctx context.Context,
-	req LoginRequest,
+	req authdomain.LoginRequest,
 ) (*AuthResult, error) {
 	u, err := s.users.GetByEmail(ctx, req.Email)
 	if err != nil {
-		if errors.Is(err, user.ErrUserNotFound) {
-			return nil, ErrInvalidCredentials
+		if errors.Is(err, userdomain.ErrUserNotFound) {
+			return nil, authdomain.ErrInvalidCredentials
 		}
 
 		return nil, fmt.Errorf("get user by email: %w", err)
 	}
 
 	if err := s.passwords.Compare(req.Password, u.PasswordHash); err != nil {
-		return nil, ErrInvalidCredentials
+		return nil, authdomain.ErrInvalidCredentials
 	}
 
 	return s.issueTokens(ctx, u.ID)
@@ -102,7 +106,7 @@ func (s *service) Refresh(
 	refreshToken string,
 ) (*AuthResult, error) {
 	if refreshToken == "" {
-		return nil, ErrInvalidToken
+		return nil, authdomain.ErrInvalidToken
 	}
 
 	tokenHash := s.tokens.HashRefreshToken(refreshToken)
@@ -113,11 +117,11 @@ func (s *service) Refresh(
 	}
 
 	if storedToken.RevokedAt != nil {
-		return nil, ErrTokenRevoked
+		return nil, authdomain.ErrTokenRevoked
 	}
 
 	if !time.Now().UTC().Before(storedToken.ExpiresAt) {
-		return nil, ErrTokenExpired
+		return nil, authdomain.ErrTokenExpired
 	}
 
 	if err := s.refreshTokens.Revoke(ctx, storedToken.ID); err != nil {
@@ -132,7 +136,7 @@ func (s *service) Logout(
 	refreshToken string,
 ) error {
 	if refreshToken == "" {
-		return ErrInvalidToken
+		return authdomain.ErrInvalidToken
 	}
 
 	tokenHash := s.tokens.HashRefreshToken(refreshToken)
@@ -143,7 +147,7 @@ func (s *service) Logout(
 	}
 
 	if storedToken.RevokedAt != nil {
-		return ErrTokenRevoked
+		return authdomain.ErrTokenRevoked
 	}
 
 	if err := s.refreshTokens.Revoke(ctx, storedToken.ID); err != nil {
@@ -169,7 +173,7 @@ func (s *service) issueTokens(
 
 	now := time.Now().UTC()
 
-	storedToken := &RefreshToken{
+	storedToken := &authdomain.RefreshToken{
 		ID:        uuid.New(),
 		UserID:    userID,
 		TokenHash: s.tokens.HashRefreshToken(refreshToken),

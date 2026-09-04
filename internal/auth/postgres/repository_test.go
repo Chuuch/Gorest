@@ -1,4 +1,4 @@
-package postgres
+package postgres_test
 
 import (
 	"context"
@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chuuch/gorest/internal/auth"
+	"github.com/chuuch/gorest/internal/auth/domain"
+	"github.com/chuuch/gorest/internal/auth/postgres"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
@@ -112,10 +113,10 @@ func createTestUser(t *testing.T, db *pgxpool.Pool) uuid.UUID {
 	return id
 }
 
-func newTestRefreshToken(userID uuid.UUID) *auth.RefreshToken {
+func newTestRefreshToken(userID uuid.UUID) *domain.RefreshToken {
 	now := time.Now().UTC()
 
-	return &auth.RefreshToken{
+	return &domain.RefreshToken{
 		ID:        uuid.New(),
 		UserID:    userID,
 		TokenHash: "refresh-token-hash",
@@ -129,7 +130,7 @@ func TestRefreshTokenRepository_Create(t *testing.T) {
 	db, cleanup := setupTestDatabase(t)
 	defer cleanup()
 
-	repo := NewRepository(db)
+	repo := postgres.NewRepository(db)
 	ctx := context.Background()
 
 	userID := createTestUser(t, db)
@@ -184,7 +185,7 @@ func TestRefreshTokenRepository_Create_WithRevokedAt(t *testing.T) {
 	db, cleanup := setupTestDatabase(t)
 	defer cleanup()
 
-	repo := NewRepository(db)
+	repo := postgres.NewRepository(db)
 	ctx := context.Background()
 
 	userID := createTestUser(t, db)
@@ -213,7 +214,7 @@ func TestRefreshTokenRepository_GetByHash(t *testing.T) {
 	db, cleanup := setupTestDatabase(t)
 	defer cleanup()
 
-	repo := NewRepository(db)
+	repo := postgres.NewRepository(db)
 	ctx := context.Background()
 
 	userID := createTestUser(t, db)
@@ -246,20 +247,20 @@ func TestRefreshTokenRepository_GetByHash_NotFound(t *testing.T) {
 	db, cleanup := setupTestDatabase(t)
 	defer cleanup()
 
-	repo := NewRepository(db)
+	repo := postgres.NewRepository(db)
 	ctx := context.Background()
 
 	_, err := repo.GetByHash(ctx, "missing-token-hash")
 
 	require.Error(t, err)
-	require.True(t, errors.Is(err, auth.ErrInvalidToken))
+	require.True(t, errors.Is(err, domain.ErrInvalidToken))
 }
 
 func TestRefreshTokenRepository_Revoke(t *testing.T) {
 	db, cleanup := setupTestDatabase(t)
 	defer cleanup()
 
-	repo := NewRepository(db)
+	repo := postgres.NewRepository(db)
 	ctx := context.Background()
 
 	userID := createTestUser(t, db)
@@ -281,7 +282,7 @@ func TestRefreshTokenRepository_Revoke_AlreadyRevoked(t *testing.T) {
 	db, cleanup := setupTestDatabase(t)
 	defer cleanup()
 
-	repo := NewRepository(db)
+	repo := postgres.NewRepository(db)
 	ctx := context.Background()
 
 	userID := createTestUser(t, db)
@@ -293,27 +294,27 @@ func TestRefreshTokenRepository_Revoke_AlreadyRevoked(t *testing.T) {
 	err := repo.Revoke(ctx, token.ID)
 
 	require.Error(t, err)
-	require.True(t, errors.Is(err, auth.ErrTokenRevoked))
+	require.True(t, errors.Is(err, domain.ErrTokenRevoked))
 }
 
 func TestRefreshTokenRepository_Revoke_NotFound(t *testing.T) {
 	db, cleanup := setupTestDatabase(t)
 	defer cleanup()
 
-	repo := NewRepository(db)
+	repo := postgres.NewRepository(db)
 	ctx := context.Background()
 
 	err := repo.Revoke(ctx, uuid.New())
 
 	require.Error(t, err)
-	require.True(t, errors.Is(err, auth.ErrTokenRevoked))
+	require.True(t, errors.Is(err, domain.ErrTokenRevoked))
 }
 
 func TestRefreshTokenRepository_RevokeAllForUser(t *testing.T) {
 	db, cleanup := setupTestDatabase(t)
 	defer cleanup()
 
-	repo := NewRepository(db)
+	repo := postgres.NewRepository(db)
 	ctx := context.Background()
 
 	userID := createTestUser(t, db)
@@ -344,7 +345,7 @@ func TestRefreshTokenRepository_RevokeAllForUser_DoesNotAffectOtherUsers(t *test
 	db, cleanup := setupTestDatabase(t)
 	defer cleanup()
 
-	repo := NewRepository(db)
+	repo := postgres.NewRepository(db)
 	ctx := context.Background()
 
 	user1ID := createTestUser(t, db)
@@ -398,7 +399,7 @@ func TestRefreshTokenRepository_CascadeDeleteWithUser(t *testing.T) {
 	db, cleanup := setupTestDatabase(t)
 	defer cleanup()
 
-	repo := NewRepository(db)
+	repo := postgres.NewRepository(db)
 	ctx := context.Background()
 
 	userID := createTestUser(t, db)
@@ -416,5 +417,5 @@ func TestRefreshTokenRepository_CascadeDeleteWithUser(t *testing.T) {
 	_, err = repo.GetByHash(ctx, token.TokenHash)
 
 	require.Error(t, err)
-	require.True(t, errors.Is(err, auth.ErrInvalidToken))
+	require.True(t, errors.Is(err, domain.ErrInvalidToken))
 }

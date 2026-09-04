@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/chuuch/gorest/internal/auth"
+	"github.com/chuuch/gorest/internal/auth/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -23,7 +23,7 @@ func NewRepository(db *pgxpool.Pool) *RefreshTokenRepository {
 
 func (r *RefreshTokenRepository) Create(
 	ctx context.Context,
-	token *auth.RefreshToken,
+	token *domain.RefreshToken,
 ) error {
 	const query = `
 			INSERT INTO refresh_tokens (
@@ -58,7 +58,7 @@ func (r *RefreshTokenRepository) Create(
 func (r *RefreshTokenRepository) GetByHash(
 	ctx context.Context,
 	tokenHash string,
-) (*auth.RefreshToken, error) {
+) (*domain.RefreshToken, error) {
 	const query = `
 			SELECT
 				id,
@@ -71,7 +71,7 @@ func (r *RefreshTokenRepository) GetByHash(
 			WHERE token_hash = $1
 		`
 
-	var token auth.RefreshToken
+	var token domain.RefreshToken
 
 	err := r.db.QueryRow(ctx, query, tokenHash).Scan(
 		&token.ID,
@@ -84,7 +84,7 @@ func (r *RefreshTokenRepository) GetByHash(
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, auth.ErrInvalidToken
+			return nil, domain.ErrInvalidToken
 		}
 
 		return nil, fmt.Errorf("get refresh token by hash: %w", err)
@@ -110,7 +110,7 @@ func (r *RefreshTokenRepository) Revoke(
 	}
 
 	if result.RowsAffected() == 0 {
-		return auth.ErrTokenRevoked
+		return domain.ErrTokenRevoked
 	}
 
 	return nil

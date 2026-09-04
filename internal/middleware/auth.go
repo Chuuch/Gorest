@@ -5,11 +5,11 @@ import (
 	"strings"
 
 	"github.com/chuuch/gorest/internal/api"
-	"github.com/chuuch/gorest/internal/auth"
+	"github.com/chuuch/gorest/internal/auth/security"
 	"github.com/chuuch/gorest/internal/requestcontext"
 )
 
-func Auth(tokens auth.TokenManager) func(http.Handler) http.Handler {
+func Auth(tokens security.TokenManager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token, err := extractBearerToken(r)

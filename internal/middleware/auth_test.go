@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chuuch/gorest/internal/auth"
+	"github.com/chuuch/gorest/internal/auth/security"
 	"github.com/chuuch/gorest/internal/middleware"
 	"github.com/chuuch/gorest/internal/requestcontext"
 	"github.com/google/uuid"
@@ -20,7 +20,7 @@ const (
 )
 
 func TestAuth_MissingAuthorizationHeader(t *testing.T) {
-	tokenManager := auth.NewJwtManager(
+	tokenManager := security.NewJwtManager(
 		middlewareTestSecret,
 		middlewareTestIssuer,
 		middlewareTestTTL,
@@ -46,7 +46,7 @@ func TestAuth_MissingAuthorizationHeader(t *testing.T) {
 }
 
 func TestAuth_InvalidAuthorizationHeader(t *testing.T) {
-	tokenManager := auth.NewJwtManager(
+	tokenManager := security.NewJwtManager(
 		middlewareTestSecret,
 		middlewareTestIssuer,
 		middlewareTestTTL,
@@ -74,7 +74,7 @@ func TestAuth_InvalidAuthorizationHeader(t *testing.T) {
 }
 
 func TestAuth_InvalidToken(t *testing.T) {
-	tokenManager := auth.NewJwtManager(
+	tokenManager := security.NewJwtManager(
 		middlewareTestSecret,
 		middlewareTestIssuer,
 		middlewareTestTTL,
@@ -102,7 +102,7 @@ func TestAuth_InvalidToken(t *testing.T) {
 }
 
 func TestAuth_ValidToken(t *testing.T) {
-	tokenManager := auth.NewJwtManager(
+	tokenManager := security.NewJwtManager(
 		middlewareTestSecret,
 		middlewareTestIssuer,
 		middlewareTestTTL,

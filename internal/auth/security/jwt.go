@@ -1,4 +1,4 @@
-package auth
+package security
 
 import (
 	"crypto/rand"
@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/chuuch/gorest/internal/auth/domain"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
@@ -72,31 +73,31 @@ func (m *jwtManager) ParseAccessToken(
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, ErrTokenExpired
+			return nil, domain.ErrTokenExpired
 		}
 
-		return nil, ErrInvalidToken
+		return nil, domain.ErrInvalidToken
 	}
 
 	if !token.Valid {
-		return nil, ErrInvalidToken
+		return nil, domain.ErrInvalidToken
 	}
 
 	if claims.Subject == "" {
-		return nil, ErrInvalidToken
+		return nil, domain.ErrInvalidToken
 	}
 
 	userID, err := uuid.Parse(claims.Subject)
 	if err != nil {
-		return nil, ErrInvalidToken
+		return nil, domain.ErrInvalidToken
 	}
 
 	if claims.ExpiresAt == nil {
-		return nil, ErrInvalidToken
+		return nil, domain.ErrInvalidToken
 	}
 
 	if claims.IssuedAt == nil {
-		return nil, ErrInvalidToken
+		return nil, domain.ErrInvalidToken
 	}
 
 	return &AccessTokenClaims{

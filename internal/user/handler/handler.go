@@ -1,4 +1,4 @@
-package user
+package handler
 
 import (
 	"encoding/json/v2"
@@ -7,22 +7,24 @@ import (
 
 	"github.com/chuuch/gorest/internal/api"
 	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/user/domain"
+	"github.com/chuuch/gorest/internal/user/usecase"
 	"github.com/chuuch/gorest/internal/validation"
 	"github.com/google/uuid"
 )
 
 type Handler struct {
-	service Service
+	service usecase.Service
 }
 
-func NewHandler(service Service) *Handler {
+func NewHandler(service usecase.Service) *Handler {
 	return &Handler{
 		service: service,
 	}
 }
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
-	var dto CreateUserRequest
+	var dto domain.CreateUserRequest
 
 	if err := json.UnmarshalRead(r.Body, &dto); err != nil {
 		api.WriteError(
@@ -45,7 +47,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := UserResponse{
+	response := domain.UserResponse{
 		ID:        user.ID,
 		Email:     user.Email,
 		CreatedAt: user.CreatedAt,
@@ -94,7 +96,7 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := UserResponse{
+	response := domain.UserResponse{
 		ID:        user.ID,
 		Email:     user.Email,
 		CreatedAt: user.CreatedAt,
@@ -137,7 +139,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var dto UpdateUserRequest
+	var dto domain.UpdateUserRequest
 
 	if err := json.UnmarshalRead(r.Body, &dto); err != nil {
 		api.WriteError(
@@ -160,7 +162,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := UserResponse{
+	response := domain.UserResponse{
 		ID:        user.ID,
 		Email:     user.Email,
 		CreatedAt: user.CreatedAt,
@@ -213,7 +215,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, ErrUserNotFound):
+	case errors.Is(err, domain.ErrUserNotFound):
 		api.WriteError(
 			w,
 			http.StatusNotFound,
@@ -221,7 +223,7 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 			"user not found",
 		)
 
-	case errors.Is(err, ErrEmailAlreadyExists):
+	case errors.Is(err, domain.ErrEmailAlreadyExists):
 		api.WriteError(
 			w,
 			http.StatusConflict,

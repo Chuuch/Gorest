@@ -1,10 +1,11 @@
-package auth_test
+package security_test
 
 import (
 	"testing"
 	"time"
 
-	"github.com/chuuch/gorest/internal/auth"
+	"github.com/chuuch/gorest/internal/auth/domain"
+	"github.com/chuuch/gorest/internal/auth/security"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
@@ -16,7 +17,7 @@ const (
 )
 
 func TestJwtManager_GenerateAccessToken(t *testing.T) {
-	manager := auth.NewJwtManager(
+	manager := security.NewJwtManager(
 		jwtTestSecret,
 		jwtTestIssuer,
 		jwtTestTTL,
@@ -39,13 +40,13 @@ func TestJwtManager_GenerateAccessToken(t *testing.T) {
 }
 
 func TestJwtManager_ParseAccessToken_InvalidSignature(t *testing.T) {
-	manager := auth.NewJwtManager(
+	manager := security.NewJwtManager(
 		jwtTestSecret,
 		jwtTestIssuer,
 		jwtTestTTL,
 	)
 
-	otherManager := auth.NewJwtManager(
+	otherManager := security.NewJwtManager(
 		"wrong-secret",
 		jwtTestIssuer,
 		jwtTestTTL,
@@ -57,17 +58,17 @@ func TestJwtManager_ParseAccessToken_InvalidSignature(t *testing.T) {
 
 	_, err = manager.ParseAccessToken(token)
 
-	require.ErrorIs(t, err, auth.ErrInvalidToken)
+	require.ErrorIs(t, err, domain.ErrInvalidToken)
 }
 
 func TestJwtManager_ParseAccessToken_WrongIssuer(t *testing.T) {
-	manager := auth.NewJwtManager(
+	manager := security.NewJwtManager(
 		jwtTestSecret,
 		jwtTestIssuer,
 		jwtTestTTL,
 	)
 
-	otherManager := auth.NewJwtManager(
+	otherManager := security.NewJwtManager(
 		jwtTestSecret,
 		"wrong-issuer",
 		jwtTestTTL,
@@ -79,11 +80,11 @@ func TestJwtManager_ParseAccessToken_WrongIssuer(t *testing.T) {
 
 	_, err = manager.ParseAccessToken(token)
 
-	require.ErrorIs(t, err, auth.ErrInvalidToken)
+	require.ErrorIs(t, err, domain.ErrInvalidToken)
 }
 
 func TestJwtManager_ParseAccessToken_Expired(t *testing.T) {
-	manager := auth.NewJwtManager(
+	manager := security.NewJwtManager(
 		jwtTestSecret,
 		jwtTestIssuer,
 		-1*time.Minute,
@@ -95,11 +96,11 @@ func TestJwtManager_ParseAccessToken_Expired(t *testing.T) {
 
 	_, err = manager.ParseAccessToken(token)
 
-	require.ErrorIs(t, err, auth.ErrTokenExpired)
+	require.ErrorIs(t, err, domain.ErrTokenExpired)
 }
 
 func TestJwtManager_ParseAccessToken_Malformed(t *testing.T) {
-	manager := auth.NewJwtManager(
+	manager := security.NewJwtManager(
 		jwtTestSecret,
 		jwtTestIssuer,
 		jwtTestTTL,
@@ -107,11 +108,11 @@ func TestJwtManager_ParseAccessToken_Malformed(t *testing.T) {
 
 	_, err := manager.ParseAccessToken("not-a-jwt")
 
-	require.ErrorIs(t, err, auth.ErrInvalidToken)
+	require.ErrorIs(t, err, domain.ErrInvalidToken)
 }
 
 func TestJwtManager_GenerateRefreshToken(t *testing.T) {
-	manager := auth.NewJwtManager(
+	manager := security.NewJwtManager(
 		jwtTestSecret,
 		jwtTestIssuer,
 		jwtTestTTL,
@@ -130,7 +131,7 @@ func TestJwtManager_GenerateRefreshToken(t *testing.T) {
 }
 
 func TestJwtManager_HashRefreshToken(t *testing.T) {
-	manager := auth.NewJwtManager(
+	manager := security.NewJwtManager(
 		jwtTestSecret,
 		jwtTestIssuer,
 		jwtTestTTL,

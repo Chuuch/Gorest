@@ -1,19 +1,21 @@
-package user
+package usecase
 
 import (
 	"context"
 	"fmt"
 	"time"
 
+	"github.com/chuuch/gorest/internal/user/domain"
+	"github.com/chuuch/gorest/internal/user/repository"
 	"github.com/google/uuid"
 )
 
 type Service interface {
-	Create(ctx context.Context, dto CreateUserRequest) (*User, error)
-	GetByID(ctx context.Context, id uuid.UUID) (*User, error)
-	GetByEmail(ctx context.Context, email string) (*User, error)
+	Create(ctx context.Context, dto domain.CreateUserRequest) (*domain.User, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
+	GetByEmail(ctx context.Context, email string) (*domain.User, error)
 	ExistsByEmail(ctx context.Context, email string) (bool, error)
-	Update(ctx context.Context, id uuid.UUID, dto UpdateUserRequest) (*User, error)
+	Update(ctx context.Context, id uuid.UUID, dto domain.UpdateUserRequest) (*domain.User, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -23,12 +25,12 @@ type PasswordHasher interface {
 }
 
 type service struct {
-	repository UserRepository
+	repository repository.UserRepository
 	hasher     PasswordHasher
 }
 
 func NewService(
-	repository UserRepository,
+	repository repository.UserRepository,
 	hasher PasswordHasher,
 ) Service {
 	return &service{
@@ -39,15 +41,16 @@ func NewService(
 
 func (s *service) Create(
 	ctx context.Context,
-	dto CreateUserRequest,
-) (*User, error) {
+	dto domain.CreateUserRequest,
+) (*domain.User, error) {
 	passwordHash, err := s.hasher.Hash(dto.Password)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
+
 	now := time.Now().UTC()
 
-	u := &User{
+	u := &domain.User{
 		ID:           uuid.New(),
 		Email:        dto.Email,
 		PasswordHash: passwordHash,
@@ -65,7 +68,7 @@ func (s *service) Create(
 func (s *service) GetByID(
 	ctx context.Context,
 	id uuid.UUID,
-) (*User, error) {
+) (*domain.User, error) {
 	u, err := s.repository.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get user by id: %w", err)
@@ -77,11 +80,12 @@ func (s *service) GetByID(
 func (s *service) GetByEmail(
 	ctx context.Context,
 	email string,
-) (*User, error) {
+) (*domain.User, error) {
 	u, err := s.repository.GetByEmail(ctx, email)
 	if err != nil {
 		return nil, fmt.Errorf("get user by email: %w", err)
 	}
+
 	return u, nil
 }
 
@@ -95,8 +99,8 @@ func (s *service) ExistsByEmail(
 func (s *service) Update(
 	ctx context.Context,
 	id uuid.UUID,
-	dto UpdateUserRequest,
-) (*User, error) {
+	dto domain.UpdateUserRequest,
+) (*domain.User, error) {
 	u, err := s.repository.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get user for update: %w", err)
@@ -129,5 +133,6 @@ func (s *service) Delete(
 	if err := s.repository.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete user: %w", err)
 	}
+
 	return nil
 }

@@ -1,4 +1,4 @@
-package user
+package usecase_test
 
 import (
 	"context"
@@ -6,21 +6,24 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chuuch/gorest/internal/user/domain"
+
+	uc "github.com/chuuch/gorest/internal/user/usecase"
 	"github.com/google/uuid"
 )
 
 type mockUserRepository struct {
-	createFn      func(context.Context, *User) error
-	getByIDFn     func(context.Context, uuid.UUID) (*User, error)
-	getByEmailFn  func(context.Context, string) (*User, error)
+	createFn      func(context.Context, *domain.User) error
+	getByIDFn     func(context.Context, uuid.UUID) (*domain.User, error)
+	getByEmailFn  func(context.Context, string) (*domain.User, error)
 	existsByEmail func(ctx context.Context, emaid string) (bool, error)
-	updateFn      func(context.Context, *User) error
+	updateFn      func(context.Context, *domain.User) error
 	deleteFn      func(context.Context, uuid.UUID) error
 }
 
 func (m *mockUserRepository) Create(
 	ctx context.Context,
-	user *User,
+	user *domain.User,
 ) error {
 	return m.createFn(ctx, user)
 }
@@ -28,14 +31,14 @@ func (m *mockUserRepository) Create(
 func (m *mockUserRepository) GetByID(
 	ctx context.Context,
 	id uuid.UUID,
-) (*User, error) {
+) (*domain.User, error) {
 	return m.getByIDFn(ctx, id)
 }
 
 func (m *mockUserRepository) GetByEmail(
 	ctx context.Context,
 	email string,
-) (*User, error) {
+) (*domain.User, error) {
 	return m.getByEmailFn(ctx, email)
 }
 
@@ -48,7 +51,7 @@ func (m *mockUserRepository) ExistsByEmail(
 
 func (m *mockUserRepository) Update(
 	ctx context.Context,
-	user *User,
+	user *domain.User,
 ) error {
 	return m.updateFn(ctx, user)
 }
@@ -81,7 +84,7 @@ func TestService_Create(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		dto           CreateUserRequest
+		dto           domain.CreateUserRequest
 		hashResult    string
 		hashErr       error
 		repositoryErr error
@@ -89,7 +92,7 @@ func TestService_Create(t *testing.T) {
 	}{
 		{
 			name: "success",
-			dto: CreateUserRequest{
+			dto: domain.CreateUserRequest{
 				Email:    "john@example.com",
 				Password: "password123",
 			},
@@ -97,7 +100,7 @@ func TestService_Create(t *testing.T) {
 		},
 		{
 			name: "hash error",
-			dto: CreateUserRequest{
+			dto: domain.CreateUserRequest{
 				Email:    "john@example.com",
 				Password: "password123",
 			},
@@ -106,7 +109,7 @@ func TestService_Create(t *testing.T) {
 		},
 		{
 			name: "repository error",
-			dto: CreateUserRequest{
+			dto: domain.CreateUserRequest{
 				Email:    "john@example.com",
 				Password: "password123",
 			},
@@ -122,12 +125,12 @@ func TestService_Create(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var createdUser *User
+			var createdUser *domain.User
 
 			repository := &mockUserRepository{
 				createFn: func(
 					ctx context.Context,
-					user *User,
+					user *domain.User,
 				) error {
 					createdUser = user
 					return tt.repositoryErr
@@ -148,7 +151,7 @@ func TestService_Create(t *testing.T) {
 				},
 			}
 
-			service := NewService(repository, hasher)
+			service := uc.NewService(repository, hasher)
 
 			got, err := service.Create(
 				context.Background(),
@@ -228,7 +231,7 @@ func TestService_GetByID(t *testing.T) {
 	userID := uuid.New()
 	repositoryErr := errors.New("repository failed")
 
-	expectedUser := &User{
+	expectedUser := &domain.User{
 		ID:           userID,
 		Email:        "john@example.com",
 		PasswordHash: "hashed-password",
@@ -238,20 +241,20 @@ func TestService_GetByID(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		repositoryFn func() (*User, error)
-		wantUser     *User
+		repositoryFn func() (*domain.User, error)
+		wantUser     *domain.User
 		wantErr      error
 	}{
 		{
 			name: "success",
-			repositoryFn: func() (*User, error) {
+			repositoryFn: func() (*domain.User, error) {
 				return expectedUser, nil
 			},
 			wantUser: expectedUser,
 		},
 		{
 			name: "repository error",
-			repositoryFn: func() (*User, error) {
+			repositoryFn: func() (*domain.User, error) {
 				return nil, repositoryErr
 			},
 			wantErr: repositoryErr,
@@ -268,7 +271,7 @@ func TestService_GetByID(t *testing.T) {
 				getByIDFn: func(
 					ctx context.Context,
 					id uuid.UUID,
-				) (*User, error) {
+				) (*domain.User, error) {
 					if id != userID {
 						t.Errorf(
 							"id = %v, want %v",
@@ -281,7 +284,7 @@ func TestService_GetByID(t *testing.T) {
 				},
 			}
 
-			service := NewService(
+			service := uc.NewService(
 				repository,
 				&mockPasswordHasher{},
 			)
@@ -324,27 +327,27 @@ func TestService_GetByEmail(t *testing.T) {
 	email := "john@example.com"
 	repositoryErr := errors.New("repository failed")
 
-	expectedUser := &User{
+	expectedUser := &domain.User{
 		ID:    uuid.New(),
 		Email: email,
 	}
 
 	tests := []struct {
 		name         string
-		repositoryFn func() (*User, error)
-		wantUser     *User
+		repositoryFn func() (*domain.User, error)
+		wantUser     *domain.User
 		wantErr      error
 	}{
 		{
 			name: "success",
-			repositoryFn: func() (*User, error) {
+			repositoryFn: func() (*domain.User, error) {
 				return expectedUser, nil
 			},
 			wantUser: expectedUser,
 		},
 		{
 			name: "repository error",
-			repositoryFn: func() (*User, error) {
+			repositoryFn: func() (*domain.User, error) {
 				return nil, repositoryErr
 			},
 			wantErr: repositoryErr,
@@ -361,7 +364,7 @@ func TestService_GetByEmail(t *testing.T) {
 				getByEmailFn: func(
 					ctx context.Context,
 					gotEmail string,
-				) (*User, error) {
+				) (*domain.User, error) {
 					if gotEmail != email {
 						t.Errorf(
 							"email = %q, want %q",
@@ -374,7 +377,7 @@ func TestService_GetByEmail(t *testing.T) {
 				},
 			}
 
-			service := NewService(
+			service := uc.NewService(
 				repository,
 				&mockPasswordHasher{},
 			)
@@ -425,7 +428,7 @@ func TestService_Update(t *testing.T) {
 		email               string
 		password            string
 		changePassword      bool
-		existingUser        *User
+		existingUser        *domain.User
 		hashResult          string
 		hashErr             error
 		repositoryGetErr    error
@@ -436,7 +439,7 @@ func TestService_Update(t *testing.T) {
 		{
 			name:  "update email without password",
 			email: "new@example.com",
-			existingUser: &User{
+			existingUser: &domain.User{
 				ID:           userID,
 				Email:        "old@example.com",
 				PasswordHash: "old-hash",
@@ -450,7 +453,7 @@ func TestService_Update(t *testing.T) {
 			email:          "new@example.com",
 			password:       "new-password",
 			changePassword: true,
-			existingUser: &User{
+			existingUser: &domain.User{
 				ID:           userID,
 				Email:        "old@example.com",
 				PasswordHash: "old-hash",
@@ -471,7 +474,7 @@ func TestService_Update(t *testing.T) {
 			email:          "new@example.com",
 			password:       "new-password",
 			changePassword: true,
-			existingUser: &User{
+			existingUser: &domain.User{
 				ID:           userID,
 				Email:        "old@example.com",
 				PasswordHash: "old-hash",
@@ -484,7 +487,7 @@ func TestService_Update(t *testing.T) {
 		{
 			name:  "repository update error",
 			email: "new@example.com",
-			existingUser: &User{
+			existingUser: &domain.User{
 				ID:           userID,
 				Email:        "old@example.com",
 				PasswordHash: "old-hash",
@@ -502,13 +505,13 @@ func TestService_Update(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var updatedUser *User
+			var updatedUser *domain.User
 
 			repository := &mockUserRepository{
 				getByIDFn: func(
 					ctx context.Context,
 					id uuid.UUID,
-				) (*User, error) {
+				) (*domain.User, error) {
 					if id != userID {
 						t.Errorf(
 							"id = %v, want %v",
@@ -521,7 +524,7 @@ func TestService_Update(t *testing.T) {
 				},
 				updateFn: func(
 					ctx context.Context,
-					user *User,
+					user *domain.User,
 				) error {
 					updatedUser = user
 					return tt.repositoryUpdateErr
@@ -546,7 +549,7 @@ func TestService_Update(t *testing.T) {
 				},
 			}
 
-			service := NewService(repository, hasher)
+			service := uc.NewService(repository, hasher)
 
 			var originalUpdatedAt time.Time
 
@@ -560,7 +563,7 @@ func TestService_Update(t *testing.T) {
 				password = &tt.password
 			}
 
-			dto := UpdateUserRequest{
+			dto := domain.UpdateUserRequest{
 				Email:    tt.email,
 				Password: password,
 			}
@@ -678,7 +681,7 @@ func TestService_Delete(t *testing.T) {
 				},
 			}
 
-			service := NewService(
+			service := uc.NewService(
 				repository,
 				&mockPasswordHasher{},
 			)

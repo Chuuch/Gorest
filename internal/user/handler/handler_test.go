@@ -1,4 +1,4 @@
-package user
+package handler_test
 
 import (
 	"bytes"
@@ -10,36 +10,38 @@ import (
 	"time"
 
 	"github.com/chuuch/gorest/internal/requestcontext"
+	userdomain "github.com/chuuch/gorest/internal/user/domain"
+	userhandler "github.com/chuuch/gorest/internal/user/handler"
 	"github.com/google/uuid"
 )
 
 type mockService struct {
-	createFn        func(context.Context, CreateUserRequest) (*User, error)
-	getByIDFn       func(context.Context, uuid.UUID) (*User, error)
-	getByEmailFn    func(context.Context, string) (*User, error)
+	createFn        func(context.Context, userdomain.CreateUserRequest) (*userdomain.User, error)
+	getByIDFn       func(context.Context, uuid.UUID) (*userdomain.User, error)
+	getByEmailFn    func(context.Context, string) (*userdomain.User, error)
 	existsByEmailFn func(context.Context, string) (bool, error)
-	updateFn        func(context.Context, uuid.UUID, UpdateUserRequest) (*User, error)
+	updateFn        func(context.Context, uuid.UUID, userdomain.UpdateUserRequest) (*userdomain.User, error)
 	deleteFn        func(context.Context, uuid.UUID) error
 }
 
 func (m *mockService) Create(
 	ctx context.Context,
-	dto CreateUserRequest,
-) (*User, error) {
+	dto userdomain.CreateUserRequest,
+) (*userdomain.User, error) {
 	return m.createFn(ctx, dto)
 }
 
 func (m *mockService) GetByID(
 	ctx context.Context,
 	id uuid.UUID,
-) (*User, error) {
+) (*userdomain.User, error) {
 	return m.getByIDFn(ctx, id)
 }
 
 func (m *mockService) GetByEmail(
 	ctx context.Context,
 	email string,
-) (*User, error) {
+) (*userdomain.User, error) {
 	return m.getByEmailFn(ctx, email)
 }
 
@@ -53,8 +55,8 @@ func (m *mockService) ExistsByEmail(
 func (m *mockService) Update(
 	ctx context.Context,
 	id uuid.UUID,
-	dto UpdateUserRequest,
-) (*User, error) {
+	dto userdomain.UpdateUserRequest,
+) (*userdomain.User, error) {
 	return m.updateFn(ctx, id, dto)
 }
 
@@ -71,7 +73,7 @@ func TestHandler_Create(t *testing.T) {
 	tests := []struct {
 		name           string
 		body           string
-		serviceFn      func(context.Context, CreateUserRequest) (*User, error)
+		serviceFn      func(context.Context, userdomain.CreateUserRequest) (*userdomain.User, error)
 		expectedStatus int
 	}{
 		{
@@ -79,9 +81,9 @@ func TestHandler_Create(t *testing.T) {
 			body: `{"email":"john@example.com","password":"password123"}`,
 			serviceFn: func(
 				_ context.Context,
-				dto CreateUserRequest,
-			) (*User, error) {
-				return &User{
+				dto userdomain.CreateUserRequest,
+			) (*userdomain.User, error) {
+				return &userdomain.User{
 					ID:           userID,
 					Email:        dto.Email,
 					PasswordHash: "hashed",
@@ -96,8 +98,8 @@ func TestHandler_Create(t *testing.T) {
 			body: `{"email":`,
 			serviceFn: func(
 				_ context.Context,
-				_ CreateUserRequest,
-			) (*User, error) {
+				_ userdomain.CreateUserRequest,
+			) (*userdomain.User, error) {
 				t.Fatal("service should not be called")
 				return nil, nil
 			},
@@ -108,9 +110,9 @@ func TestHandler_Create(t *testing.T) {
 			body: `{"email":"john@example.com","password":"password123"}`,
 			serviceFn: func(
 				_ context.Context,
-				_ CreateUserRequest,
-			) (*User, error) {
-				return nil, ErrEmailAlreadyExists
+				_ userdomain.CreateUserRequest,
+			) (*userdomain.User, error) {
+				return nil, userdomain.ErrEmailAlreadyExists
 			},
 			expectedStatus: http.StatusConflict,
 		},
@@ -119,8 +121,8 @@ func TestHandler_Create(t *testing.T) {
 			body: `{"email":"john@example.com","password":"password123"}`,
 			serviceFn: func(
 				_ context.Context,
-				_ CreateUserRequest,
-			) (*User, error) {
+				_ userdomain.CreateUserRequest,
+			) (*userdomain.User, error) {
 				return nil, errors.New("database failure")
 			},
 			expectedStatus: http.StatusInternalServerError,
@@ -133,7 +135,7 @@ func TestHandler_Create(t *testing.T) {
 				createFn: tt.serviceFn,
 			}
 
-			handler := NewHandler(service)
+			handler := userhandler.NewHandler(service)
 
 			req := httptest.NewRequest(
 				http.MethodPost,
@@ -162,7 +164,7 @@ func TestHandler_GetByID(t *testing.T) {
 	tests := []struct {
 		name           string
 		id             string
-		serviceFn      func(context.Context, uuid.UUID) (*User, error)
+		serviceFn      func(context.Context, uuid.UUID) (*userdomain.User, error)
 		expectedStatus int
 	}{
 		{
@@ -171,8 +173,8 @@ func TestHandler_GetByID(t *testing.T) {
 			serviceFn: func(
 				_ context.Context,
 				id uuid.UUID,
-			) (*User, error) {
-				return &User{
+			) (*userdomain.User, error) {
+				return &userdomain.User{
 					ID:        id,
 					Email:     "john@example.com",
 					CreatedAt: time.Now().UTC(),
@@ -187,7 +189,7 @@ func TestHandler_GetByID(t *testing.T) {
 			serviceFn: func(
 				_ context.Context,
 				_ uuid.UUID,
-			) (*User, error) {
+			) (*userdomain.User, error) {
 				t.Fatal("service should not be called")
 				return nil, nil
 			},
@@ -199,8 +201,8 @@ func TestHandler_GetByID(t *testing.T) {
 			serviceFn: func(
 				_ context.Context,
 				_ uuid.UUID,
-			) (*User, error) {
-				return nil, ErrUserNotFound
+			) (*userdomain.User, error) {
+				return nil, userdomain.ErrUserNotFound
 			},
 			expectedStatus: http.StatusNotFound,
 		},
@@ -210,7 +212,7 @@ func TestHandler_GetByID(t *testing.T) {
 			serviceFn: func(
 				_ context.Context,
 				_ uuid.UUID,
-			) (*User, error) {
+			) (*userdomain.User, error) {
 				return nil, errors.New("database failure")
 			},
 			expectedStatus: http.StatusInternalServerError,
@@ -223,7 +225,7 @@ func TestHandler_GetByID(t *testing.T) {
 				getByIDFn: tt.serviceFn,
 			}
 
-			handler := NewHandler(service)
+			handler := userhandler.NewHandler(service)
 
 			req := httptest.NewRequest(
 				http.MethodGet,
@@ -261,7 +263,7 @@ func TestHandler_Update(t *testing.T) {
 		name           string
 		id             string
 		body           string
-		serviceFn      func(context.Context, uuid.UUID, UpdateUserRequest) (*User, error)
+		serviceFn      func(context.Context, uuid.UUID, userdomain.UpdateUserRequest) (*userdomain.User, error)
 		expectedStatus int
 	}{
 		{
@@ -271,9 +273,9 @@ func TestHandler_Update(t *testing.T) {
 			serviceFn: func(
 				_ context.Context,
 				id uuid.UUID,
-				dto UpdateUserRequest,
-			) (*User, error) {
-				return &User{
+				dto userdomain.UpdateUserRequest,
+			) (*userdomain.User, error) {
+				return &userdomain.User{
 					ID:        id,
 					Email:     dto.Email,
 					CreatedAt: time.Now().UTC(),
@@ -289,8 +291,8 @@ func TestHandler_Update(t *testing.T) {
 			serviceFn: func(
 				_ context.Context,
 				_ uuid.UUID,
-				_ UpdateUserRequest,
-			) (*User, error) {
+				_ userdomain.UpdateUserRequest,
+			) (*userdomain.User, error) {
 				t.Fatal("service should not be called")
 				return nil, nil
 			},
@@ -303,8 +305,8 @@ func TestHandler_Update(t *testing.T) {
 			serviceFn: func(
 				_ context.Context,
 				_ uuid.UUID,
-				_ UpdateUserRequest,
-			) (*User, error) {
+				_ userdomain.UpdateUserRequest,
+			) (*userdomain.User, error) {
 				t.Fatal("service should not be called")
 				return nil, nil
 			},
@@ -317,9 +319,9 @@ func TestHandler_Update(t *testing.T) {
 			serviceFn: func(
 				_ context.Context,
 				_ uuid.UUID,
-				_ UpdateUserRequest,
-			) (*User, error) {
-				return nil, ErrUserNotFound
+				_ userdomain.UpdateUserRequest,
+			) (*userdomain.User, error) {
+				return nil, userdomain.ErrUserNotFound
 			},
 			expectedStatus: http.StatusNotFound,
 		},
@@ -330,8 +332,8 @@ func TestHandler_Update(t *testing.T) {
 			serviceFn: func(
 				_ context.Context,
 				_ uuid.UUID,
-				_ UpdateUserRequest,
-			) (*User, error) {
+				_ userdomain.UpdateUserRequest,
+			) (*userdomain.User, error) {
 				return nil, errors.New("database failure")
 			},
 			expectedStatus: http.StatusInternalServerError,
@@ -344,7 +346,7 @@ func TestHandler_Update(t *testing.T) {
 				updateFn: tt.serviceFn,
 			}
 
-			handler := NewHandler(service)
+			handler := userhandler.NewHandler(service)
 
 			req := httptest.NewRequest(
 				http.MethodPut,
@@ -414,7 +416,7 @@ func TestHandler_Delete(t *testing.T) {
 				_ context.Context,
 				_ uuid.UUID,
 			) error {
-				return ErrUserNotFound
+				return userdomain.ErrUserNotFound
 			},
 			expectedStatus: http.StatusNotFound,
 		},
@@ -437,7 +439,7 @@ func TestHandler_Delete(t *testing.T) {
 				deleteFn: tt.serviceFn,
 			}
 
-			handler := NewHandler(service)
+			handler := userhandler.NewHandler(service)
 
 			req := httptest.NewRequest(
 				http.MethodDelete,

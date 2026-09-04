@@ -1,4 +1,4 @@
-package auth
+package domain
 
 type RegisterRequest struct {
 	Email    string `json:"email" validate:"required,email"`

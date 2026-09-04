@@ -3,27 +3,29 @@ package server
 import (
 	"net/http"
 
-	"github.com/chuuch/gorest/internal/auth"
+	authhandler "github.com/chuuch/gorest/internal/auth/handler"
+	"github.com/chuuch/gorest/internal/auth/security"
 	"github.com/chuuch/gorest/internal/middleware"
-	"github.com/chuuch/gorest/internal/user"
+	userhandler "github.com/chuuch/gorest/internal/user/handler"
 )
 
 func newRouter(
-	userHandler *user.Handler,
-	authHandler *auth.Handler,
-	tokenManager auth.TokenManager,
+	userHandler *userhandler.Handler,
+	authHandler *authhandler.Handler,
+	tokenManager security.TokenManager,
 ) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	registerRoutes(mux, userHandler, authHandler, tokenManager)
+
 	return mux
 }
 
 func registerRoutes(
 	mux *http.ServeMux,
-	userHandler *user.Handler,
-	authHandler *auth.Handler,
-	tokenManager auth.TokenManager,
+	userHandler *userhandler.Handler,
+	authHandler *authhandler.Handler,
+	tokenManager security.TokenManager,
 ) {
 	mux.HandleFunc(
 		"GET /api/v1/health",

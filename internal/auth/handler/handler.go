@@ -1,4 +1,4 @@
-package auth
+package handler
 
 import (
 	"encoding/json/v2"
@@ -7,18 +7,23 @@ import (
 	"time"
 
 	"github.com/chuuch/gorest/internal/api"
-	"github.com/chuuch/gorest/internal/user"
+	"github.com/chuuch/gorest/internal/auth/domain"
+	"github.com/chuuch/gorest/internal/auth/usecase"
+	userdomain "github.com/chuuch/gorest/internal/user/domain"
 	"github.com/chuuch/gorest/internal/validation"
 )
 
 const refreshTokenCookieName = "refresh_token"
 
 type Handler struct {
-	service         Service
+	service         usecase.Service
 	refreshTokenTTL time.Duration
 }
 
-func NewHandler(service Service, refreshTokenTTL time.Duration) *Handler {
+func NewHandler(
+	service usecase.Service,
+	refreshTokenTTL time.Duration,
+) *Handler {
 	return &Handler{
 		service:         service,
 		refreshTokenTTL: refreshTokenTTL,
@@ -26,7 +31,7 @@ func NewHandler(service Service, refreshTokenTTL time.Duration) *Handler {
 }
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
-	var req RegisterRequest
+	var req domain.RegisterRequest
 
 	if err := json.UnmarshalRead(r.Body, &req); err != nil {
 		api.WriteError(
@@ -54,7 +59,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
-	var req LoginRequest
+	var req domain.LoginRequest
 
 	if err := json.UnmarshalRead(r.Body, &req); err != nil {
 		api.WriteError(
@@ -143,9 +148,9 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) writeAuthResponse(
 	w http.ResponseWriter,
 	status int,
-	result *AuthResult,
+	result *usecase.AuthResult,
 ) {
-	api.WriteJSON(w, status, AuthResponse{
+	api.WriteJSON(w, status, domain.AuthResponse{
 		AccessToken: result.AccessToken,
 	})
 }
@@ -179,7 +184,7 @@ func (h *Handler) clearRefreshTokenCookie(w http.ResponseWriter) {
 
 func (h *Handler) handleError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, user.ErrEmailAlreadyExists):
+	case errors.Is(err, userdomain.ErrEmailAlreadyExists):
 		api.WriteError(
 			w,
 			http.StatusConflict,
@@ -187,7 +192,7 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 			"email already exists",
 		)
 
-	case errors.Is(err, ErrInvalidCredentials):
+	case errors.Is(err, domain.ErrInvalidCredentials):
 		api.WriteError(
 			w,
 			http.StatusUnauthorized,
@@ -195,7 +200,7 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 			"invalid credentials",
 		)
 
-	case errors.Is(err, ErrInvalidToken):
+	case errors.Is(err, domain.ErrInvalidToken):
 		api.WriteError(
 			w,
 			http.StatusUnauthorized,
@@ -203,7 +208,7 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 			"invalid token",
 		)
 
-	case errors.Is(err, ErrTokenExpired):
+	case errors.Is(err, domain.ErrTokenExpired):
 		api.WriteError(
 			w,
 			http.StatusUnauthorized,
@@ -211,7 +216,7 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 			"token expired",
 		)
 
-	case errors.Is(err, ErrTokenRevoked):
+	case errors.Is(err, domain.ErrTokenRevoked):
 		api.WriteError(
 			w,
 			http.StatusUnauthorized,

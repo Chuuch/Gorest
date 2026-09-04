@@ -10,12 +10,15 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/chuuch/gorest/internal/auth"
+	authhandler "github.com/chuuch/gorest/internal/auth/handler"
 	authpostgres "github.com/chuuch/gorest/internal/auth/postgres"
+	"github.com/chuuch/gorest/internal/auth/security"
+	authusecase "github.com/chuuch/gorest/internal/auth/usecase"
 	"github.com/chuuch/gorest/internal/config"
 	"github.com/chuuch/gorest/internal/database"
-	"github.com/chuuch/gorest/internal/user"
+	userhandler "github.com/chuuch/gorest/internal/user/handler"
 	userpostgres "github.com/chuuch/gorest/internal/user/postgres"
+	userusecase "github.com/chuuch/gorest/internal/user/usecase"
 	"github.com/chuuch/gorest/pkg/password"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -36,21 +39,26 @@ func New(cfg *config.Config) (*Server, error) {
 	// -------------------------------------------------------------
 	userRepository := userpostgres.NewRepository(db)
 	passwordHasher := password.NewBcryptHasher(cfg.Auth.BcryptCost)
-	userService := user.NewService(userRepository, passwordHasher)
-	userHandler := user.NewHandler(userService)
+
+	userService := userusecase.NewService(
+		userRepository,
+		passwordHasher,
+	)
+
+	userHandler := userhandler.NewHandler(userService)
 
 	// -------------------------------------------------------------
 	// Auth domain
 	// -------------------------------------------------------------
 	refreshTokenRepository := authpostgres.NewRepository(db)
 
-	tokenManager := auth.NewJwtManager(
+	tokenManager := security.NewJwtManager(
 		cfg.Auth.AccessTokenSecret,
 		cfg.Auth.Issuer,
 		cfg.Auth.AccessTokenTTL,
 	)
 
-	authService := auth.NewService(
+	authService := authusecase.NewService(
 		userService,
 		refreshTokenRepository,
 		tokenManager,
@@ -59,11 +67,14 @@ func New(cfg *config.Config) (*Server, error) {
 		cfg.Auth.RefreshTokenTTL,
 	)
 
-	authHandler := auth.NewHandler(authService, cfg.Auth.RefreshTokenTTL)
+	authHandler := authhandler.NewHandler(
+		authService,
+		cfg.Auth.RefreshTokenTTL,
+	)
 
-	// ------------------------------------------------------------
+	// -------------------------------------------------------------
 	// HTTP Server
-	// ------------------------------------------------------------
+	// -------------------------------------------------------------
 	httpServer := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		Handler:      newRouter(userHandler, authHandler, tokenManager),
@@ -103,6 +114,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 
 	s.db.Close()
+
 	slog.Info("server shutdown complete")
 
 	return nil

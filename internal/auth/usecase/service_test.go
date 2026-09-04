@@ -1,4 +1,4 @@
-package auth_test
+package usecase_test
 
 import (
 	"context"
@@ -6,10 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chuuch/gorest/internal/auth"
-	"github.com/chuuch/gorest/internal/auth/postgres"
-	"github.com/chuuch/gorest/internal/user"
+	authdomain "github.com/chuuch/gorest/internal/auth/domain"
+	authpostgres "github.com/chuuch/gorest/internal/auth/postgres"
+	"github.com/chuuch/gorest/internal/auth/repository"
+	"github.com/chuuch/gorest/internal/auth/security"
+	authusecase "github.com/chuuch/gorest/internal/auth/usecase"
+	userdomain "github.com/chuuch/gorest/internal/user/domain"
 	userpostgres "github.com/chuuch/gorest/internal/user/postgres"
+	userusecase "github.com/chuuch/gorest/internal/user/usecase"
 	"github.com/chuuch/gorest/pkg/password"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -93,10 +97,10 @@ func setupAuthTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 }
 
 type authTestDependencies struct {
-	service       auth.Service
-	users         user.Service
-	refreshTokens auth.RefreshTokenRepository
-	tokens        auth.TokenManager
+	service       authusecase.Service
+	users         userusecase.Service
+	refreshTokens repository.RefreshTokenRepository
+	tokens        security.TokenManager
 }
 
 func setupAuthService(t *testing.T, db *pgxpool.Pool) authTestDependencies {
@@ -106,20 +110,20 @@ func setupAuthService(t *testing.T, db *pgxpool.Pool) authTestDependencies {
 
 	passwordHasher := password.NewBcryptHasher(testBcryptCost)
 
-	userService := user.NewService(
+	userService := userusecase.NewService(
 		userRepository,
 		passwordHasher,
 	)
 
-	refreshTokenRepository := postgres.NewRepository(db)
+	refreshTokenRepository := authpostgres.NewRepository(db)
 
-	tokenManager := auth.NewJwtManager(
+	tokenManager := security.NewJwtManager(
 		testAccessTokenSecret,
 		testIssuer,
 		testAccessTokenTTL,
 	)
 
-	authService := auth.NewService(
+	authService := authusecase.NewService(
 		userService,
 		refreshTokenRepository,
 		tokenManager,
@@ -143,7 +147,7 @@ func TestAuthService_Register(t *testing.T) {
 	deps := setupAuthService(t, db)
 	ctx := context.Background()
 
-	response, err := deps.service.Register(ctx, auth.RegisterRequest{
+	response, err := deps.service.Register(ctx, authdomain.RegisterRequest{
 		Email:    "john@example.com",
 		Password: testPassword,
 	})
@@ -190,20 +194,20 @@ func TestAuthService_Register_EmailAlreadyExists(t *testing.T) {
 	deps := setupAuthService(t, db)
 	ctx := context.Background()
 
-	_, err := deps.service.Register(ctx, auth.RegisterRequest{
+	_, err := deps.service.Register(ctx, authdomain.RegisterRequest{
 		Email:    "john@example.com",
 		Password: testPassword,
 	})
 
 	require.NoError(t, err)
 
-	_, err = deps.service.Register(ctx, auth.RegisterRequest{
+	_, err = deps.service.Register(ctx, authdomain.RegisterRequest{
 		Email:    "john@example.com",
 		Password: "another-password",
 	})
 
 	require.Error(t, err)
-	require.True(t, errors.Is(err, user.ErrEmailAlreadyExists))
+	require.True(t, errors.Is(err, userdomain.ErrEmailAlreadyExists))
 }
 
 func TestAuthService_Login(t *testing.T) {
@@ -213,14 +217,14 @@ func TestAuthService_Login(t *testing.T) {
 	deps := setupAuthService(t, db)
 	ctx := context.Background()
 
-	_, err := deps.service.Register(ctx, auth.RegisterRequest{
+	_, err := deps.service.Register(ctx, authdomain.RegisterRequest{
 		Email:    "john@example.com",
 		Password: testPassword,
 	})
 
 	require.NoError(t, err)
 
-	response, err := deps.service.Login(ctx, auth.LoginRequest{
+	response, err := deps.service.Login(ctx, authdomain.LoginRequest{
 		Email:    "john@example.com",
 		Password: testPassword,
 	})
@@ -255,20 +259,20 @@ func TestAuthService_Login_WrongPassword(t *testing.T) {
 	deps := setupAuthService(t, db)
 	ctx := context.Background()
 
-	_, err := deps.service.Register(ctx, auth.RegisterRequest{
+	_, err := deps.service.Register(ctx, authdomain.RegisterRequest{
 		Email:    "john@example.com",
 		Password: testPassword,
 	})
 
 	require.NoError(t, err)
 
-	_, err = deps.service.Login(ctx, auth.LoginRequest{
+	_, err = deps.service.Login(ctx, authdomain.LoginRequest{
 		Email:    "john@example.com",
 		Password: "wrong-password",
 	})
 
 	require.Error(t, err)
-	require.True(t, errors.Is(err, auth.ErrInvalidCredentials))
+	require.True(t, errors.Is(err, authdomain.ErrInvalidCredentials))
 }
 
 func TestAuthService_Login_UserNotFound(t *testing.T) {
@@ -278,13 +282,13 @@ func TestAuthService_Login_UserNotFound(t *testing.T) {
 	deps := setupAuthService(t, db)
 	ctx := context.Background()
 
-	_, err := deps.service.Login(ctx, auth.LoginRequest{
+	_, err := deps.service.Login(ctx, authdomain.LoginRequest{
 		Email:    "missing@example.com",
 		Password: testPassword,
 	})
 
 	require.Error(t, err)
-	require.True(t, errors.Is(err, auth.ErrInvalidCredentials))
+	require.True(t, errors.Is(err, authdomain.ErrInvalidCredentials))
 }
 
 func TestAuthService_Refresh(t *testing.T) {
@@ -294,7 +298,7 @@ func TestAuthService_Refresh(t *testing.T) {
 	deps := setupAuthService(t, db)
 	ctx := context.Background()
 
-	initial, err := deps.service.Register(ctx, auth.RegisterRequest{
+	initial, err := deps.service.Register(ctx, authdomain.RegisterRequest{
 		Email:    "john@example.com",
 		Password: testPassword,
 	})
@@ -358,7 +362,7 @@ func TestAuthService_Refresh_RevokedToken(t *testing.T) {
 	deps := setupAuthService(t, db)
 	ctx := context.Background()
 
-	initial, err := deps.service.Register(ctx, auth.RegisterRequest{
+	initial, err := deps.service.Register(ctx, authdomain.RegisterRequest{
 		Email:    "john@example.com",
 		Password: testPassword,
 	})
@@ -378,7 +382,7 @@ func TestAuthService_Refresh_RevokedToken(t *testing.T) {
 	)
 
 	require.Error(t, err)
-	require.True(t, errors.Is(err, auth.ErrTokenRevoked))
+	require.True(t, errors.Is(err, authdomain.ErrTokenRevoked))
 }
 
 func TestAuthService_Refresh_ExpiredToken(t *testing.T) {
@@ -415,7 +419,7 @@ func TestAuthService_Refresh_ExpiredToken(t *testing.T) {
 	refreshToken, err := deps.tokens.GenerateRefreshToken()
 	require.NoError(t, err)
 
-	token := &auth.RefreshToken{
+	token := &authdomain.RefreshToken{
 		ID:        uuid.New(),
 		UserID:    userID,
 		TokenHash: deps.tokens.HashRefreshToken(refreshToken),
@@ -431,7 +435,7 @@ func TestAuthService_Refresh_ExpiredToken(t *testing.T) {
 	_, err = deps.service.Refresh(ctx, refreshToken)
 
 	require.Error(t, err)
-	require.True(t, errors.Is(err, auth.ErrTokenExpired))
+	require.True(t, errors.Is(err, authdomain.ErrTokenExpired))
 }
 
 func TestAuthService_Refresh_InvalidToken(t *testing.T) {
@@ -447,7 +451,7 @@ func TestAuthService_Refresh_InvalidToken(t *testing.T) {
 	)
 
 	require.Error(t, err)
-	require.True(t, errors.Is(err, auth.ErrInvalidToken))
+	require.True(t, errors.Is(err, authdomain.ErrInvalidToken))
 }
 
 func TestAuthService_Refresh_EmptyToken(t *testing.T) {
@@ -460,7 +464,7 @@ func TestAuthService_Refresh_EmptyToken(t *testing.T) {
 	_, err := deps.service.Refresh(ctx, "")
 
 	require.Error(t, err)
-	require.True(t, errors.Is(err, auth.ErrInvalidToken))
+	require.True(t, errors.Is(err, authdomain.ErrInvalidToken))
 }
 
 func TestAuthService_Logout(t *testing.T) {
@@ -470,7 +474,7 @@ func TestAuthService_Logout(t *testing.T) {
 	deps := setupAuthService(t, db)
 	ctx := context.Background()
 
-	response, err := deps.service.Register(ctx, auth.RegisterRequest{
+	response, err := deps.service.Register(ctx, authdomain.RegisterRequest{
 		Email:    "john@example.com",
 		Password: testPassword,
 	})
@@ -512,7 +516,7 @@ func TestAuthService_Logout_AlreadyRevoked(t *testing.T) {
 	deps := setupAuthService(t, db)
 	ctx := context.Background()
 
-	response, err := deps.service.Register(ctx, auth.RegisterRequest{
+	response, err := deps.service.Register(ctx, authdomain.RegisterRequest{
 		Email:    "john@example.com",
 		Password: testPassword,
 	})
@@ -527,7 +531,7 @@ func TestAuthService_Logout_AlreadyRevoked(t *testing.T) {
 	err = deps.service.Logout(ctx, response.RefreshToken)
 
 	require.Error(t, err)
-	require.True(t, errors.Is(err, auth.ErrTokenRevoked))
+	require.True(t, errors.Is(err, authdomain.ErrTokenRevoked))
 }
 
 func TestAuthService_Logout_InvalidToken(t *testing.T) {
@@ -543,7 +547,7 @@ func TestAuthService_Logout_InvalidToken(t *testing.T) {
 	)
 
 	require.Error(t, err)
-	require.True(t, errors.Is(err, auth.ErrInvalidToken))
+	require.True(t, errors.Is(err, authdomain.ErrInvalidToken))
 }
 
 func TestAuthService_Logout_EmptyToken(t *testing.T) {
@@ -556,5 +560,5 @@ func TestAuthService_Logout_EmptyToken(t *testing.T) {
 	err := deps.service.Logout(ctx, "")
 
 	require.Error(t, err)
-	require.True(t, errors.Is(err, auth.ErrInvalidToken))
+	require.True(t, errors.Is(err, authdomain.ErrInvalidToken))
 }
