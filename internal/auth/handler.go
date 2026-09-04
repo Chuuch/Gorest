@@ -8,6 +8,7 @@ import (
 
 	"github.com/chuuch/gorest/internal/api"
 	"github.com/chuuch/gorest/internal/user"
+	"github.com/chuuch/gorest/internal/validation"
 )
 
 const refreshTokenCookieName = "refresh_token"
@@ -37,6 +38,16 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validation.Struct(req); err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"validation_error",
+			"request validation vailed",
+		)
+		return
+	}
+
 	result, err := h.service.Register(r.Context(), req)
 	if err != nil {
 		h.handleError(w, err)
@@ -58,6 +69,15 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 			"invalid request body",
 		)
 		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"validation_error",
+			"request validation failed",
+		)
 	}
 
 	result, err := h.service.Login(r.Context(), req)

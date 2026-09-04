@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/chuuch/gorest/internal/api"
 	"github.com/chuuch/gorest/internal/requestcontext"
 	"github.com/google/uuid"
 )
@@ -23,7 +24,12 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var dto CreateUserRequest
 
 	if err := json.UnmarshalRead(r.Body, &dto); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_request",
+			"invalid request body",
+		)
 		return
 	}
 
@@ -40,29 +46,39 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt: user.UpdatedAt,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-
-	if err := json.MarshalWrite(w, response); err != nil {
-		return
-	}
+	api.WriteJSON(w, http.StatusCreated, response)
 }
 
 func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		http.Error(w, "invalid user id", http.StatusBadRequest)
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_user_id",
+			"invalid user id",
+		)
 		return
 	}
 
 	authenticatedUserID, ok := requestcontext.UserID(r.Context())
 	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		api.WriteError(
+			w,
+			http.StatusUnauthorized,
+			"unauthorized",
+			"unauthorized",
+		)
 		return
 	}
 
 	if authenticatedUserID != id {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		api.WriteError(
+			w,
+			http.StatusForbidden,
+			"forbidden",
+			"forbidden",
+		)
 		return
 	}
 
@@ -79,35 +95,51 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt: user.UpdatedAt,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-
-	if err := json.MarshalWrite(w, response); err != nil {
-		return
-	}
+	api.WriteJSON(w, http.StatusOK, response)
 }
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		http.Error(w, "invalid user id", http.StatusBadRequest)
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_user_id",
+			"invalid user id",
+		)
 		return
 	}
 
 	authenticatedUserID, ok := requestcontext.UserID(r.Context())
 	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		api.WriteError(
+			w,
+			http.StatusUnauthorized,
+			"unauthorized",
+			"unauthorized",
+		)
 		return
 	}
 
 	if authenticatedUserID != id {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		api.WriteError(
+			w,
+			http.StatusForbidden,
+			"forbidden",
+			"forbidden",
+		)
 		return
 	}
 
 	var dto UpdateUserRequest
 
 	if err := json.UnmarshalRead(r.Body, &dto); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_request",
+			"invalid request body",
+		)
 		return
 	}
 
@@ -124,28 +156,39 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt: user.UpdatedAt,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-
-	if err := json.MarshalWrite(w, response); err != nil {
-		return
-	}
+	api.WriteJSON(w, http.StatusOK, response)
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		http.Error(w, "invalid user id", http.StatusBadRequest)
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_user_id",
+			"invalid user id",
+		)
 		return
 	}
 
 	authenticatedUserID, ok := requestcontext.UserID(r.Context())
 	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		api.WriteError(
+			w,
+			http.StatusUnauthorized,
+			"unauthorized",
+			"unauthorized",
+		)
 		return
 	}
 
 	if authenticatedUserID != id {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		api.WriteError(
+			w,
+			http.StatusForbidden,
+			"forbidden",
+			"forbidden",
+		)
 		return
 	}
 
@@ -160,12 +203,27 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrUserNotFound):
-		http.Error(w, "user not found", http.StatusNotFound)
+		api.WriteError(
+			w,
+			http.StatusNotFound,
+			"user_not_found",
+			"user not found",
+		)
 
 	case errors.Is(err, ErrEmailAlreadyExists):
-		http.Error(w, "email already exists", http.StatusConflict)
+		api.WriteError(
+			w,
+			http.StatusConflict,
+			"email_already_exists",
+			"email already exists",
+		)
 
 	default:
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		api.WriteError(
+			w,
+			http.StatusInternalServerError,
+			"internal_error",
+			"internal server error",
+		)
 	}
 }
