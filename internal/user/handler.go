@@ -7,6 +7,7 @@ import (
 
 	"github.com/chuuch/gorest/internal/api"
 	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/validation"
 	"github.com/google/uuid"
 )
 
@@ -30,6 +31,11 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 			"invalid_request",
 			"invalid request body",
 		)
+		return
+	}
+
+	if err := validation.Struct(dto); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
 		return
 	}
 
@@ -140,6 +146,11 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 			"invalid_request",
 			"invalid request body",
 		)
+		return
+	}
+
+	if err := validation.Struct(dto); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
 		return
 	}
 

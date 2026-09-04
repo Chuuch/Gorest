@@ -566,3 +566,89 @@ func TestHandler_ErrorWrapping(t *testing.T) {
 
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 }
+
+func TestHandler_Register_ValidationError(t *testing.T) {
+	service := &mockService{
+		registerFunc: func(RegisterRequest) (*AuthResult, error) {
+			t.Fatal("service should not be called")
+			return nil, nil
+		},
+	}
+
+	handler := NewHandler(service, 30*24*time.Hour)
+
+	body := `{
+		"email": "not-an-email",
+		"password": "short"
+	}`
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/register",
+		bytes.NewBufferString(body),
+	)
+
+	rec := httptest.NewRecorder()
+
+	handler.Register(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+
+	var response struct {
+		Error struct {
+			Code    string            `json:"code"`
+			Message string            `json:"message"`
+			Details map[string]string `json:"details"`
+		} `json:"error"`
+	}
+
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+
+	require.Equal(t, "validation_error", response.Error.Code)
+	require.Equal(t, "request validation failed", response.Error.Message)
+	require.Equal(t, "must be a valid email address", response.Error.Details["Email"])
+	require.Equal(t, "must be at least 8", response.Error.Details["Password"])
+}
+
+func TestHandler_Login_ValidationError(t *testing.T) {
+	service := &mockService{
+		loginFunc: func(LoginRequest) (*AuthResult, error) {
+			t.Fatal("service should not be called")
+			return nil, nil
+		},
+	}
+
+	handler := NewHandler(service, 30*24*time.Hour)
+
+	body := `{
+		"email": "not-an-email",
+		"password": ""
+	}`
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/login",
+		bytes.NewBufferString(body),
+	)
+
+	rec := httptest.NewRecorder()
+
+	handler.Login(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+
+	var response struct {
+		Error struct {
+			Code    string            `json:"code"`
+			Message string            `json:"message"`
+			Details map[string]string `json:"details"`
+		} `json:"error"`
+	}
+
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+
+	require.Equal(t, "validation_error", response.Error.Code)
+	require.Equal(t, "request validation failed", response.Error.Message)
+	require.Equal(t, "must be a valid email address", response.Error.Details["Email"])
+	require.Equal(t, "is required", response.Error.Details["Password"])
+}

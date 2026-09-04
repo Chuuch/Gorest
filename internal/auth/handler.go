@@ -39,12 +39,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := validation.Struct(req); err != nil {
-		api.WriteError(
-			w,
-			http.StatusBadRequest,
-			"validation_error",
-			"request validation vailed",
-		)
+		api.WriteValidationError(w, validation.Errors(err))
 		return
 	}
 
@@ -72,12 +67,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := validation.Struct(req); err != nil {
-		api.WriteError(
-			w,
-			http.StatusBadRequest,
-			"validation_error",
-			"request validation failed",
-		)
+		api.WriteValidationError(w, validation.Errors(err))
+		return
 	}
 
 	result, err := h.service.Login(r.Context(), req)
