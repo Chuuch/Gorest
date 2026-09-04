@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/chuuch/gorest/internal/user"
+	"github.com/chuuch/gorest/internal/user/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -23,7 +23,7 @@ func NewRepository(db *pgxpool.Pool) *UserRepository {
 
 func (r *UserRepository) Create(
 	ctx context.Context,
-	u *user.User,
+	u *domain.User,
 ) error {
 	const query = `
 			INSERT INTO users (
@@ -56,7 +56,7 @@ func (r *UserRepository) Create(
 func (r *UserRepository) GetByID(
 	ctx context.Context,
 	id uuid.UUID,
-) (*user.User, error) {
+) (*domain.User, error) {
 	const query = `
 			SELECT
 				id,
@@ -68,7 +68,7 @@ func (r *UserRepository) GetByID(
 			WHERE id = $1
 		`
 
-	var u user.User
+	var u domain.User
 
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&u.ID,
@@ -80,7 +80,7 @@ func (r *UserRepository) GetByID(
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, user.ErrUserNotFound
+			return nil, domain.ErrUserNotFound
 		}
 
 		return nil, fmt.Errorf("get user by id: %w", err)
@@ -92,7 +92,7 @@ func (r *UserRepository) GetByID(
 func (r *UserRepository) GetByEmail(
 	ctx context.Context,
 	email string,
-) (*user.User, error) {
+) (*domain.User, error) {
 	const query = `
 			SELECT
 				id,
@@ -104,7 +104,7 @@ func (r *UserRepository) GetByEmail(
 			WHERE	email = $1
 		`
 
-	var u user.User
+	var u domain.User
 
 	err := r.db.QueryRow(ctx, query, email).Scan(
 		&u.ID,
@@ -116,7 +116,7 @@ func (r *UserRepository) GetByEmail(
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, user.ErrUserNotFound
+			return nil, domain.ErrUserNotFound
 		}
 
 		return nil, fmt.Errorf("get user by email: %w", err)
@@ -161,7 +161,7 @@ func (r *UserRepository) Delete(
 	}
 
 	if result.RowsAffected() == 0 {
-		return user.ErrUserNotFound
+		return domain.ErrUserNotFound
 	}
 
 	return nil
@@ -169,7 +169,7 @@ func (r *UserRepository) Delete(
 
 func (r *UserRepository) Update(
 	ctx context.Context,
-	u *user.User,
+	u *domain.User,
 ) error {
 	const query = `
 			UPDATE users
@@ -194,7 +194,7 @@ func (r *UserRepository) Update(
 	}
 
 	if result.RowsAffected() == 0 {
-		return user.ErrUserNotFound
+		return domain.ErrUserNotFound
 	}
 
 	return nil

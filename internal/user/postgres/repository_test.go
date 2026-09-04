@@ -1,4 +1,4 @@
-package postgres
+package postgres_test
 
 import (
 	"context"
@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chuuch/gorest/internal/user"
+	"github.com/chuuch/gorest/internal/user/domain"
+	userpostgres "github.com/chuuch/gorest/internal/user/postgres"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
@@ -55,10 +56,10 @@ func setupTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 	return db, cleanup
 }
 
-func newTestUser() *user.User {
+func newTestUser() *domain.User {
 	now := time.Now().UTC()
 
-	return &user.User{
+	return &domain.User{
 		ID:           uuid.New(),
 		Email:        "john@example.com",
 		PasswordHash: "hashed-password",
@@ -71,7 +72,7 @@ func TestUserRepository_Create(t *testing.T) {
 	db, cleanup := setupTestDatabase(t)
 	defer cleanup()
 
-	repo := NewRepository(db)
+	repo := userpostgres.NewRepository(db)
 	ctx := context.Background()
 
 	u := newTestUser()
@@ -120,7 +121,7 @@ func TestUserRepository_GetByID(t *testing.T) {
 	db, cleanup := setupTestDatabase(t)
 	defer cleanup()
 
-	repo := NewRepository(db)
+	repo := userpostgres.NewRepository(db)
 	ctx := context.Background()
 
 	expected := newTestUser()
@@ -141,20 +142,20 @@ func TestUserRepository_GetByID_NotFound(t *testing.T) {
 	db, cleanup := setupTestDatabase(t)
 	defer cleanup()
 
-	repo := NewRepository(db)
+	repo := userpostgres.NewRepository(db)
 	ctx := context.Background()
 
 	_, err := repo.GetByID(ctx, uuid.New())
 
 	require.Error(t, err)
-	require.True(t, errors.Is(err, user.ErrUserNotFound))
+	require.True(t, errors.Is(err, domain.ErrUserNotFound))
 }
 
 func TestUserRepository_GetByEmail(t *testing.T) {
 	db, cleanup := setupTestDatabase(t)
 	defer cleanup()
 
-	repo := NewRepository(db)
+	repo := userpostgres.NewRepository(db)
 	ctx := context.Background()
 
 	expected := newTestUser()
@@ -175,20 +176,20 @@ func TestUserRepository_GetByEmail_NotFound(t *testing.T) {
 	db, cleanup := setupTestDatabase(t)
 	defer cleanup()
 
-	repo := NewRepository(db)
+	repo := userpostgres.NewRepository(db)
 	ctx := context.Background()
 
 	_, err := repo.GetByEmail(ctx, "missing@example.com")
 
 	require.Error(t, err)
-	require.True(t, errors.Is(err, user.ErrUserNotFound))
+	require.True(t, errors.Is(err, domain.ErrUserNotFound))
 }
 
 func TestUserRepository_ExistsByEmail(t *testing.T) {
 	db, cleanup := setupTestDatabase(t)
 	defer cleanup()
 
-	repo := NewRepository(db)
+	repo := userpostgres.NewRepository(db)
 	ctx := context.Background()
 
 	u := newTestUser()
@@ -210,7 +211,7 @@ func TestUserRepository_Update(t *testing.T) {
 	db, cleanup := setupTestDatabase(t)
 	defer cleanup()
 
-	repo := NewRepository(db)
+	repo := userpostgres.NewRepository(db)
 	ctx := context.Background()
 
 	u := newTestUser()
@@ -241,7 +242,7 @@ func TestUserRepository_Update_NotFound(t *testing.T) {
 	db, cleanup := setupTestDatabase(t)
 	defer cleanup()
 
-	repo := NewRepository(db)
+	repo := userpostgres.NewRepository(db)
 	ctx := context.Background()
 
 	u := newTestUser()
@@ -249,14 +250,14 @@ func TestUserRepository_Update_NotFound(t *testing.T) {
 	err := repo.Update(ctx, u)
 
 	require.Error(t, err)
-	require.True(t, errors.Is(err, user.ErrUserNotFound))
+	require.True(t, errors.Is(err, domain.ErrUserNotFound))
 }
 
 func TestUserRepository_Delete(t *testing.T) {
 	db, cleanup := setupTestDatabase(t)
 	defer cleanup()
 
-	repo := NewRepository(db)
+	repo := userpostgres.NewRepository(db)
 	ctx := context.Background()
 
 	u := newTestUser()
@@ -270,18 +271,18 @@ func TestUserRepository_Delete(t *testing.T) {
 	_, err = repo.GetByID(ctx, u.ID)
 
 	require.Error(t, err)
-	require.True(t, errors.Is(err, user.ErrUserNotFound))
+	require.True(t, errors.Is(err, domain.ErrUserNotFound))
 }
 
 func TestUserRepository_Delete_NotFound(t *testing.T) {
 	db, cleanup := setupTestDatabase(t)
 	defer cleanup()
 
-	repo := NewRepository(db)
+	repo := userpostgres.NewRepository(db)
 	ctx := context.Background()
 
 	err := repo.Delete(ctx, uuid.New())
 
 	require.Error(t, err)
-	require.True(t, errors.Is(err, user.ErrUserNotFound))
+	require.True(t, errors.Is(err, domain.ErrUserNotFound))
 }
