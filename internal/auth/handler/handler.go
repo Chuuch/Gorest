@@ -9,9 +9,9 @@ import (
 	"github.com/chuuch/gorest/internal/api"
 	"github.com/chuuch/gorest/internal/auth/domain"
 	"github.com/chuuch/gorest/internal/auth/usecase"
+	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	"github.com/chuuch/gorest/internal/requestcontext"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
-	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	"github.com/chuuch/gorest/internal/validation"
 )
 
@@ -164,8 +164,8 @@ func (h *Handler) writeAuthResponse(
 			UpdatedAt: result.User.UpdatedAt,
 		},
 		Organization: orgdomain.OrganizationResponse{
-			ID: result.Organization.ID,
-			Name: result.Organization.Name,
+			ID:        result.Organization.ID,
+			Name:      result.Organization.Name,
 			CreatedAt: result.Organization.CreatedAt,
 			UpdatedAt: result.Organization.UpdatedAt,
 		},

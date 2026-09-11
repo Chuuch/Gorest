@@ -1,11 +1,11 @@
 package usecase
- 
+
 import (
 	"context"
 	"errors"
 	"fmt"
 	"time"
- 
+
 	authdomain "github.com/chuuch/gorest/internal/auth/domain"
 	"github.com/chuuch/gorest/internal/auth/repository"
 	"github.com/chuuch/gorest/internal/auth/security"
@@ -17,14 +17,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
- 
+
 type AuthResult struct {
 	AccessToken  string
 	RefreshToken string
 	User         *userdomain.User
 	Organization *orgdomain.Organization
 }
- 
+
 type Service interface {
 	Register(ctx context.Context, req authdomain.RegisterRequest) (*AuthResult, error)
 	Login(ctx context.Context, req authdomain.LoginRequest) (*AuthResult, error)
@@ -32,11 +32,11 @@ type Service interface {
 	Logout(ctx context.Context, refreshToken string) error
 	Me(ctx context.Context, userID uuid.UUID) (*AuthResult, error)
 }
- 
+
 type PasswordVerifier interface {
 	Compare(password, hash string) error
 }
- 
+
 type service struct {
 	users           userusecase.Service
 	organizations   orgrepository.OrganizationRepository
@@ -48,7 +48,7 @@ type service struct {
 	accessTokenTTL  time.Duration
 	refreshTokenTTL time.Duration
 }
- 
+
 func NewService(
 	users userusecase.Service,
 	organizations orgrepository.OrganizationRepository,
@@ -72,7 +72,7 @@ func NewService(
 		refreshTokenTTL: refreshTokenTTL,
 	}
 }
- 
+
 func (s *service) Register(
 	ctx context.Context,
 	req authdomain.RegisterRequest,
@@ -81,14 +81,14 @@ func (s *service) Register(
 	if err != nil {
 		return nil, fmt.Errorf("check user email: %w", err)
 	}
- 
+
 	if exists {
 		return nil, userdomain.ErrEmailAlreadyExists
 	}
- 
+
 	var user *userdomain.User
 	var org *orgdomain.Organization
- 
+
 	err = database.WithTransaction(ctx, s.db, func(ctx context.Context) error {
 		createdUser, err := s.users.Create(ctx, userdomain.CreateUserRequest{
 			Email:    req.Email,
@@ -97,22 +97,22 @@ func (s *service) Register(
 		if err != nil {
 			return fmt.Errorf("create user: %w", err)
 		}
- 
+
 		user = createdUser
- 
+
 		now := time.Now().UTC()
- 
+
 		org = &orgdomain.Organization{
 			ID:        uuid.New(),
 			Name:      req.OrganizationName,
 			CreatedAt: now,
 			UpdatedAt: now,
 		}
- 
+
 		if err := s.organizations.Create(ctx, org); err != nil {
 			return err
 		}
- 
+
 		return s.memberships.Create(ctx, &orgdomain.Membership{
 			ID:             uuid.New(),
 			OrganizationID: org.ID,
@@ -124,10 +124,10 @@ func (s *service) Register(
 	if err != nil {
 		return nil, err
 	}
- 
+
 	return s.issueTokens(ctx, user.ID, org)
 }
- 
+
 func (s *service) Login(
 	ctx context.Context,
 	req authdomain.LoginRequest,
@@ -137,22 +137,22 @@ func (s *service) Login(
 		if errors.Is(err, userdomain.ErrUserNotFound) {
 			return nil, authdomain.ErrInvalidCredentials
 		}
- 
+
 		return nil, fmt.Errorf("get user by email: %w", err)
 	}
- 
+
 	if err := s.passwords.Compare(req.Password, u.PasswordHash); err != nil {
 		return nil, authdomain.ErrInvalidCredentials
 	}
- 
+
 	org, err := s.organizationForUser(ctx, u.ID)
 	if err != nil {
 		return nil, err
 	}
- 
+
 	return s.issueTokens(ctx, u.ID, org)
 }
- 
+
 func (s *service) Refresh(
 	ctx context.Context,
 	refreshToken string,
@@ -160,34 +160,34 @@ func (s *service) Refresh(
 	if refreshToken == "" {
 		return nil, authdomain.ErrInvalidToken
 	}
- 
+
 	tokenHash := s.tokens.HashRefreshToken(refreshToken)
- 
+
 	storedToken, err := s.refreshTokens.GetByHash(ctx, tokenHash)
 	if err != nil {
 		return nil, fmt.Errorf("get refresh token: %w", err)
 	}
- 
+
 	if storedToken.RevokedAt != nil {
 		return nil, authdomain.ErrTokenRevoked
 	}
- 
+
 	if !time.Now().UTC().Before(storedToken.ExpiresAt) {
 		return nil, authdomain.ErrTokenExpired
 	}
- 
+
 	if err := s.refreshTokens.Revoke(ctx, storedToken.ID); err != nil {
 		return nil, fmt.Errorf("revoke refresh token: %w", err)
 	}
- 
+
 	org, err := s.organizationForUser(ctx, storedToken.UserID)
 	if err != nil {
 		return nil, err
 	}
- 
+
 	return s.issueTokens(ctx, storedToken.UserID, org)
 }
- 
+
 func (s *service) Logout(
 	ctx context.Context,
 	refreshToken string,
@@ -195,25 +195,25 @@ func (s *service) Logout(
 	if refreshToken == "" {
 		return authdomain.ErrInvalidToken
 	}
- 
+
 	tokenHash := s.tokens.HashRefreshToken(refreshToken)
- 
+
 	storedToken, err := s.refreshTokens.GetByHash(ctx, tokenHash)
 	if err != nil {
 		return fmt.Errorf("get refresh token: %w", err)
 	}
- 
+
 	if storedToken.RevokedAt != nil {
 		return authdomain.ErrTokenRevoked
 	}
- 
+
 	if err := s.refreshTokens.Revoke(ctx, storedToken.ID); err != nil {
 		return fmt.Errorf("revoke refresh token: %w", err)
 	}
- 
+
 	return nil
 }
- 
+
 func (s *service) issueTokens(
 	ctx context.Context,
 	userID uuid.UUID,
@@ -223,19 +223,19 @@ func (s *service) issueTokens(
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 	}
- 
+
 	accessToken, err := s.tokens.GenerateAccessToken(userID, org.ID)
 	if err != nil {
 		return nil, fmt.Errorf("generate access token: %w", err)
 	}
- 
+
 	refreshToken, err := s.tokens.GenerateRefreshToken()
 	if err != nil {
 		return nil, fmt.Errorf("generate refresh token: %w", err)
 	}
- 
+
 	now := time.Now().UTC()
- 
+
 	storedToken := &authdomain.RefreshToken{
 		ID:        uuid.New(),
 		UserID:    userID,
@@ -243,11 +243,11 @@ func (s *service) issueTokens(
 		ExpiresAt: now.Add(s.refreshTokenTTL),
 		CreatedAt: now,
 	}
- 
+
 	if err := s.refreshTokens.Create(ctx, storedToken); err != nil {
 		return nil, fmt.Errorf("store refresh token: %w", err)
 	}
- 
+
 	return &AuthResult{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
@@ -255,7 +255,7 @@ func (s *service) issueTokens(
 		Organization: org,
 	}, nil
 }
- 
+
 func (s *service) Me(
 	ctx context.Context,
 	userID uuid.UUID,
@@ -264,24 +264,24 @@ func (s *service) Me(
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 	}
- 
+
 	org, err := s.organizationForUser(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
- 
+
 	accessToken, err := s.tokens.GenerateAccessToken(userID, org.ID)
 	if err != nil {
 		return nil, fmt.Errorf("generate access token: %w", err)
 	}
- 
+
 	return &AuthResult{
 		AccessToken:  accessToken,
 		User:         u,
 		Organization: org,
 	}, nil
 }
- 
+
 func (s *service) organizationForUser(
 	ctx context.Context,
 	userID uuid.UUID,
@@ -291,14 +291,14 @@ func (s *service) organizationForUser(
 		if errors.Is(err, orgdomain.ErrMembershipNotFound) {
 			return nil, authdomain.ErrNoOrganization
 		}
- 
+
 		return nil, fmt.Errorf("get membership: %w", err)
 	}
- 
+
 	org, err := s.organizations.GetByID(ctx, membership.OrganizationID)
 	if err != nil {
 		return nil, fmt.Errorf("get organization: %w", err)
 	}
- 
+
 	return org, nil
 }
