@@ -13,6 +13,7 @@ import (
 	"github.com/chuuch/gorest/internal/auth/domain"
 	authhandler "github.com/chuuch/gorest/internal/auth/handler"
 	authusecase "github.com/chuuch/gorest/internal/auth/usecase"
+	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	"github.com/chuuch/gorest/internal/requestcontext"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
 	"github.com/google/uuid"
@@ -23,6 +24,22 @@ func testAuthUser() *userdomain.User {
 	return &userdomain.User{
 		ID:    uuid.MustParse("11111111-1111-1111-1111-111111111111"),
 		Email: "john@example.com",
+	}
+}
+
+func testAuthOrg() *orgdomain.Organization {
+	return &orgdomain.Organization{
+		ID:   uuid.MustParse("22222222-2222-2222-2222-222222222222"),
+		Name: "Acme",
+	}
+}
+
+func testAuthResult(accessToken, refreshToken string) *authusecase.AuthResult {
+	return &authusecase.AuthResult{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		User:         testAuthUser(),
+		Organization: testAuthOrg(),
 	}
 }
 
@@ -74,12 +91,9 @@ func TestHandler_Register(t *testing.T) {
 		registerFunc: func(req domain.RegisterRequest) (*authusecase.AuthResult, error) {
 			require.Equal(t, "john@example.com", req.Email)
 			require.Equal(t, "password123", req.Password)
+			require.Equal(t, "Acme", req.OrganizationName)
 
-			return &authusecase.AuthResult{
-				AccessToken:  "access-token",
-				RefreshToken: "refresh-token",
-				User:         testAuthUser(),
-			}, nil
+			return testAuthResult("access-token", "refresh-token"), nil
 		},
 	}
 
@@ -87,7 +101,8 @@ func TestHandler_Register(t *testing.T) {
 
 	body := `{
         "email": "john@example.com",
-        "password": "password123"
+        "password": "password123",
+        "organization_name": "Acme"
     }`
 
 	req := httptest.NewRequest(
@@ -108,6 +123,7 @@ func TestHandler_Register(t *testing.T) {
 
 	require.Equal(t, "access-token", response.AccessToken)
 	require.Equal(t, "john@example.com", response.User.Email)
+	require.Equal(t, "Acme", response.Organization.Name)
 
 	cookie := rec.Result().Cookies()[0]
 	require.Equal(t, "refresh_token", cookie.Name)
@@ -152,7 +168,8 @@ func TestHandler_Register_EmailAlreadyExists(t *testing.T) {
 
 	body := `{
         "email": "john@example.com",
-        "password": "password123"
+        "password": "password123",
+        "organization_name": "Acme"
     }`
 
 	req := httptest.NewRequest(
@@ -179,7 +196,8 @@ func TestHandler_Register_InternalError(t *testing.T) {
 
 	body := `{
         "email": "john@example.com",
-        "password": "password123"
+        "password": "password123",
+        "organization_name": "Acme"
     }`
 
 	req := httptest.NewRequest(
@@ -201,11 +219,7 @@ func TestHandler_Login(t *testing.T) {
 			require.Equal(t, "john@example.com", req.Email)
 			require.Equal(t, "password123", req.Password)
 
-			return &authusecase.AuthResult{
-				AccessToken:  "access-token",
-				RefreshToken: "refresh-token",
-				User:         testAuthUser(),
-			}, nil
+			return testAuthResult("access-token", "refresh-token"), nil
 		},
 	}
 
@@ -234,6 +248,7 @@ func TestHandler_Login(t *testing.T) {
 
 	require.Equal(t, "access-token", response.AccessToken)
 	require.Equal(t, "john@example.com", response.User.Email)
+	require.Equal(t, "Acme", response.Organization.Name)
 
 	cookie := rec.Result().Cookies()[0]
 	require.Equal(t, "refresh_token", cookie.Name)
@@ -271,6 +286,33 @@ func TestHandler_Login_InvalidCredentials(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
+func TestHandler_Login_NoOrganization(t *testing.T) {
+	service := &mockService{
+		loginFunc: func(domain.LoginRequest) (*authusecase.AuthResult, error) {
+			return nil, domain.ErrNoOrganization
+		},
+	}
+
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+
+	body := `{
+        "email": "john@example.com",
+        "password": "password123"
+    }`
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/login",
+		bytes.NewBufferString(body),
+	)
+
+	rec := httptest.NewRecorder()
+
+	handler.Login(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
 func TestHandler_Login_InvalidBody(t *testing.T) {
 	service := &mockService{
 		loginFunc: func(domain.LoginRequest) (*authusecase.AuthResult, error) {
@@ -299,11 +341,7 @@ func TestHandler_Refresh(t *testing.T) {
 		refreshFunc: func(refreshToken string) (*authusecase.AuthResult, error) {
 			require.Equal(t, "refresh-token", refreshToken)
 
-			return &authusecase.AuthResult{
-				AccessToken:  "new-access-token",
-				RefreshToken: "new-refresh-token",
-				User:         testAuthUser(),
-			}, nil
+			return testAuthResult("new-access-token", "new-refresh-token"), nil
 		},
 	}
 
@@ -332,6 +370,7 @@ func TestHandler_Refresh(t *testing.T) {
 
 	require.Equal(t, "new-access-token", response.AccessToken)
 	require.Equal(t, "john@example.com", response.User.Email)
+	require.Equal(t, "Acme", response.Organization.Name)
 
 	cookies := rec.Result().Cookies()
 	require.Len(t, cookies, 1)
@@ -570,10 +609,7 @@ func TestHandler_Me(t *testing.T) {
 		meFunc: func(userID uuid.UUID) (*authusecase.AuthResult, error) {
 			require.Equal(t, user.ID, userID)
 
-			return &authusecase.AuthResult{
-				AccessToken: "access-token",
-				User:        user,
-			}, nil
+			return testAuthResult("access-token", ""), nil
 		},
 	}
 
@@ -598,6 +634,7 @@ func TestHandler_Me(t *testing.T) {
 
 	require.Equal(t, "access-token", response.AccessToken)
 	require.Equal(t, "john@example.com", response.User.Email)
+	require.Equal(t, "Acme", response.Organization.Name)
 	require.Empty(t, rec.Result().Cookies())
 }
 
@@ -666,7 +703,8 @@ func TestHandler_Register_ValidationError(t *testing.T) {
 
 	body := `{
         "email": "not-an-email",
-        "password": "short"
+        "password": "short",
+        "organization_name": "Acme"
     }`
 
 	req := httptest.NewRequest(

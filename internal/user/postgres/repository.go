@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/chuuch/gorest/internal/database"
 	"github.com/chuuch/gorest/internal/user/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -36,7 +37,8 @@ func (r *UserRepository) Create(
 			VALUES ($1, $2, $3, $4, $5)
 		`
 
-	_, err := r.db.Exec(
+	q := database.QuerierFrom(ctx, r.db)
+	_, err := q.Exec(
 		ctx,
 		query,
 		u.ID,
@@ -47,7 +49,7 @@ func (r *UserRepository) Create(
 	)
 
 	if err != nil {
-		return fmt.Errorf("create user: %w", err)
+		return fmt.Errorf("error creating user %w", err)
 	}
 
 	return nil
@@ -70,7 +72,8 @@ func (r *UserRepository) GetByID(
 
 	var u domain.User
 
-	err := r.db.QueryRow(ctx, query, id).Scan(
+	q := database.QuerierFrom(ctx, r.db)
+	err := q.QueryRow(ctx, query, id).Scan(
 		&u.ID,
 		&u.Email,
 		&u.PasswordHash,
@@ -106,7 +109,8 @@ func (r *UserRepository) GetByEmail(
 
 	var u domain.User
 
-	err := r.db.QueryRow(ctx, query, email).Scan(
+	q := database.QuerierFrom(ctx, r.db)
+	err := q.QueryRow(ctx, query, email).Scan(
 		&u.ID,
 		&u.Email,
 		&u.PasswordHash,
@@ -139,7 +143,8 @@ func (r *UserRepository) ExistsByEmail(
 
 	var exists bool
 
-	if err := r.db.QueryRow(ctx, query, email).Scan(&exists); err != nil {
+	q := database.QuerierFrom(ctx, r.db)
+	if err := q.QueryRow(ctx, query, email).Scan(&exists); err != nil {
 		return false, fmt.Errorf("check user by email: %w", err)
 	}
 
@@ -155,7 +160,8 @@ func (r *UserRepository) Delete(
 		WHERE id = $1
 	`
 
-	result, err := r.db.Exec(ctx, query, id)
+	q := database.QuerierFrom(ctx, r.db)
+	result, err := q.Exec(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("delete user: %w", err)
 	}
@@ -180,7 +186,8 @@ func (r *UserRepository) Update(
 			WHERE id = $1
 		`
 
-	result, err := r.db.Exec(
+	q := database.QuerierFrom(ctx, r.db)
+	result, err := q.Exec(
 		ctx,
 		query,
 		u.ID,
