@@ -1,5 +1,7 @@
 package domain
 
+import userdomain "github.com/chuuch/gorest/internal/user/domain"
+
 type RegisterRequest struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required,min=8"`
@@ -11,7 +13,8 @@ type LoginRequest struct {
 }
 
 type AuthResponse struct {
-	AccessToken string `json:"access_token"`
+	AccessToken string                  `json:"access_token"`
+	User        userdomain.UserResponse `json:"user"`
 }
 
 type RefreshRequest struct {
