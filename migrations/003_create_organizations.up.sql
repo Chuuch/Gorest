@@ -2,7 +2,7 @@ CREATE TABLE organizations (
   id UUID PRIMARY KEY,
   name TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL,
-  updated_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE memberships (
