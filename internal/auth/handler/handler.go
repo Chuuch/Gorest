@@ -9,6 +9,7 @@ import (
 	"github.com/chuuch/gorest/internal/api"
 	"github.com/chuuch/gorest/internal/auth/domain"
 	"github.com/chuuch/gorest/internal/auth/usecase"
+	"github.com/chuuch/gorest/internal/requestcontext"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
 	"github.com/chuuch/gorest/internal/validation"
 )
@@ -18,15 +19,18 @@ const refreshTokenCookieName = "refresh_token"
 type Handler struct {
 	service         usecase.Service
 	refreshTokenTTL time.Duration
+	cookieSecure    bool
 }
 
 func NewHandler(
 	service usecase.Service,
 	refreshTokenTTL time.Duration,
+	cookieSecure bool,
 ) *Handler {
 	return &Handler{
 		service:         service,
 		refreshTokenTTL: refreshTokenTTL,
+		cookieSecure:    cookieSecure,
 	}
 }
 
@@ -152,6 +156,12 @@ func (h *Handler) writeAuthResponse(
 ) {
 	api.WriteJSON(w, status, domain.AuthResponse{
 		AccessToken: result.AccessToken,
+		User: userdomain.UserResponse{
+			ID: result.User.ID,
+			Email: result.User.Email,
+			CreatedAt: result.User.CreatedAt,
+			UpdatedAt: result.User.UpdatedAt,
+		},
 	})
 }
 
@@ -164,7 +174,7 @@ func (h *Handler) setRefreshTokenCookie(
 		Value:    refreshToken,
 		Path:     "/api/v1/auth",
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   h.cookieSecure,
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().UTC().Add(h.refreshTokenTTL),
 	})
@@ -176,7 +186,7 @@ func (h *Handler) clearRefreshTokenCookie(w http.ResponseWriter) {
 		Value:    "",
 		Path:     "/api/v1/auth",
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   h.cookieSecure,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})
@@ -232,4 +242,24 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 			"internal server error",
 		)
 	}
+}
+
+func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requestcontext.UserID(r.Context())
+	if !ok {
+		api.WriteError(
+		w,
+		http.StatusUnauthorized,
+		"unauthorized",
+		"unauthorized",
+		)
+		return
+	}
+	result, err := h.service.Me(r.Context(), userID)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	h.writeAuthResponse(w, http.StatusOK, result)
 }

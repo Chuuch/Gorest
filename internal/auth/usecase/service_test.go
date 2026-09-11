@@ -155,6 +155,8 @@ func TestAuthService_Register(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, response.AccessToken)
 	require.NotEmpty(t, response.RefreshToken)
+	require.NotNil(t, response.User)
+	require.Equal(t, "john@example.com", response.User.Email)
 
 	createdUser, err := deps.users.GetByEmail(
 		ctx,
@@ -163,6 +165,7 @@ func TestAuthService_Register(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, "john@example.com", createdUser.Email)
+	require.Equal(t, createdUser.ID, response.User.ID)
 	require.NotEqual(t, testPassword, createdUser.PasswordHash)
 
 	require.NoError(
@@ -232,11 +235,13 @@ func TestAuthService_Login(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, response.AccessToken)
 	require.NotEmpty(t, response.RefreshToken)
+	require.NotNil(t, response.User)
+	require.Equal(t, "john@example.com", response.User.Email)
 
 	claims, err := deps.tokens.ParseAccessToken(response.AccessToken)
 
 	require.NoError(t, err)
-	require.NotEqual(t, uuid.Nil, claims.UserID)
+	require.Equal(t, response.User.ID, claims.UserID)
 	require.Equal(t, testIssuer, claims.Issuer)
 	require.True(t, claims.ExpiresAt.After(time.Now().UTC()))
 
@@ -325,6 +330,9 @@ func TestAuthService_Refresh(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, refreshed.AccessToken)
 	require.NotEmpty(t, refreshed.RefreshToken)
+	require.NotNil(t, refreshed.User)
+	require.Equal(t, "john@example.com", refreshed.User.Email)
+	require.Equal(t, initial.User.ID, refreshed.User.ID)
 
 	require.NotEqual(
 		t,
@@ -561,4 +569,28 @@ func TestAuthService_Logout_EmptyToken(t *testing.T) {
 
 	require.Error(t, err)
 	require.True(t, errors.Is(err, authdomain.ErrInvalidToken))
+}
+
+func TestAuthService_Me(t *testing.T) {
+	db, cleanup := setupAuthTestDatabase(t)
+	defer cleanup()
+
+	deps := setupAuthService(t, db)
+	ctx := context.Background()
+
+	registered, err := deps.service.Register(ctx, authdomain.RegisterRequest{
+		Email:    "john@example.com",
+		Password: testPassword,
+	})
+
+	require.NoError(t, err)
+
+	response, err := deps.service.Me(ctx, registered.User.ID)
+
+	require.NoError(t, err)
+	require.NotEmpty(t, response.AccessToken)
+	require.Empty(t, response.RefreshToken)
+	require.NotNil(t, response.User)
+	require.Equal(t, registered.User.ID, response.User.ID)
+	require.Equal(t, "john@example.com", response.User.Email)
 }

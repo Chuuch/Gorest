@@ -17,6 +17,7 @@ import (
 type AuthResult struct {
 	AccessToken  string
 	RefreshToken string
+	User *userdomain.User
 }
 
 type Service interface {
@@ -24,6 +25,7 @@ type Service interface {
 	Login(ctx context.Context, req authdomain.LoginRequest) (*AuthResult, error)
 	Refresh(ctx context.Context, refreshToken string) (*AuthResult, error)
 	Logout(ctx context.Context, refreshToken string) error
+	Me(ctx context.Context, userID uuid.UUID) (*AuthResult, error)
 }
 
 type PasswordVerifier interface {
@@ -161,6 +163,11 @@ func (s *service) issueTokens(
 	ctx context.Context,
 	userID uuid.UUID,
 ) (*AuthResult, error) {
+	u, err := s.users.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+
 	accessToken, err := s.tokens.GenerateAccessToken(userID)
 	if err != nil {
 		return nil, fmt.Errorf("generate access token: %w", err)
@@ -188,5 +195,26 @@ func (s *service) issueTokens(
 	return &AuthResult{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
+		User: u,
+	}, nil
+}
+
+func (s *service) Me(
+	ctx context.Context,
+	userID uuid.UUID,
+) (*AuthResult, error) {
+	u, err := s.users.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+
+	accessToken, err := s.tokens.GenerateAccessToken(userID)
+	if err != nil {
+		return nil, fmt.Errorf("generate access token: %w", err)
+	}
+
+	return &AuthResult{
+		AccessToken: accessToken,
+		User: u,
 	}, nil
 }

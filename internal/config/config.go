@@ -14,6 +14,7 @@ type Config struct {
 	Server   ServerConfig   `envPrefix:"GOREST_SERVER_"`
 	Database DatabaseConfig `envPrefix:"GOREST_DATABASE_"`
 	Auth     AuthConfig     `envPrefix:"GOREST_AUTH_"`
+	CORS     CORSConfig     `envPrefix:"GOREST_CORS_"`
 	Logger   LoggerConfig   `envPrefix:"GOREST_LOGGER_"`
 }
 
@@ -52,6 +53,11 @@ type AuthConfig struct {
 	RefreshTokenTTL    time.Duration `env:"REFRESH_TOKEN_TTL,required"`
 	Issuer             string        `env:"ISSUER,required"`
 	BcryptCost         int           `env:"BCRYPT_COST,required"`
+	CookieSecure       bool          `env:"COOKIE_SECURE,required"`
+}
+
+type CORSConfig struct {
+	AllowedOrigins []string `envPrefix:"ALLOWED_ORIGINS" envSeparator:","`
 }
 
 type LoggerConfig struct {
