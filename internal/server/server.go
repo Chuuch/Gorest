@@ -16,6 +16,7 @@ import (
 	authusecase "github.com/chuuch/gorest/internal/auth/usecase"
 	"github.com/chuuch/gorest/internal/config"
 	"github.com/chuuch/gorest/internal/database"
+	"github.com/chuuch/gorest/internal/middleware"
 	userhandler "github.com/chuuch/gorest/internal/user/handler"
 	userpostgres "github.com/chuuch/gorest/internal/user/postgres"
 	userusecase "github.com/chuuch/gorest/internal/user/usecase"
@@ -70,14 +71,17 @@ func New(cfg *config.Config) (*Server, error) {
 	authHandler := authhandler.NewHandler(
 		authService,
 		cfg.Auth.RefreshTokenTTL,
+		cfg.Auth.CookieSecure,
 	)
 
 	// -------------------------------------------------------------
 	// HTTP Server
 	// -------------------------------------------------------------
 	httpServer := &http.Server{
-		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
-		Handler:      newRouter(userHandler, authHandler, tokenManager),
+		Addr: fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
+		Handler: middleware.CORS(cfg.CORS.AllowedOrigins)(
+			newRouter(userHandler, authHandler, tokenManager),
+		),
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 		IdleTimeout:  cfg.Server.IdleTimeout,
