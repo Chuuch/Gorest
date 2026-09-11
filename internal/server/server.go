@@ -19,6 +19,7 @@ import (
 	"github.com/chuuch/gorest/internal/middleware"
 	userhandler "github.com/chuuch/gorest/internal/user/handler"
 	userpostgres "github.com/chuuch/gorest/internal/user/postgres"
+	orgpostgres "github.com/chuuch/gorest/internal/organization/postgres"
 	userusecase "github.com/chuuch/gorest/internal/user/usecase"
 	"github.com/chuuch/gorest/pkg/password"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -52,6 +53,8 @@ func New(cfg *config.Config) (*Server, error) {
 	// Auth domain
 	// -------------------------------------------------------------
 	refreshTokenRepository := authpostgres.NewRepository(db)
+	organizationRepository := orgpostgres.NewOrganizationRepository(db)
+	membershipRepository := orgpostgres.NewMembershipRepository(db)
 
 	tokenManager := security.NewJwtManager(
 		cfg.Auth.AccessTokenSecret,
@@ -61,9 +64,12 @@ func New(cfg *config.Config) (*Server, error) {
 
 	authService := authusecase.NewService(
 		userService,
+		organizationRepository,
+		membershipRepository,
 		refreshTokenRepository,
 		tokenManager,
 		passwordHasher,
+		db,
 		cfg.Auth.AccessTokenTTL,
 		cfg.Auth.RefreshTokenTTL,
 	)

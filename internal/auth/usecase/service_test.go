@@ -11,6 +11,7 @@ import (
 	"github.com/chuuch/gorest/internal/auth/repository"
 	"github.com/chuuch/gorest/internal/auth/security"
 	authusecase "github.com/chuuch/gorest/internal/auth/usecase"
+	orgpostgres "github.com/chuuch/gorest/internal/organization/postgres"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
 	userpostgres "github.com/chuuch/gorest/internal/user/postgres"
 	userusecase "github.com/chuuch/gorest/internal/user/usecase"
@@ -28,6 +29,7 @@ const (
 	testRefreshTokenTTL   = 24 * time.Hour
 	testBcryptCost        = 4
 	testPassword          = "password123"
+	testOrganizationName  = "Acme"
 )
 
 func setupAuthTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
@@ -65,6 +67,29 @@ func setupAuthTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 	require.NoError(t, err)
 
 	_, err = db.Exec(ctx, `
+		CREATE TABLE organizations (
+			id UUID PRIMARY KEY,
+			name TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL
+		)
+	`)
+	require.NoError(t, err)
+
+	_, err = db.Exec(ctx, `
+		CREATE TABLE memberships (
+			id UUID PRIMARY KEY,
+			organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+			user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			role TEXT NOT NULL CHECK (role IN ('admin', 'member')),
+			created_at TIMESTAMPTZ NOT NULL,
+			CONSTRAINT memberships_user_id_unique UNIQUE (user_id),
+			CONSTRAINT memberships_org_user_unique UNIQUE (organization_id, user_id)
+		)
+	`)
+	require.NoError(t, err)
+
+	_, err = db.Exec(ctx, `
 		CREATE TABLE refresh_tokens (
 			id UUID PRIMARY KEY,
 			user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -96,6 +121,14 @@ func setupAuthTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 	return db, cleanup
 }
 
+func testRegisterRequest() authdomain.RegisterRequest {
+	return authdomain.RegisterRequest{
+		Email:            "john@example.com",
+		Password:         testPassword,
+		OrganizationName: testOrganizationName,
+	}
+}
+
 type authTestDependencies struct {
 	service       authusecase.Service
 	users         userusecase.Service
@@ -116,6 +149,8 @@ func setupAuthService(t *testing.T, db *pgxpool.Pool) authTestDependencies {
 	)
 
 	refreshTokenRepository := authpostgres.NewRepository(db)
+	organizationRepository := orgpostgres.NewOrganizationRepository(db)
+	membershipRepository := orgpostgres.NewMembershipRepository(db)
 
 	tokenManager := security.NewJwtManager(
 		testAccessTokenSecret,
@@ -125,9 +160,12 @@ func setupAuthService(t *testing.T, db *pgxpool.Pool) authTestDependencies {
 
 	authService := authusecase.NewService(
 		userService,
+		organizationRepository,
+		membershipRepository,
 		refreshTokenRepository,
 		tokenManager,
 		passwordHasher,
+		db,
 		testAccessTokenTTL,
 		testRefreshTokenTTL,
 	)
@@ -147,16 +185,15 @@ func TestAuthService_Register(t *testing.T) {
 	deps := setupAuthService(t, db)
 	ctx := context.Background()
 
-	response, err := deps.service.Register(ctx, authdomain.RegisterRequest{
-		Email:    "john@example.com",
-		Password: testPassword,
-	})
+	response, err := deps.service.Register(ctx, testRegisterRequest())
 
 	require.NoError(t, err)
 	require.NotEmpty(t, response.AccessToken)
 	require.NotEmpty(t, response.RefreshToken)
 	require.NotNil(t, response.User)
 	require.Equal(t, "john@example.com", response.User.Email)
+	require.NotNil(t, response.Organization)
+	require.Equal(t, testOrganizationName, response.Organization.Name)
 
 	createdUser, err := deps.users.GetByEmail(
 		ctx,
@@ -175,6 +212,12 @@ func TestAuthService_Register(t *testing.T) {
 			createdUser.PasswordHash,
 		),
 	)
+
+	claims, err := deps.tokens.ParseAccessToken(response.AccessToken)
+
+	require.NoError(t, err)
+	require.Equal(t, createdUser.ID, claims.UserID)
+	require.Equal(t, response.Organization.ID, claims.OrganizationID)
 
 	tokenHash := deps.tokens.HashRefreshToken(response.RefreshToken)
 
@@ -197,16 +240,14 @@ func TestAuthService_Register_EmailAlreadyExists(t *testing.T) {
 	deps := setupAuthService(t, db)
 	ctx := context.Background()
 
-	_, err := deps.service.Register(ctx, authdomain.RegisterRequest{
-		Email:    "john@example.com",
-		Password: testPassword,
-	})
+	_, err := deps.service.Register(ctx, testRegisterRequest())
 
 	require.NoError(t, err)
 
 	_, err = deps.service.Register(ctx, authdomain.RegisterRequest{
-		Email:    "john@example.com",
-		Password: "another-password",
+		Email:            "john@example.com",
+		Password:         "another-password",
+		OrganizationName: "Other",
 	})
 
 	require.Error(t, err)
@@ -220,10 +261,7 @@ func TestAuthService_Login(t *testing.T) {
 	deps := setupAuthService(t, db)
 	ctx := context.Background()
 
-	_, err := deps.service.Register(ctx, authdomain.RegisterRequest{
-		Email:    "john@example.com",
-		Password: testPassword,
-	})
+	_, err := deps.service.Register(ctx, testRegisterRequest())
 
 	require.NoError(t, err)
 
@@ -237,11 +275,14 @@ func TestAuthService_Login(t *testing.T) {
 	require.NotEmpty(t, response.RefreshToken)
 	require.NotNil(t, response.User)
 	require.Equal(t, "john@example.com", response.User.Email)
+	require.NotNil(t, response.Organization)
+	require.Equal(t, testOrganizationName, response.Organization.Name)
 
 	claims, err := deps.tokens.ParseAccessToken(response.AccessToken)
 
 	require.NoError(t, err)
 	require.Equal(t, response.User.ID, claims.UserID)
+	require.Equal(t, response.Organization.ID, claims.OrganizationID)
 	require.Equal(t, testIssuer, claims.Issuer)
 	require.True(t, claims.ExpiresAt.After(time.Now().UTC()))
 
@@ -264,10 +305,7 @@ func TestAuthService_Login_WrongPassword(t *testing.T) {
 	deps := setupAuthService(t, db)
 	ctx := context.Background()
 
-	_, err := deps.service.Register(ctx, authdomain.RegisterRequest{
-		Email:    "john@example.com",
-		Password: testPassword,
-	})
+	_, err := deps.service.Register(ctx, testRegisterRequest())
 
 	require.NoError(t, err)
 
@@ -303,10 +341,7 @@ func TestAuthService_Refresh(t *testing.T) {
 	deps := setupAuthService(t, db)
 	ctx := context.Background()
 
-	initial, err := deps.service.Register(ctx, authdomain.RegisterRequest{
-		Email:    "john@example.com",
-		Password: testPassword,
-	})
+	initial, err := deps.service.Register(ctx, testRegisterRequest())
 
 	require.NoError(t, err)
 
@@ -333,6 +368,8 @@ func TestAuthService_Refresh(t *testing.T) {
 	require.NotNil(t, refreshed.User)
 	require.Equal(t, "john@example.com", refreshed.User.Email)
 	require.Equal(t, initial.User.ID, refreshed.User.ID)
+	require.NotNil(t, refreshed.Organization)
+	require.Equal(t, initial.Organization.ID, refreshed.Organization.ID)
 
 	require.NotEqual(
 		t,
@@ -370,10 +407,7 @@ func TestAuthService_Refresh_RevokedToken(t *testing.T) {
 	deps := setupAuthService(t, db)
 	ctx := context.Background()
 
-	initial, err := deps.service.Register(ctx, authdomain.RegisterRequest{
-		Email:    "john@example.com",
-		Password: testPassword,
-	})
+	initial, err := deps.service.Register(ctx, testRegisterRequest())
 
 	require.NoError(t, err)
 
@@ -401,6 +435,7 @@ func TestAuthService_Refresh_ExpiredToken(t *testing.T) {
 	ctx := context.Background()
 
 	userID := uuid.New()
+	organizationID := uuid.New()
 	now := time.Now().UTC()
 
 	_, err := db.Exec(
@@ -421,7 +456,44 @@ func TestAuthService_Refresh_ExpiredToken(t *testing.T) {
 		now,
 		now,
 	)
+	require.NoError(t, err)
 
+	_, err = db.Exec(
+		ctx,
+		`
+			INSERT INTO organizations (
+				id,
+				name,
+				created_at,
+				updated_at
+			)
+			VALUES ($1, $2, $3, $4)
+		`,
+		organizationID,
+		testOrganizationName,
+		now,
+		now,
+	)
+	require.NoError(t, err)
+
+	_, err = db.Exec(
+		ctx,
+		`
+			INSERT INTO memberships (
+				id,
+				organization_id,
+				user_id,
+				role,
+				created_at
+			)
+			VALUES ($1, $2, $3, $4, $5)
+		`,
+		uuid.New(),
+		organizationID,
+		userID,
+		"admin",
+		now,
+	)
 	require.NoError(t, err)
 
 	refreshToken, err := deps.tokens.GenerateRefreshToken()
@@ -482,10 +554,7 @@ func TestAuthService_Logout(t *testing.T) {
 	deps := setupAuthService(t, db)
 	ctx := context.Background()
 
-	response, err := deps.service.Register(ctx, authdomain.RegisterRequest{
-		Email:    "john@example.com",
-		Password: testPassword,
-	})
+	response, err := deps.service.Register(ctx, testRegisterRequest())
 
 	require.NoError(t, err)
 
@@ -524,10 +593,7 @@ func TestAuthService_Logout_AlreadyRevoked(t *testing.T) {
 	deps := setupAuthService(t, db)
 	ctx := context.Background()
 
-	response, err := deps.service.Register(ctx, authdomain.RegisterRequest{
-		Email:    "john@example.com",
-		Password: testPassword,
-	})
+	response, err := deps.service.Register(ctx, testRegisterRequest())
 
 	require.NoError(t, err)
 
@@ -578,10 +644,7 @@ func TestAuthService_Me(t *testing.T) {
 	deps := setupAuthService(t, db)
 	ctx := context.Background()
 
-	registered, err := deps.service.Register(ctx, authdomain.RegisterRequest{
-		Email:    "john@example.com",
-		Password: testPassword,
-	})
+	registered, err := deps.service.Register(ctx, testRegisterRequest())
 
 	require.NoError(t, err)
 
@@ -593,4 +656,13 @@ func TestAuthService_Me(t *testing.T) {
 	require.NotNil(t, response.User)
 	require.Equal(t, registered.User.ID, response.User.ID)
 	require.Equal(t, "john@example.com", response.User.Email)
+	require.NotNil(t, response.Organization)
+	require.Equal(t, registered.Organization.ID, response.Organization.ID)
+	require.Equal(t, testOrganizationName, response.Organization.Name)
+
+	claims, err := deps.tokens.ParseAccessToken(response.AccessToken)
+
+	require.NoError(t, err)
+	require.Equal(t, registered.User.ID, claims.UserID)
+	require.Equal(t, registered.Organization.ID, claims.OrganizationID)
 }

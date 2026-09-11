@@ -24,8 +24,9 @@ func TestJwtManager_GenerateAccessToken(t *testing.T) {
 	)
 
 	userID := uuid.New()
+	organizationID := uuid.New()
 
-	token, err := manager.GenerateAccessToken(userID)
+	token, err := manager.GenerateAccessToken(userID, organizationID)
 
 	require.NoError(t, err)
 	require.NotEmpty(t, token)
@@ -34,6 +35,7 @@ func TestJwtManager_GenerateAccessToken(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, userID, claims.UserID)
+	require.Equal(t, organizationID, claims.OrganizationID)
 	require.Equal(t, jwtTestIssuer, claims.Issuer)
 	require.True(t, claims.IssuedAt.Before(time.Now().UTC()) || claims.IssuedAt.Equal(time.Now().UTC()))
 	require.True(t, claims.ExpiresAt.After(time.Now().UTC()))
@@ -52,7 +54,7 @@ func TestJwtManager_ParseAccessToken_InvalidSignature(t *testing.T) {
 		jwtTestTTL,
 	)
 
-	token, err := otherManager.GenerateAccessToken(uuid.New())
+	token, err := otherManager.GenerateAccessToken(uuid.New(), uuid.New())
 
 	require.NoError(t, err)
 
@@ -74,7 +76,7 @@ func TestJwtManager_ParseAccessToken_WrongIssuer(t *testing.T) {
 		jwtTestTTL,
 	)
 
-	token, err := otherManager.GenerateAccessToken(uuid.New())
+	token, err := otherManager.GenerateAccessToken(uuid.New(), uuid.New())
 
 	require.NoError(t, err)
 
@@ -90,7 +92,7 @@ func TestJwtManager_ParseAccessToken_Expired(t *testing.T) {
 		-1*time.Minute,
 	)
 
-	token, err := manager.GenerateAccessToken(uuid.New())
+	token, err := manager.GenerateAccessToken(uuid.New(), uuid.New())
 
 	require.NoError(t, err)
 
