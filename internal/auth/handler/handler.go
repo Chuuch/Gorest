@@ -157,8 +157,8 @@ func (h *Handler) writeAuthResponse(
 	api.WriteJSON(w, status, domain.AuthResponse{
 		AccessToken: result.AccessToken,
 		User: userdomain.UserResponse{
-			ID: result.User.ID,
-			Email: result.User.Email,
+			ID:        result.User.ID,
+			Email:     result.User.Email,
 			CreatedAt: result.User.CreatedAt,
 			UpdatedAt: result.User.UpdatedAt,
 		},
@@ -248,10 +248,10 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	userID, ok := requestcontext.UserID(r.Context())
 	if !ok {
 		api.WriteError(
-		w,
-		http.StatusUnauthorized,
-		"unauthorized",
-		"unauthorized",
+			w,
+			http.StatusUnauthorized,
+			"unauthorized",
+			"unauthorized",
 		)
 		return
 	}

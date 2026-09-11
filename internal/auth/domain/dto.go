@@ -13,8 +13,8 @@ type LoginRequest struct {
 }
 
 type AuthResponse struct {
-	AccessToken string `json:"access_token"`
-	User userdomain.UserResponse `json:"user"`
+	AccessToken string                  `json:"access_token"`
+	User        userdomain.UserResponse `json:"user"`
 }
 
 type RefreshRequest struct {

@@ -17,7 +17,7 @@ import (
 type AuthResult struct {
 	AccessToken  string
 	RefreshToken string
-	User *userdomain.User
+	User         *userdomain.User
 }
 
 type Service interface {
@@ -195,7 +195,7 @@ func (s *service) issueTokens(
 	return &AuthResult{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
-		User: u,
+		User:         u,
 	}, nil
 }
 
@@ -215,6 +215,6 @@ func (s *service) Me(
 
 	return &AuthResult{
 		AccessToken: accessToken,
-		User: u,
+		User:        u,
 	}, nil
 }
