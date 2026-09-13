@@ -34,15 +34,9 @@ func Auth(tokens security.TokenManager) func(http.Handler) http.Handler {
 				return
 			}
 
-			ctx := requestcontext.WithUserID(
-				r.Context(),
-				claims.UserID,
-			)
-
-			ctx = requestcontext.WithOrganizationID(
-				ctx,
-				claims.OrganizationID,
-			)
+			ctx := requestcontext.WithUserID(r.Context(), claims.UserID)
+			ctx = requestcontext.WithOrganizationID(ctx, claims.OrganizationID)
+			ctx = requestcontext.WithRole(ctx, claims.Role)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

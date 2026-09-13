@@ -76,3 +76,45 @@ func (r *MembershipRepository) GetByUserID(
 
 	return &membership, nil
 }
+
+func (r *MembershipRepository) ListByOrganizationID(
+	ctx context.Context,
+	organizationID uuid.UUID,
+) ([]*domain.Membership, error) {
+	const query = `
+			SELECT id, organization_id, user_id, role, created_at
+			FROM memberships
+			WHERE organization_id = $1
+			ORDER BY created_at ASC
+		`
+
+	rows, err := r.db.Query(ctx, query, organizationID)
+	if err != nil {
+		return nil, fmt.Errorf("list memberships: %w", err)
+	}
+	defer rows.Close()
+
+	memberships := make([]*domain.Membership, 0)
+
+	for rows.Next() {
+		var membership domain.Membership
+
+		if err := rows.Scan(
+			&membership.ID,
+			&membership.OrganizationID,
+			&membership.UserID,
+			&membership.Role,
+			&membership.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan membership: %w", err)
+		}
+
+		memberships = append(memberships, &membership)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list memberhips: %w", err)
+	}
+
+	return memberships, nil
+}

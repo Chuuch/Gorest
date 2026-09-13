@@ -11,6 +11,7 @@ type contextKey string
 const (
 	userIDKey         contextKey = "user_id"
 	organizationIDKey contextKey = "organization_id"
+	roleKey           contextKey = "role"
 )
 
 func WithUserID(ctx context.Context, userID uuid.UUID) context.Context {
@@ -29,4 +30,13 @@ func WithOrganizationID(ctx context.Context, organizationID uuid.UUID) context.C
 func OrganizationID(ctx context.Context) (uuid.UUID, bool) {
 	organizationID, ok := ctx.Value(organizationIDKey).(uuid.UUID)
 	return organizationID, ok
+}
+
+func WithRole(ctx context.Context, role string) context.Context {
+	return context.WithValue(ctx, roleKey, role)
+}
+
+func Role(ctx context.Context) (string, bool) {
+	role, ok := ctx.Value(roleKey).(string)
+	return role, ok
 }
