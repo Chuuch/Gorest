@@ -9,15 +9,20 @@ import (
 	authdomain "github.com/chuuch/gorest/internal/auth/domain"
 	"github.com/chuuch/gorest/internal/auth/repository"
 	"github.com/chuuch/gorest/internal/auth/security"
+	"github.com/chuuch/gorest/internal/database"
+	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	orgrepository "github.com/chuuch/gorest/internal/organization/repository"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
 	userusecase "github.com/chuuch/gorest/internal/user/usecase"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type AuthResult struct {
 	AccessToken  string
 	RefreshToken string
 	User         *userdomain.User
+	Organization *orgdomain.Organization
 }
 
 type Service interface {
@@ -34,26 +39,35 @@ type PasswordVerifier interface {
 
 type service struct {
 	users           userusecase.Service
+	organizations   orgrepository.OrganizationRepository
+	memberships     orgrepository.MembershipRepository
 	refreshTokens   repository.RefreshTokenRepository
 	tokens          security.TokenManager
 	passwords       PasswordVerifier
+	db              *pgxpool.Pool
 	accessTokenTTL  time.Duration
 	refreshTokenTTL time.Duration
 }
 
 func NewService(
 	users userusecase.Service,
+	organizations orgrepository.OrganizationRepository,
+	memberships orgrepository.MembershipRepository,
 	refreshTokens repository.RefreshTokenRepository,
 	tokens security.TokenManager,
 	passwords PasswordVerifier,
+	db *pgxpool.Pool,
 	accessTokenTTL time.Duration,
 	refreshTokenTTL time.Duration,
 ) Service {
 	return &service{
 		users:           users,
+		organizations:   organizations,
+		memberships:     memberships,
 		refreshTokens:   refreshTokens,
 		tokens:          tokens,
 		passwords:       passwords,
+		db:              db,
 		accessTokenTTL:  accessTokenTTL,
 		refreshTokenTTL: refreshTokenTTL,
 	}
@@ -72,15 +86,46 @@ func (s *service) Register(
 		return nil, userdomain.ErrEmailAlreadyExists
 	}
 
-	u, err := s.users.Create(ctx, userdomain.CreateUserRequest{
-		Email:    req.Email,
-		Password: req.Password,
+	var user *userdomain.User
+	var org *orgdomain.Organization
+
+	err = database.WithTransaction(ctx, s.db, func(ctx context.Context) error {
+		createdUser, err := s.users.Create(ctx, userdomain.CreateUserRequest{
+			Email:    req.Email,
+			Password: req.Password,
+		})
+		if err != nil {
+			return fmt.Errorf("create user: %w", err)
+		}
+
+		user = createdUser
+
+		now := time.Now().UTC()
+
+		org = &orgdomain.Organization{
+			ID:        uuid.New(),
+			Name:      req.OrganizationName,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+
+		if err := s.organizations.Create(ctx, org); err != nil {
+			return err
+		}
+
+		return s.memberships.Create(ctx, &orgdomain.Membership{
+			ID:             uuid.New(),
+			OrganizationID: org.ID,
+			UserID:         user.ID,
+			Role:           orgdomain.RoleAdmin,
+			CreatedAt:      now,
+		})
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create user: %w", err)
+		return nil, err
 	}
 
-	return s.issueTokens(ctx, u.ID)
+	return s.issueTokens(ctx, user.ID, org)
 }
 
 func (s *service) Login(
@@ -100,7 +145,12 @@ func (s *service) Login(
 		return nil, authdomain.ErrInvalidCredentials
 	}
 
-	return s.issueTokens(ctx, u.ID)
+	org, err := s.organizationForUser(ctx, u.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.issueTokens(ctx, u.ID, org)
 }
 
 func (s *service) Refresh(
@@ -130,7 +180,12 @@ func (s *service) Refresh(
 		return nil, fmt.Errorf("revoke refresh token: %w", err)
 	}
 
-	return s.issueTokens(ctx, storedToken.UserID)
+	org, err := s.organizationForUser(ctx, storedToken.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.issueTokens(ctx, storedToken.UserID, org)
 }
 
 func (s *service) Logout(
@@ -162,13 +217,14 @@ func (s *service) Logout(
 func (s *service) issueTokens(
 	ctx context.Context,
 	userID uuid.UUID,
+	org *orgdomain.Organization,
 ) (*AuthResult, error) {
 	u, err := s.users.GetByID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 	}
 
-	accessToken, err := s.tokens.GenerateAccessToken(userID)
+	accessToken, err := s.tokens.GenerateAccessToken(userID, org.ID)
 	if err != nil {
 		return nil, fmt.Errorf("generate access token: %w", err)
 	}
@@ -196,6 +252,7 @@ func (s *service) issueTokens(
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		User:         u,
+		Organization: org,
 	}, nil
 }
 
@@ -208,13 +265,40 @@ func (s *service) Me(
 		return nil, fmt.Errorf("get user: %w", err)
 	}
 
-	accessToken, err := s.tokens.GenerateAccessToken(userID)
+	org, err := s.organizationForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	accessToken, err := s.tokens.GenerateAccessToken(userID, org.ID)
 	if err != nil {
 		return nil, fmt.Errorf("generate access token: %w", err)
 	}
 
 	return &AuthResult{
-		AccessToken: accessToken,
-		User:        u,
+		AccessToken:  accessToken,
+		User:         u,
+		Organization: org,
 	}, nil
+}
+
+func (s *service) organizationForUser(
+	ctx context.Context,
+	userID uuid.UUID,
+) (*orgdomain.Organization, error) {
+	membership, err := s.memberships.GetByUserID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, orgdomain.ErrMembershipNotFound) {
+			return nil, authdomain.ErrNoOrganization
+		}
+
+		return nil, fmt.Errorf("get membership: %w", err)
+	}
+
+	org, err := s.organizations.GetByID(ctx, membership.OrganizationID)
+	if err != nil {
+		return nil, fmt.Errorf("get organization: %w", err)
+	}
+
+	return org, nil
 }

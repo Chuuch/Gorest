@@ -9,6 +9,7 @@ import (
 	"github.com/chuuch/gorest/internal/api"
 	"github.com/chuuch/gorest/internal/auth/domain"
 	"github.com/chuuch/gorest/internal/auth/usecase"
+	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	"github.com/chuuch/gorest/internal/requestcontext"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
 	"github.com/chuuch/gorest/internal/validation"
@@ -162,6 +163,12 @@ func (h *Handler) writeAuthResponse(
 			CreatedAt: result.User.CreatedAt,
 			UpdatedAt: result.User.UpdatedAt,
 		},
+		Organization: orgdomain.OrganizationResponse{
+			ID:        result.Organization.ID,
+			Name:      result.Organization.Name,
+			CreatedAt: result.Organization.CreatedAt,
+			UpdatedAt: result.Organization.UpdatedAt,
+		},
 	})
 }
 
@@ -232,6 +239,14 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 			http.StatusUnauthorized,
 			"token_revoked",
 			"token revoked",
+		)
+
+	case errors.Is(err, domain.ErrNoOrganization):
+		api.WriteError(
+			w,
+			http.StatusForbidden,
+			"no_organization",
+			"user has no organization",
 		)
 
 	default:

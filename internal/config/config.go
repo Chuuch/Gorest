@@ -57,7 +57,7 @@ type AuthConfig struct {
 }
 
 type CORSConfig struct {
-	AllowedOrigins []string `envPrefix:"ALLOWED_ORIGINS" envSeparator:","`
+	AllowedOrigins []string `env:"ALLOWED_ORIGINS" envSeparator:","`
 }
 
 type LoggerConfig struct {
