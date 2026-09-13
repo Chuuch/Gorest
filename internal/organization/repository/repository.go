@@ -15,4 +15,5 @@ type OrganizationRepository interface {
 type MembershipRepository interface {
 	Create(ctx context.Context, membership *domain.Membership) error
 	GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Membership, error)
+	ListByOrganizationID(ctx context.Context, organizationID uuid.UUID) ([]*domain.Membership, error)
 }
