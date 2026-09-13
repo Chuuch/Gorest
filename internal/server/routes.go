@@ -6,17 +6,19 @@ import (
 	authhandler "github.com/chuuch/gorest/internal/auth/handler"
 	"github.com/chuuch/gorest/internal/auth/security"
 	"github.com/chuuch/gorest/internal/middleware"
+	orghandler "github.com/chuuch/gorest/internal/organization/handler"
 	userhandler "github.com/chuuch/gorest/internal/user/handler"
 )
 
 func newRouter(
 	userHandler *userhandler.Handler,
 	authHandler *authhandler.Handler,
+	orghandler *orghandler.Handler,
 	tokenManager security.TokenManager,
 ) *http.ServeMux {
 	mux := http.NewServeMux()
 
-	registerRoutes(mux, userHandler, authHandler, tokenManager)
+	registerRoutes(mux, userHandler, authHandler, orghandler, tokenManager)
 
 	return mux
 }
@@ -25,6 +27,7 @@ func registerRoutes(
 	mux *http.ServeMux,
 	userHandler *userhandler.Handler,
 	authHandler *authhandler.Handler,
+	orghandler *orghandler.Handler,
 	tokenManager security.TokenManager,
 ) {
 	mux.HandleFunc(
@@ -57,6 +60,20 @@ func registerRoutes(
 		"DELETE /api/v1/users/{id}",
 		middleware.Auth(tokenManager)(
 			http.HandlerFunc(userHandler.Delete),
+		),
+	)
+
+	mux.Handle(
+		"GET /api/v1/members",
+		middleware.Auth(tokenManager)(
+			http.HandlerFunc(orghandler.ListMembers),
+		),
+	)
+
+	mux.Handle(
+		"POST /api/v1/members",
+		middleware.Auth(tokenManager)(
+			http.HandlerFunc(orghandler.CreateMember),
 		),
 	)
 

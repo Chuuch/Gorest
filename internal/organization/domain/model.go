@@ -9,6 +9,7 @@ import (
 type Role string
 
 const (
+	RoleOwner  Role = "owner"
 	RoleAdmin  Role = "admin"
 	RoleMember Role = "member"
 )
@@ -26,4 +27,8 @@ type Membership struct {
 	UserID         uuid.UUID
 	Role           Role
 	CreatedAt      time.Time
+}
+
+func (r Role) CanManageMembers() bool {
+	return r == RoleOwner || r == RoleAdmin
 }

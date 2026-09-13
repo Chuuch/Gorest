@@ -169,6 +169,7 @@ func (h *Handler) writeAuthResponse(
 			CreatedAt: result.Organization.CreatedAt,
 			UpdatedAt: result.Organization.UpdatedAt,
 		},
+		Role: string(result.Role),
 	})
 }
 

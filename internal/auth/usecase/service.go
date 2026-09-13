@@ -23,6 +23,7 @@ type AuthResult struct {
 	RefreshToken string
 	User         *userdomain.User
 	Organization *orgdomain.Organization
+	Role         orgdomain.Role
 }
 
 type Service interface {
@@ -117,7 +118,7 @@ func (s *service) Register(
 			ID:             uuid.New(),
 			OrganizationID: org.ID,
 			UserID:         user.ID,
-			Role:           orgdomain.RoleAdmin,
+			Role:           orgdomain.RoleOwner,
 			CreatedAt:      now,
 		})
 	})
@@ -224,7 +225,14 @@ func (s *service) issueTokens(
 		return nil, fmt.Errorf("get user: %w", err)
 	}
 
-	accessToken, err := s.tokens.GenerateAccessToken(userID, org.ID)
+	membership, err := s.memberships.GetByUserID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, orgdomain.ErrMembershipNotFound) {
+			return nil, fmt.Errorf("get membership: %w", err)
+		}
+	}
+
+	accessToken, err := s.tokens.GenerateAccessToken(userID, org.ID, string(membership.Role))
 	if err != nil {
 		return nil, fmt.Errorf("generate access token: %w", err)
 	}
@@ -253,6 +261,7 @@ func (s *service) issueTokens(
 		RefreshToken: refreshToken,
 		User:         u,
 		Organization: org,
+		Role:         membership.Role,
 	}, nil
 }
 
@@ -270,7 +279,15 @@ func (s *service) Me(
 		return nil, err
 	}
 
-	accessToken, err := s.tokens.GenerateAccessToken(userID, org.ID)
+	membership, err := s.memberships.GetByUserID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, orgdomain.ErrMembershipNotFound) {
+			return nil, authdomain.ErrNoOrganization
+		}
+		return nil, fmt.Errorf("get membership: %w", err)
+	}
+
+	accessToken, err := s.tokens.GenerateAccessToken(userID, org.ID, string(membership.Role))
 	if err != nil {
 		return nil, fmt.Errorf("generate access token: %w", err)
 	}
@@ -279,6 +296,7 @@ func (s *service) Me(
 		AccessToken:  accessToken,
 		User:         u,
 		Organization: org,
+		Role:         membership.Role,
 	}, nil
 }
 

@@ -21,6 +21,7 @@ type jwtManager struct {
 
 type jwtClaims struct {
 	OrganizationID uuid.UUID `json:"organization_id"`
+	Role           string    `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -38,11 +39,13 @@ func NewJwtManager(
 
 func (m *jwtManager) GenerateAccessToken(
 	userID, organizationID uuid.UUID,
+	role string,
 ) (string, error) {
 	now := time.Now().UTC()
 
 	claims := jwtClaims{
 		OrganizationID: organizationID,
+		Role:           role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    m.issuer,
 			Subject:   userID.String(),
@@ -100,6 +103,10 @@ func (m *jwtManager) ParseAccessToken(
 		return nil, domain.ErrInvalidToken
 	}
 
+	if claims.Role == "" {
+		return nil, domain.ErrInvalidToken
+	}
+
 	if claims.ExpiresAt == nil {
 		return nil, domain.ErrInvalidToken
 	}
@@ -111,6 +118,7 @@ func (m *jwtManager) ParseAccessToken(
 	return &AccessTokenClaims{
 		UserID:         userID,
 		OrganizationID: claims.OrganizationID,
+		Role:           claims.Role,
 		Issuer:         claims.Issuer,
 		ExpiresAt:      claims.ExpiresAt.Time,
 		IssuedAt:       claims.IssuedAt.Time,

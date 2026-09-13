@@ -17,7 +17,9 @@ import (
 	"github.com/chuuch/gorest/internal/config"
 	"github.com/chuuch/gorest/internal/database"
 	"github.com/chuuch/gorest/internal/middleware"
+	orghandler "github.com/chuuch/gorest/internal/organization/handler"
 	orgpostgres "github.com/chuuch/gorest/internal/organization/postgres"
+	orgusecase "github.com/chuuch/gorest/internal/organization/usecase"
 	userhandler "github.com/chuuch/gorest/internal/user/handler"
 	userpostgres "github.com/chuuch/gorest/internal/user/postgres"
 	userusecase "github.com/chuuch/gorest/internal/user/usecase"
@@ -80,13 +82,24 @@ func New(cfg *config.Config) (*Server, error) {
 		cfg.Auth.CookieSecure,
 	)
 
+	// ------------------------------------------------------------
+	// Organization Domain
+	// -------------------------------------------------------------
+	orgService := orgusecase.NewService(
+		userService,
+		membershipRepository,
+		db,
+	)
+
+	orgHandler := orghandler.NewHandler(orgService)
+
 	// -------------------------------------------------------------
 	// HTTP Server
 	// -------------------------------------------------------------
 	httpServer := &http.Server{
 		Addr: fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		Handler: middleware.CORS(cfg.CORS.AllowedOrigins)(
-			newRouter(userHandler, authHandler, tokenManager),
+			newRouter(userHandler, authHandler, orgHandler, tokenManager),
 		),
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,

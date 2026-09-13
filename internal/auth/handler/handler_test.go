@@ -40,6 +40,7 @@ func testAuthResult(accessToken, refreshToken string) *authusecase.AuthResult {
 		RefreshToken: refreshToken,
 		User:         testAuthUser(),
 		Organization: testAuthOrg(),
+		Role:         orgdomain.RoleOwner,
 	}
 }
 
@@ -124,6 +125,7 @@ func TestHandler_Register(t *testing.T) {
 	require.Equal(t, "access-token", response.AccessToken)
 	require.Equal(t, "john@example.com", response.User.Email)
 	require.Equal(t, "Acme", response.Organization.Name)
+	require.Equal(t, "owner", response.Role)
 
 	cookie := rec.Result().Cookies()[0]
 	require.Equal(t, "refresh_token", cookie.Name)
@@ -249,6 +251,7 @@ func TestHandler_Login(t *testing.T) {
 	require.Equal(t, "access-token", response.AccessToken)
 	require.Equal(t, "john@example.com", response.User.Email)
 	require.Equal(t, "Acme", response.Organization.Name)
+	require.Equal(t, "owner", response.Role)
 
 	cookie := rec.Result().Cookies()[0]
 	require.Equal(t, "refresh_token", cookie.Name)
@@ -371,6 +374,7 @@ func TestHandler_Refresh(t *testing.T) {
 	require.Equal(t, "new-access-token", response.AccessToken)
 	require.Equal(t, "john@example.com", response.User.Email)
 	require.Equal(t, "Acme", response.Organization.Name)
+	require.Equal(t, "owner", response.Role)
 
 	cookies := rec.Result().Cookies()
 	require.Len(t, cookies, 1)
@@ -635,6 +639,7 @@ func TestHandler_Me(t *testing.T) {
 	require.Equal(t, "access-token", response.AccessToken)
 	require.Equal(t, "john@example.com", response.User.Email)
 	require.Equal(t, "Acme", response.Organization.Name)
+	require.Equal(t, "owner", response.Role)
 	require.Empty(t, rec.Result().Cookies())
 }
 

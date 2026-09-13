@@ -111,7 +111,7 @@ func TestAuth_ValidToken(t *testing.T) {
 	userID := uuid.New()
 	organizationID := uuid.New()
 
-	token, err := tokenManager.GenerateAccessToken(userID, organizationID)
+	token, err := tokenManager.GenerateAccessToken(userID, organizationID, "owner")
 	require.NoError(t, err)
 
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -124,6 +124,11 @@ func TestAuth_ValidToken(t *testing.T) {
 
 		require.True(t, ok)
 		require.Equal(t, organizationID, authenticatedOrganizationID)
+
+		role, ok := requestcontext.Role(r.Context())
+
+		require.True(t, ok)
+		require.Equal(t, "owner", role)
 
 		w.WriteHeader(http.StatusNoContent)
 	})

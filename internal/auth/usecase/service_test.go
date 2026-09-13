@@ -11,6 +11,7 @@ import (
 	"github.com/chuuch/gorest/internal/auth/repository"
 	"github.com/chuuch/gorest/internal/auth/security"
 	authusecase "github.com/chuuch/gorest/internal/auth/usecase"
+	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	orgpostgres "github.com/chuuch/gorest/internal/organization/postgres"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
 	userpostgres "github.com/chuuch/gorest/internal/user/postgres"
@@ -81,7 +82,7 @@ func setupAuthTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 			id UUID PRIMARY KEY,
 			organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
 			user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			role TEXT NOT NULL CHECK (role IN ('admin', 'member')),
+			role TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'member')),
 			created_at TIMESTAMPTZ NOT NULL,
 			CONSTRAINT memberships_user_id_unique UNIQUE (user_id),
 			CONSTRAINT memberships_org_user_unique UNIQUE (organization_id, user_id)
@@ -194,6 +195,7 @@ func TestAuthService_Register(t *testing.T) {
 	require.Equal(t, "john@example.com", response.User.Email)
 	require.NotNil(t, response.Organization)
 	require.Equal(t, testOrganizationName, response.Organization.Name)
+	require.Equal(t, orgdomain.RoleOwner, response.Role)
 
 	createdUser, err := deps.users.GetByEmail(
 		ctx,
@@ -218,6 +220,7 @@ func TestAuthService_Register(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, createdUser.ID, claims.UserID)
 	require.Equal(t, response.Organization.ID, claims.OrganizationID)
+	require.Equal(t, "owner", claims.Role)
 
 	tokenHash := deps.tokens.HashRefreshToken(response.RefreshToken)
 
@@ -277,12 +280,14 @@ func TestAuthService_Login(t *testing.T) {
 	require.Equal(t, "john@example.com", response.User.Email)
 	require.NotNil(t, response.Organization)
 	require.Equal(t, testOrganizationName, response.Organization.Name)
+	require.Equal(t, orgdomain.RoleOwner, response.Role)
 
 	claims, err := deps.tokens.ParseAccessToken(response.AccessToken)
 
 	require.NoError(t, err)
 	require.Equal(t, response.User.ID, claims.UserID)
 	require.Equal(t, response.Organization.ID, claims.OrganizationID)
+	require.Equal(t, "owner", claims.Role)
 	require.Equal(t, testIssuer, claims.Issuer)
 	require.True(t, claims.ExpiresAt.After(time.Now().UTC()))
 
@@ -370,6 +375,7 @@ func TestAuthService_Refresh(t *testing.T) {
 	require.Equal(t, initial.User.ID, refreshed.User.ID)
 	require.NotNil(t, refreshed.Organization)
 	require.Equal(t, initial.Organization.ID, refreshed.Organization.ID)
+	require.Equal(t, orgdomain.RoleOwner, refreshed.Role)
 
 	require.NotEqual(
 		t,
@@ -398,6 +404,11 @@ func TestAuthService_Refresh(t *testing.T) {
 	require.Equal(t, initialStored.UserID, newStored.UserID)
 	require.Nil(t, newStored.RevokedAt)
 	require.True(t, newStored.ExpiresAt.After(time.Now().UTC()))
+
+	claims, err := deps.tokens.ParseAccessToken(refreshed.AccessToken)
+
+	require.NoError(t, err)
+	require.Equal(t, "owner", claims.Role)
 }
 
 func TestAuthService_Refresh_RevokedToken(t *testing.T) {
@@ -491,7 +502,7 @@ func TestAuthService_Refresh_ExpiredToken(t *testing.T) {
 		uuid.New(),
 		organizationID,
 		userID,
-		"admin",
+		"owner",
 		now,
 	)
 	require.NoError(t, err)
@@ -659,10 +670,12 @@ func TestAuthService_Me(t *testing.T) {
 	require.NotNil(t, response.Organization)
 	require.Equal(t, registered.Organization.ID, response.Organization.ID)
 	require.Equal(t, testOrganizationName, response.Organization.Name)
+	require.Equal(t, orgdomain.RoleOwner, response.Role)
 
 	claims, err := deps.tokens.ParseAccessToken(response.AccessToken)
 
 	require.NoError(t, err)
 	require.Equal(t, registered.User.ID, claims.UserID)
 	require.Equal(t, registered.Organization.ID, claims.OrganizationID)
+	require.Equal(t, "owner", claims.Role)
 }

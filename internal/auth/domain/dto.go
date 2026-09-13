@@ -20,6 +20,7 @@ type AuthResponse struct {
 	AccessToken  string                         `json:"access_token"`
 	User         userdomain.UserResponse        `json:"user"`
 	Organization orgdomain.OrganizationResponse `json:"organization"`
+	Role         string                         `json:"role"`
 }
 
 type RefreshRequest struct {
