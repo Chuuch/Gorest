@@ -1,4 +1,4 @@
-ALTER TABLE memberships DROP CONTRAINT IF EXISTS memberships_role_check;
+ALTER TABLE memberships DROP CONSTRAINT IF EXISTS memberships_role_check;
 
 UPDATE memberships
 SET role = 'owner'
