@@ -23,6 +23,9 @@ import (
 	orghandler "github.com/chuuch/gorest/internal/organization/handler"
 	orgpostgres "github.com/chuuch/gorest/internal/organization/postgres"
 	orgusecase "github.com/chuuch/gorest/internal/organization/usecase"
+	projecthandler "github.com/chuuch/gorest/internal/projects/handler"
+	projectpostgres "github.com/chuuch/gorest/internal/projects/postgres"
+	projectusecase "github.com/chuuch/gorest/internal/projects/usecase"
 	userhandler "github.com/chuuch/gorest/internal/user/handler"
 	userpostgres "github.com/chuuch/gorest/internal/user/postgres"
 	userusecase "github.com/chuuch/gorest/internal/user/usecase"
@@ -103,6 +106,14 @@ func New(cfg *config.Config) (*Server, error) {
 	clientService := clientusecase.NewService(clientRepository)
 	clientHandler := clienthandler.NewHandler(clientService)
 
+
+	// -------------------------------------------------------------
+	// Project domain
+	// -------------------------------------------------------------
+	projectRepository := projectpostgres.NewRepository(db)
+	projectService := projectusecase.NewService(projectRepository, clientRepository)
+	projectHandler := projecthandler.NewHandler(projectService)
+
 	// -------------------------------------------------------------
 	// HTTP Server
 	// -------------------------------------------------------------
@@ -114,6 +125,7 @@ func New(cfg *config.Config) (*Server, error) {
 				authHandler,
 				orgHandler,
 				clientHandler,
+				projectHandler,
 				tokenManager),
 		),
 		ReadTimeout:  cfg.Server.ReadTimeout,
