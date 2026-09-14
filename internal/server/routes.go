@@ -5,6 +5,7 @@ import (
 
 	authhandler "github.com/chuuch/gorest/internal/auth/handler"
 	"github.com/chuuch/gorest/internal/auth/security"
+	clienthandler "github.com/chuuch/gorest/internal/client/handler"
 	"github.com/chuuch/gorest/internal/middleware"
 	orghandler "github.com/chuuch/gorest/internal/organization/handler"
 	userhandler "github.com/chuuch/gorest/internal/user/handler"
@@ -13,12 +14,20 @@ import (
 func newRouter(
 	userHandler *userhandler.Handler,
 	authHandler *authhandler.Handler,
-	orghandler *orghandler.Handler,
+	orgHandler *orghandler.Handler,
+	clientHandler *clienthandler.Handler,
 	tokenManager security.TokenManager,
 ) *http.ServeMux {
 	mux := http.NewServeMux()
 
-	registerRoutes(mux, userHandler, authHandler, orghandler, tokenManager)
+	registerRoutes(
+		mux,
+		userHandler,
+		authHandler,
+		orgHandler,
+		clientHandler,
+		tokenManager,
+	)
 
 	return mux
 }
@@ -27,7 +36,8 @@ func registerRoutes(
 	mux *http.ServeMux,
 	userHandler *userhandler.Handler,
 	authHandler *authhandler.Handler,
-	orghandler *orghandler.Handler,
+	orgHandler *orghandler.Handler,
+	clientHandler *clienthandler.Handler,
 	tokenManager security.TokenManager,
 ) {
 	mux.HandleFunc(
@@ -66,14 +76,28 @@ func registerRoutes(
 	mux.Handle(
 		"GET /api/v1/members",
 		middleware.Auth(tokenManager)(
-			http.HandlerFunc(orghandler.ListMembers),
+			http.HandlerFunc(orgHandler.ListMembers),
 		),
 	)
 
 	mux.Handle(
 		"POST /api/v1/members",
 		middleware.Auth(tokenManager)(
-			http.HandlerFunc(orghandler.CreateMember),
+			http.HandlerFunc(orgHandler.CreateMember),
+		),
+	)
+
+	mux.Handle(
+		"GET /api/v1/clients",
+		middleware.Auth(tokenManager)(
+			http.HandlerFunc(clientHandler.List),
+		),
+	)
+
+	mux.Handle(
+		"POST /api/v1/clients",
+		middleware.Auth(tokenManager)(
+			http.HandlerFunc(clientHandler.Create),
 		),
 	)
 
