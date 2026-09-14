@@ -86,7 +86,6 @@ func (r *Repository) GetByID(
 		&client.ID,
 		&client.OrganizationID,
 		&client.Name,
-		&client.Name,
 		&client.Notes,
 		&client.CreatedAt,
 		&client.UpdatedAt,
