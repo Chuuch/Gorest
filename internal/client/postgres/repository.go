@@ -103,7 +103,6 @@ func (r *Repository) GetByID(
 	return &client, nil
 }
 
-
 func (r *Repository) ListByOrganizationID(
 	ctx context.Context,
 	organizationID uuid.UUID,
