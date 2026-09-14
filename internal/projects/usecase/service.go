@@ -29,7 +29,7 @@ type Service interface {
 
 type service struct {
 	projects projectrepository.ProjectRepository
-	clients clientrepository.ClientRepository
+	clients  clientrepository.ClientRepository
 }
 
 func NewService(
@@ -38,7 +38,7 @@ func NewService(
 ) Service {
 	return &service{
 		projects: projects,
-		clients: clients,
+		clients:  clients,
 	}
 }
 
@@ -75,18 +75,18 @@ func (s *service) Create(
 	now := time.Now().UTC()
 
 	project := &projectdomain.Project{
-		ID: uuid.New(),
+		ID:             uuid.New(),
 		OrganizationID: organizationID,
-		ClientID: clientID,
-		Name: req.Name,
-		Notes: req.Notes,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ClientID:       clientID,
+		Name:           req.Name,
+		Notes:          req.Notes,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 
 	if err := s.projects.Create(ctx, project); err != nil {
 		return nil, err
 	}
-	
+
 	return project, nil
 }

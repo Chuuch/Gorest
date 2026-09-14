@@ -183,13 +183,13 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 }
 
 func toResponse(project *projectdomain.Project) projectdomain.ProjectResponse {
-	return projectdomain.ProjectResponse {
-		ID: project.ID,
+	return projectdomain.ProjectResponse{
+		ID:             project.ID,
 		OrganizationID: project.OrganizationID,
-		ClientID: project.ClientID,
-		Name: project.Name,
-		Notes: project.Notes,
-		CreatedAt: project.CreatedAt,
-		UpdatedAt: project.UpdatedAt,
+		ClientID:       project.ClientID,
+		Name:           project.Name,
+		Notes:          project.Notes,
+		CreatedAt:      project.CreatedAt,
+		UpdatedAt:      project.UpdatedAt,
 	}
 }

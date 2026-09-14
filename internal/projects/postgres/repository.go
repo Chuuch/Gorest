@@ -38,15 +38,15 @@ func (r *Repository) Create(
 		`
 
 	_, err := database.QuerierFrom(ctx, r.db).Exec(
-			ctx,
-			query,
-			project.ID,
-			project.OrganizationID,
-			project.ClientID,
-			project.Name,
-			project.Notes,
-			project.CreatedAt,
-			project.UpdatedAt,
+		ctx,
+		query,
+		project.ID,
+		project.OrganizationID,
+		project.ClientID,
+		project.Name,
+		project.Notes,
+		project.CreatedAt,
+		project.UpdatedAt,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError

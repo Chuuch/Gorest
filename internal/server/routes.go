@@ -63,7 +63,8 @@ func registerRoutes(
 	mux.HandleFunc("POST /api/v1/auth/register", authHandler.Register)
 	mux.HandleFunc("POST /api/v1/auth/login", authHandler.Login)
 	mux.HandleFunc("POST /api/v1/auth/refresh", authHandler.Refresh)
-	mux.HandleFunc("POST /api/v1/auth/logout", authHandler.Logout)}
+	mux.HandleFunc("POST /api/v1/auth/logout", authHandler.Logout)
+}
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")

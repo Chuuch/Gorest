@@ -106,7 +106,6 @@ func New(cfg *config.Config) (*Server, error) {
 	clientService := clientusecase.NewService(clientRepository)
 	clientHandler := clienthandler.NewHandler(clientService)
 
-
 	// -------------------------------------------------------------
 	// Project domain
 	// -------------------------------------------------------------

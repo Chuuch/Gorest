@@ -9,5 +9,5 @@ import (
 
 type ProjectRepository interface {
 	Create(ctx context.Context, project *domain.Project) error
-	ListByClientID(ctx  context.Context, organizationID, clientID uuid.UUID) ([]*domain.Project, error)
+	ListByClientID(ctx context.Context, organizationID, clientID uuid.UUID) ([]*domain.Project, error)
 }
