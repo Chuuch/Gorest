@@ -14,6 +14,9 @@ import (
 	authpostgres "github.com/chuuch/gorest/internal/auth/postgres"
 	"github.com/chuuch/gorest/internal/auth/security"
 	authusecase "github.com/chuuch/gorest/internal/auth/usecase"
+	clienthandler "github.com/chuuch/gorest/internal/client/handler"
+	clientpostgres "github.com/chuuch/gorest/internal/client/postgres"
+	clientusecase "github.com/chuuch/gorest/internal/client/usecase"
 	"github.com/chuuch/gorest/internal/config"
 	"github.com/chuuch/gorest/internal/database"
 	"github.com/chuuch/gorest/internal/middleware"
@@ -94,12 +97,24 @@ func New(cfg *config.Config) (*Server, error) {
 	orgHandler := orghandler.NewHandler(orgService)
 
 	// -------------------------------------------------------------
+	// Client domain
+	// -------------------------------------------------------------
+	clientRepository := clientpostgres.NewRepository(db)
+	clientService := clientusecase.NewService(clientRepository)
+	clientHandler := clienthandler.NewHandler(clientService)
+
+	// -------------------------------------------------------------
 	// HTTP Server
 	// -------------------------------------------------------------
 	httpServer := &http.Server{
 		Addr: fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		Handler: middleware.CORS(cfg.CORS.AllowedOrigins)(
-			newRouter(userHandler, authHandler, orgHandler, tokenManager),
+			newRouter(
+				userHandler,
+				authHandler,
+				orgHandler,
+				clientHandler,
+				tokenManager),
 		),
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
