@@ -8,7 +8,7 @@ import (
 type RegisterRequest struct {
 	Email            string `json:"email" validate:"required,email"`
 	Password         string `json:"password" validate:"required,min=8"`
-	OrganizationName string `json:"organization_name" validate:"required,min=2,max=100"`
+	OrganizationName string `json:"organization_name" validate:"required,min=4,max=100"`
 }
 
 type LoginRequest struct {

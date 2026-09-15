@@ -7,7 +7,7 @@ import (
 )
 
 type CreateTaskRequest struct {
-	Title  string `json:"title" validate:"required,min=2,max=100"`
+	Title  string `json:"title" validate:"required,min=4,max=100"`
 	Notes  string `json:"notes" validate:"max=2000"`
 	Status string `json:"status" validate:"required,oneof=todo in_progress done"`
 }
