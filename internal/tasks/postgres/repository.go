@@ -39,16 +39,16 @@ func (r *Repository) Create(
 		`
 
 	_, err := database.QuerierFrom(ctx, r.db).Exec(
-			ctx,
-			query,
-			task.ID,
-			task.OrganizationID,
-			task.ProjectID,
-			task.Title,
-			task.Notes,
-			task.Status,
-			task.CreatedAt,
-			task.UpdatedAt,
+		ctx,
+		query,
+		task.ID,
+		task.OrganizationID,
+		task.ProjectID,
+		task.Title,
+		task.Notes,
+		task.Status,
+		task.CreatedAt,
+		task.UpdatedAt,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -74,7 +74,7 @@ func (r *Repository) ListByProjectID(
 				notes,
 				status,
 				created_at,
-				updated_at,
+				updated_at
 			FROM tasks
 			WHERE organization_id = $1 AND project_id = $2
 			ORDER BY created_at ASC, title ASC

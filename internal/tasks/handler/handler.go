@@ -145,7 +145,7 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 			"forbiden",
 			"forbidden",
 		)
-	
+
 	case errors.Is(err, taskdomain.ErrTaskTitleExists):
 		api.WriteError(
 			w,
@@ -169,7 +169,7 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 			"task_not_found",
 			"task not found",
 		)
-	
+
 	default:
 		api.WriteError(
 			w,
@@ -182,13 +182,13 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 
 func toResponse(task *taskdomain.Task) taskdomain.TaskResponse {
 	return taskdomain.TaskResponse{
-		ID: task.ID,
+		ID:             task.ID,
 		OrganizationID: task.OrganizationID,
-		ProjectID: task.ProjectID,
-		Title: task.Title,
-		Notes: task.Notes,
-		Status: task.Status,
-		CreatedAt: task.CreatedAt,
-		UpdatedAt: task.UpdatedAt,
+		ProjectID:      task.ProjectID,
+		Title:          task.Title,
+		Notes:          task.Notes,
+		Status:         task.Status,
+		CreatedAt:      task.CreatedAt,
+		UpdatedAt:      task.UpdatedAt,
 	}
 }

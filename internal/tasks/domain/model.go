@@ -9,18 +9,18 @@ import (
 type Status string
 
 const (
-	StatusTodo Status = "todo"
+	StatusTodo       Status = "todo"
 	StatusInProgress Status = "in_progress"
-	StatusDone Status = "done"
+	StatusDone       Status = "done"
 )
 
 type Task struct {
-	ID uuid.UUID
+	ID             uuid.UUID
 	OrganizationID uuid.UUID
-	ProjectID uuid.UUID
-	Title string
-	Notes string
-	Status Status
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ProjectID      uuid.UUID
+	Title          string
+	Notes          string
+	Status         Status
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }

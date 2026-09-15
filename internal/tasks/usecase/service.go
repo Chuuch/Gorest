@@ -26,7 +26,7 @@ type Service interface {
 }
 
 type service struct {
-	tasks taskrepository.TaskRepository
+	tasks    taskrepository.TaskRepository
 	projects projectrepository.ProjectRepository
 }
 
@@ -35,7 +35,7 @@ func NewService(
 	projects projectrepository.ProjectRepository,
 ) Service {
 	return &service{
-		tasks: tasks,
+		tasks:    tasks,
 		projects: projects,
 	}
 }
@@ -73,14 +73,14 @@ func (s *service) Create(
 	now := time.Now().UTC()
 
 	task := &taskdomain.Task{
-		ID: uuid.New(),
+		ID:             uuid.New(),
 		OrganizationID: organizationID,
-		ProjectID: projectID,
-		Title: req.Title,
-		Notes: req.Notes,
-		Status: taskdomain.Status(req.Status),
-		CreatedAt: now,
-		UpdatedAt: now,
+		ProjectID:      projectID,
+		Title:          req.Title,
+		Notes:          req.Notes,
+		Status:         taskdomain.Status(req.Status),
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 
 	if err := s.tasks.Create(ctx, task); err != nil {

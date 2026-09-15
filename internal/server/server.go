@@ -116,9 +116,8 @@ func New(cfg *config.Config) (*Server, error) {
 	projectService := projectusecase.NewService(projectRepository, clientRepository)
 	projectHandler := projecthandler.NewHandler(projectService)
 
-
 	// -------------------------------------------------------------
-	// Task domain 
+	// Task domain
 	// -------------------------------------------------------------
 	taskRepository := taskpostgres.NewRepository(db)
 	taskService := taskusecase.NewService(taskRepository, projectRepository)
