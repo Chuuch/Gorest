@@ -44,6 +44,9 @@ func message(err validator.FieldError) string {
 	case "max":
 		return fmt.Sprintf("must be at most %s characters", err.Param())
 
+	case "oneof":
+		return fmt.Sprintf("must be one of: %s", strings.ReplaceAll(err.Param(), " ", ", "))
+
 	default:
 		return strings.ToLower(err.Tag())
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/chuuch/gorest/internal/database"
 	"github.com/chuuch/gorest/internal/projects/domain"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -58,6 +59,50 @@ func (r *Repository) Create(
 	}
 
 	return nil
+}
+
+func (r *Repository) GetByID(
+	ctx context.Context,
+	id, organizationID uuid.UUID,
+) (*domain.Project, error) {
+	const query = `
+			SELECT
+				id,
+				organization_id,
+				client_id,
+				name,
+				notes,
+				created_at,
+				updated_at
+			FROM projects
+			WHERE id = $1 AND organization_id = $2
+		`
+
+	var project domain.Project
+
+	err := database.QuerierFrom(ctx, r.db).QueryRow(
+		ctx,
+		query,
+		id,
+		organizationID,
+	).Scan(
+		&project.ID,
+		&project.OrganizationID,
+		&project.ClientID,
+		&project.Name,
+		&project.Notes,
+		&project.CreatedAt,
+		&project.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrProjectNotFound
+		}
+
+		return nil, fmt.Errorf("get project: %w", err)
+	}
+
+	return &project, nil
 }
 
 func (r *Repository) ListByClientID(
