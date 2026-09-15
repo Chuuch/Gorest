@@ -166,13 +166,13 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 
 func toResponse(entry *timeentrydomain.TimeEntry) timeentrydomain.TimeEntryResponse {
 	return timeentrydomain.TimeEntryResponse{
-		ID: entry.ID,
+		ID:             entry.ID,
 		OrganizationID: entry.OrganizationID,
-		TaskID: entry.TaskID,
-		UserID: entry.UserID,
-		Minutes: entry.Minutes,
-		Notes: entry.Notes,
-		CreatedAt: entry.CreatedAt,
-		UpdatedAt: entry.UpdatedAt,
+		TaskID:         entry.TaskID,
+		UserID:         entry.UserID,
+		Minutes:        entry.Minutes,
+		Notes:          entry.Notes,
+		CreatedAt:      entry.CreatedAt,
+		UpdatedAt:      entry.UpdatedAt,
 	}
 }

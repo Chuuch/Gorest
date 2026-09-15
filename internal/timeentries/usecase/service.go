@@ -22,7 +22,7 @@ type Service interface {
 
 type service struct {
 	entries timeentryrepository.TimeEntryRepository
-	tasks taskrepository.TaskRepository
+	tasks   taskrepository.TaskRepository
 }
 
 func NewService(
@@ -31,7 +31,7 @@ func NewService(
 ) Service {
 	return &service{
 		entries: entries,
-		tasks: tasks,
+		tasks:   tasks,
 	}
 }
 
@@ -62,14 +62,14 @@ func (s *service) Create(
 	now := time.Now().UTC()
 
 	entry := &timeentrydomain.TimeEntry{
-		ID: uuid.New(),
+		ID:             uuid.New(),
 		OrganizationID: organizationID,
-		TaskID: taskID,
-		UserID: userID,
-		Minutes: req.Minutes,
-		Notes: req.Notes,
-		CreatedAt: now,
-		UpdatedAt: now,
+		TaskID:         taskID,
+		UserID:         userID,
+		Minutes:        req.Minutes,
+		Notes:          req.Notes,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 
 	if err := s.entries.Create(ctx, entry); err != nil {

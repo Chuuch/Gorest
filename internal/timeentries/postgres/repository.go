@@ -14,7 +14,7 @@ type Repository struct {
 	db *pgxpool.Pool
 }
 
-func NewRepository(db *pgxpool.Pool) *Repository{
+func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
@@ -37,16 +37,16 @@ func (r *Repository) Create(
 		`
 
 	_, err := database.QuerierFrom(ctx, r.db).Exec(
-			ctx,
-			query,
-			entry.ID,
-			entry.OrganizationID,
-			entry.TaskID,
-			entry.UserID,
-			entry.Minutes,
-			entry.Notes,
-			entry.CreatedAt,
-			entry.UpdatedAt,
+		ctx,
+		query,
+		entry.ID,
+		entry.OrganizationID,
+		entry.TaskID,
+		entry.UserID,
+		entry.Minutes,
+		entry.Notes,
+		entry.CreatedAt,
+		entry.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("create time entry: %w", err)
