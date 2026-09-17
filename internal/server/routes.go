@@ -9,6 +9,7 @@ import (
 	"github.com/chuuch/gorest/internal/middleware"
 	orghandler "github.com/chuuch/gorest/internal/organization/handler"
 	projecthandler "github.com/chuuch/gorest/internal/projects/handler"
+	taskhandler "github.com/chuuch/gorest/internal/tasks/handler"
 	userhandler "github.com/chuuch/gorest/internal/user/handler"
 )
 
@@ -18,6 +19,7 @@ func newRouter(
 	orgHandler *orghandler.Handler,
 	clientHandler *clienthandler.Handler,
 	projectHandler *projecthandler.Handler,
+	taskHandler *taskhandler.Handler,
 	tokenManager security.TokenManager,
 ) *http.ServeMux {
 	mux := http.NewServeMux()
@@ -29,6 +31,7 @@ func newRouter(
 		orgHandler,
 		clientHandler,
 		projectHandler,
+		taskHandler,
 		tokenManager,
 	)
 
@@ -42,24 +45,35 @@ func registerRoutes(
 	orgHandler *orghandler.Handler,
 	clientHandler *clienthandler.Handler,
 	projectHandler *projecthandler.Handler,
+	taskHandler *taskhandler.Handler,
 	tokenManager security.TokenManager,
 ) {
+	// HEALTH
 	mux.HandleFunc("GET /api/v1/health", healthHandler)
 
+	// USERS
 	mux.Handle("GET /api/v1/auth/me", middleware.Auth(tokenManager)(http.HandlerFunc(authHandler.Me)))
 	mux.Handle("GET /api/v1/users/{id}", middleware.Auth(tokenManager)(http.HandlerFunc(userHandler.GetByID)))
 	mux.Handle("PUT /api/v1/users/{id}", middleware.Auth(tokenManager)(http.HandlerFunc(userHandler.Update)))
 	mux.Handle("DELETE /api/v1/users/{id}", middleware.Auth(tokenManager)(http.HandlerFunc(userHandler.Delete)))
 
+	// MEMBERS
 	mux.Handle("GET /api/v1/members", middleware.Auth(tokenManager)(http.HandlerFunc(orgHandler.ListMembers)))
 	mux.Handle("POST /api/v1/members", middleware.Auth(tokenManager)(http.HandlerFunc(orgHandler.CreateMember)))
 
+	// CLIENTS
 	mux.Handle("GET /api/v1/clients", middleware.Auth(tokenManager)(http.HandlerFunc(clientHandler.List)))
 	mux.Handle("POST /api/v1/clients", middleware.Auth(tokenManager)(http.HandlerFunc(clientHandler.Create)))
 
+	// PROJECTS
 	mux.Handle("GET /api/v1/clients/{id}/projects", middleware.Auth(tokenManager)(http.HandlerFunc(projectHandler.List)))
 	mux.Handle("POST /api/v1/clients/{id}/projects", middleware.Auth(tokenManager)(http.HandlerFunc(projectHandler.Create)))
 
+	// TASKS
+	mux.Handle("GET /api/v1/projects/{id}/tasks", middleware.Auth(tokenManager)(http.HandlerFunc(taskHandler.List)))
+	mux.Handle("POST /api/v1/projects/{id}/tasks", middleware.Auth(tokenManager)(http.HandlerFunc(taskHandler.Create)))
+
+	// AUTH
 	mux.HandleFunc("POST /api/v1/auth/register", authHandler.Register)
 	mux.HandleFunc("POST /api/v1/auth/login", authHandler.Login)
 	mux.HandleFunc("POST /api/v1/auth/refresh", authHandler.Refresh)

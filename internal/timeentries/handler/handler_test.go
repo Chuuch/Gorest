@@ -1,0 +1,227 @@
+package handler_test
+
+import (
+	"bytes"
+	"context"
+	"encoding/json/v2"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/chuuch/gorest/internal/requestcontext"
+	taskdomain "github.com/chuuch/gorest/internal/tasks/domain"
+	timeentrydomain "github.com/chuuch/gorest/internal/timeentries/domain"
+	timeentryhandler "github.com/chuuch/gorest/internal/timeentries/handler"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+)
+
+func testOrganizationID() uuid.UUID {
+	return uuid.MustParse("22222222-2222-2222-2222-222222222222")
+}
+
+func testUserID() uuid.UUID {
+	return uuid.MustParse("11111111-1111-1111-1111-111111111111")
+}
+
+func testTaskID() uuid.UUID {
+	return uuid.MustParse("66666666-6666-6666-6666-666666666666")
+}
+
+func testTimeEntry() *timeentrydomain.TimeEntry {
+	return &timeentrydomain.TimeEntry{
+		ID:             uuid.MustParse("77777777-7777-7777-7777-777777777777"),
+		OrganizationID: testOrganizationID(),
+		TaskID:         testTaskID(),
+		UserID:         testUserID(),
+		Minutes:        90,
+		Notes:          "OAuth",
+		CreatedAt:      time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+		UpdatedAt:      time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+	}
+}
+
+func withSession(req *http.Request, organizationID, userID uuid.UUID) *http.Request {
+	ctx := requestcontext.WithOrganizationID(req.Context(), organizationID)
+	ctx = requestcontext.WithUserID(ctx, userID)
+	return req.WithContext(ctx)
+}
+
+type mockService struct {
+	listFunc   func(uuid.UUID, uuid.UUID) ([]*timeentrydomain.TimeEntry, error)
+	createFunc func(uuid.UUID, uuid.UUID, uuid.UUID, timeentrydomain.CreateTimeEntryRequest) (*timeentrydomain.TimeEntry, error)
+}
+
+func (m *mockService) List(
+	_ context.Context,
+	organizationID uuid.UUID,
+	taskID uuid.UUID,
+) ([]*timeentrydomain.TimeEntry, error) {
+	return m.listFunc(organizationID, taskID)
+}
+
+func (m *mockService) Create(
+	_ context.Context,
+	organizationID uuid.UUID,
+	taskID uuid.UUID,
+	userID uuid.UUID,
+	req timeentrydomain.CreateTimeEntryRequest,
+) (*timeentrydomain.TimeEntry, error) {
+	return m.createFunc(organizationID, taskID, userID, req)
+}
+
+func TestHandler_List(t *testing.T) {
+	organizationID := testOrganizationID()
+	taskID := testTaskID()
+	entry := testTimeEntry()
+
+	service := &mockService{
+		listFunc: func(gotOrganizationID uuid.UUID, gotTaskID uuid.UUID) ([]*timeentrydomain.TimeEntry, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, taskID, gotTaskID)
+			return []*timeentrydomain.TimeEntry{entry}, nil
+		},
+	}
+
+	handler := timeentryhandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/tasks/"+taskID.String()+"/time-entries",
+		nil,
+	)
+	req.SetPathValue("id", taskID.String())
+	req = withSession(req, organizationID, testUserID())
+
+	rec := httptest.NewRecorder()
+	handler.List(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response []timeentrydomain.TimeEntryResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Len(t, response, 1)
+	require.Equal(t, 90, response[0].Minutes)
+}
+
+func TestHandler_List_TaskNotFound(t *testing.T) {
+	service := &mockService{
+		listFunc: func(uuid.UUID, uuid.UUID) ([]*timeentrydomain.TimeEntry, error) {
+			return nil, taskdomain.ErrTaskNotFound
+		},
+	}
+
+	handler := timeentryhandler.NewHandler(service)
+	taskID := testTaskID()
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/tasks/"+taskID.String()+"/time-entries",
+		nil,
+	)
+	req.SetPathValue("id", taskID.String())
+	req = withSession(req, testOrganizationID(), testUserID())
+
+	rec := httptest.NewRecorder()
+	handler.List(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestHandler_Create(t *testing.T) {
+	organizationID := testOrganizationID()
+	userID := testUserID()
+	taskID := testTaskID()
+	entry := testTimeEntry()
+
+	service := &mockService{
+		createFunc: func(
+			gotOrganizationID uuid.UUID,
+			gotTaskID uuid.UUID,
+			gotUserID uuid.UUID,
+			req timeentrydomain.CreateTimeEntryRequest,
+		) (*timeentrydomain.TimeEntry, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, taskID, gotTaskID)
+			require.Equal(t, userID, gotUserID)
+			require.Equal(t, 90, req.Minutes)
+			require.Equal(t, "OAuth", req.Notes)
+			return entry, nil
+		},
+	}
+
+	handler := timeentryhandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/tasks/"+taskID.String()+"/time-entries",
+		bytes.NewBufferString(`{"minutes":90,"notes":"OAuth"}`),
+	)
+	req.SetPathValue("id", taskID.String())
+	req = withSession(req, organizationID, userID)
+
+	rec := httptest.NewRecorder()
+	handler.Create(rec, req)
+
+	require.Equal(t, http.StatusCreated, rec.Code)
+}
+
+func TestHandler_Create_InvalidTaskID(t *testing.T) {
+	service := &mockService{
+		createFunc: func(
+			uuid.UUID,
+			uuid.UUID,
+			uuid.UUID,
+			timeentrydomain.CreateTimeEntryRequest,
+		) (*timeentrydomain.TimeEntry, error) {
+			t.Fatal("service should not be called")
+			return nil, nil
+		},
+	}
+
+	handler := timeentryhandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/tasks/not-a-uuid/time-entries",
+		bytes.NewBufferString(`{"minutes":90}`),
+	)
+	req.SetPathValue("id", "not-a-uuid")
+	req = withSession(req, testOrganizationID(), testUserID())
+
+	rec := httptest.NewRecorder()
+	handler.Create(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandler_Create_InvalidMinutes(t *testing.T) {
+	service := &mockService{
+		createFunc: func(
+			uuid.UUID,
+			uuid.UUID,
+			uuid.UUID,
+			timeentrydomain.CreateTimeEntryRequest,
+		) (*timeentrydomain.TimeEntry, error) {
+			t.Fatal("service should not be called")
+			return nil, nil
+		},
+	}
+
+	handler := timeentryhandler.NewHandler(service)
+	taskID := testTaskID()
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/tasks/"+taskID.String()+"/time-entries",
+		bytes.NewBufferString(`{"minutes":0}`),
+	)
+	req.SetPathValue("id", taskID.String())
+	req = withSession(req, testOrganizationID(), testUserID())
+
+	rec := httptest.NewRecorder()
+	handler.Create(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}

@@ -3,6 +3,7 @@ package validation
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
@@ -42,7 +43,14 @@ func message(err validator.FieldError) string {
 		return fmt.Sprintf("must be at least %s", err.Param())
 
 	case "max":
-		return fmt.Sprintf("must be at most %s characters", err.Param())
+		if err.Kind() == reflect.String {
+			return fmt.Sprintf("must be at most %s characters", err.Param())
+		}
+
+		return fmt.Sprintf("must be at most %s", err.Param())
+
+	case "oneof":
+		return fmt.Sprintf("must be one of: %s", strings.ReplaceAll(err.Param(), " ", ", "))
 
 	default:
 		return strings.ToLower(err.Tag())

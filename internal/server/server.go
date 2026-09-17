@@ -26,6 +26,9 @@ import (
 	projecthandler "github.com/chuuch/gorest/internal/projects/handler"
 	projectpostgres "github.com/chuuch/gorest/internal/projects/postgres"
 	projectusecase "github.com/chuuch/gorest/internal/projects/usecase"
+	taskhandler "github.com/chuuch/gorest/internal/tasks/handler"
+	taskpostgres "github.com/chuuch/gorest/internal/tasks/postgres"
+	taskusecase "github.com/chuuch/gorest/internal/tasks/usecase"
 	userhandler "github.com/chuuch/gorest/internal/user/handler"
 	userpostgres "github.com/chuuch/gorest/internal/user/postgres"
 	userusecase "github.com/chuuch/gorest/internal/user/usecase"
@@ -114,6 +117,13 @@ func New(cfg *config.Config) (*Server, error) {
 	projectHandler := projecthandler.NewHandler(projectService)
 
 	// -------------------------------------------------------------
+	// Task domain
+	// -------------------------------------------------------------
+	taskRepository := taskpostgres.NewRepository(db)
+	taskService := taskusecase.NewService(taskRepository, projectRepository)
+	taskHandler := taskhandler.NewHandler(taskService)
+
+	// -------------------------------------------------------------
 	// HTTP Server
 	// -------------------------------------------------------------
 	httpServer := &http.Server{
@@ -125,6 +135,7 @@ func New(cfg *config.Config) (*Server, error) {
 				orgHandler,
 				clientHandler,
 				projectHandler,
+				taskHandler,
 				tokenManager),
 		),
 		ReadTimeout:  cfg.Server.ReadTimeout,

@@ -7,7 +7,7 @@ import (
 )
 
 type CreateProjectRequest struct {
-	Name  string `json:"name" validate:"required,min=2,max=100"`
+	Name  string `json:"name" validate:"required,min=4,max=100"`
 	Notes string `json:"notes" validate:"max=2000"`
 }
 
