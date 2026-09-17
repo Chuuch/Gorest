@@ -85,7 +85,7 @@ func (s *service) Create(
 		Title:          req.Title,
 		Notes:          req.Notes,
 		Status:         status,
-		CompletedAt: 		completedAtFor(status, nil, now),
+		CompletedAt:    completedAtFor(status, nil, now),
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}

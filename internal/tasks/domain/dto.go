@@ -17,13 +17,13 @@ type UpdateTaskRequest struct {
 }
 
 type TaskResponse struct {
-	ID             uuid.UUID `json:"id"`
-	OrganizationID uuid.UUID `json:"organization_id"`
-	ProjectID      uuid.UUID `json:"project_id"`
-	Title          string    `json:"title"`
-	Notes          string    `json:"notes"`
-	Status         Status    `json:"status"`
-	CompletedAt		 *time.Time `json:"completed_at"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID             uuid.UUID  `json:"id"`
+	OrganizationID uuid.UUID  `json:"organization_id"`
+	ProjectID      uuid.UUID  `json:"project_id"`
+	Title          string     `json:"title"`
+	Notes          string     `json:"notes"`
+	Status         Status     `json:"status"`
+	CompletedAt    *time.Time `json:"completed_at"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }

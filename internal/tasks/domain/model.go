@@ -21,7 +21,7 @@ type Task struct {
 	Title          string
 	Notes          string
 	Status         Status
-	CompletedAt		 *time.Time
+	CompletedAt    *time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
