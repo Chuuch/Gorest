@@ -94,6 +94,7 @@ func setupTimeEntryTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 			title TEXT NOT NULL,
 			notes TEXT NOT NULL DEFAULT '',
 			status TEXT NOT NULL,
+			completed_at TIMESTAMPTZ NULL,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL,
 			CONSTRAINT tasks_project_title_unique UNIQUE (project_id, title),

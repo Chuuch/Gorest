@@ -48,6 +48,7 @@ func withSession(req *http.Request, organizationID uuid.UUID, role string) *http
 type mockService struct {
 	listFunc   func(uuid.UUID, uuid.UUID) ([]*taskdomain.Task, error)
 	createFunc func(uuid.UUID, uuid.UUID, orgdomain.Role, taskdomain.CreateTaskRequest) (*taskdomain.Task, error)
+	updateFunc func(uuid.UUID, uuid.UUID, taskdomain.UpdateTaskRequest) (*taskdomain.Task, error)
 }
 
 func (m *mockService) List(
@@ -66,6 +67,15 @@ func (m *mockService) Create(
 	req taskdomain.CreateTaskRequest,
 ) (*taskdomain.Task, error) {
 	return m.createFunc(organizationID, projectID, actorRole, req)
+}
+
+func (m *mockService) Update(
+	_ context.Context,
+	organizationID uuid.UUID,
+	taskID uuid.UUID,
+	req taskdomain.UpdateTaskRequest,
+) (*taskdomain.Task, error) {
+	return m.updateFunc(organizationID, taskID, req)
 }
 
 func TestHandler_List(t *testing.T) {
@@ -248,6 +258,97 @@ func TestHandler_Create_InvalidStatus(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	handler.Create(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandler_Update(t *testing.T) {
+	organizationID := testOrganizationID()
+	task := testTask()
+	task.Status = taskdomain.StatusDone
+
+	service := &mockService{
+		updateFunc: func(
+			gotOrganizationID uuid.UUID,
+			gotTaskID uuid.UUID,
+			req taskdomain.UpdateTaskRequest,
+		) (*taskdomain.Task, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, task.ID, gotTaskID)
+			require.Equal(t, "done", req.Status)
+			return task, nil
+		},
+	}
+
+	handler := taskhandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/tasks/"+task.ID.String(),
+		bytes.NewBufferString(`{"status":"done"}`),
+	)
+	req.SetPathValue("id", task.ID.String())
+	req = withSession(req, organizationID, "member")
+
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestHandler_Update_NotFound(t *testing.T) {
+	service := &mockService{
+		updateFunc: func(
+			uuid.UUID,
+			uuid.UUID,
+			taskdomain.UpdateTaskRequest,
+		) (*taskdomain.Task, error) {
+			return nil, taskdomain.ErrTaskNotFound
+		},
+	}
+
+	handler := taskhandler.NewHandler(service)
+	taskID := testTask().ID
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/tasks/"+taskID.String(),
+		bytes.NewBufferString(`{"status":"done"}`),
+	)
+	req.SetPathValue("id", taskID.String())
+	req = withSession(req, testOrganizationID(), "member")
+
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestHandler_Update_InvalidStatus(t *testing.T) {
+	service := &mockService{
+		updateFunc: func(
+			uuid.UUID,
+			uuid.UUID,
+			taskdomain.UpdateTaskRequest,
+		) (*taskdomain.Task, error) {
+			t.Fatal("service should not be called")
+			return nil, nil
+		},
+	}
+
+	handler := taskhandler.NewHandler(service)
+	taskID := testTask().ID
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/tasks/"+taskID.String(),
+		bytes.NewBufferString(`{"status":"blocked"}`),
+	)
+	req.SetPathValue("id", taskID.String())
+	req = withSession(req, testOrganizationID(), "owner")
+
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }

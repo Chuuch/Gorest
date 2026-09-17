@@ -23,6 +23,11 @@ type Service interface {
 		actorRole orgdomain.Role,
 		req taskdomain.CreateTaskRequest,
 	) (*taskdomain.Task, error)
+	Update(
+		ctx context.Context,
+		organizationID, taskID uuid.UUID,
+		req taskdomain.UpdateTaskRequest,
+	) (*taskdomain.Task, error)
 }
 
 type service struct {
@@ -71,6 +76,7 @@ func (s *service) Create(
 	}
 
 	now := time.Now().UTC()
+	status := taskdomain.Status(req.Status)
 
 	task := &taskdomain.Task{
 		ID:             uuid.New(),
@@ -78,7 +84,8 @@ func (s *service) Create(
 		ProjectID:      projectID,
 		Title:          req.Title,
 		Notes:          req.Notes,
-		Status:         taskdomain.Status(req.Status),
+		Status:         status,
+		CompletedAt:    completedAtFor(status, nil, now),
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
@@ -88,4 +95,41 @@ func (s *service) Create(
 	}
 
 	return task, nil
+}
+
+func (s *service) Update(
+	ctx context.Context,
+	organizationID, taskID uuid.UUID,
+	req taskdomain.UpdateTaskRequest,
+) (*taskdomain.Task, error) {
+	task, err := s.tasks.GetByID(ctx, taskID, organizationID)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	status := taskdomain.Status(req.Status)
+
+	task.Status = status
+	task.CompletedAt = completedAtFor(status, task.CompletedAt, now)
+	task.UpdatedAt = now
+
+	if err := s.tasks.Update(ctx, task); err != nil {
+		return nil, err
+	}
+
+	return task, nil
+}
+
+func completedAtFor(status taskdomain.Status, current *time.Time, now time.Time) *time.Time {
+	if status != taskdomain.StatusDone {
+		return nil
+	}
+
+	if current != nil {
+		return current
+	}
+
+	completedAt := now
+	return &completedAt
 }

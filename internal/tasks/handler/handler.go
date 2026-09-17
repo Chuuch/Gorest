@@ -91,6 +91,43 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusCreated, toResponse(task))
 }
 
+func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
+	organizationID, _, ok := h.session(w, r)
+	if !ok {
+		return
+	}
+
+	taskID, ok := h.taskID(w, r)
+	if !ok {
+		return
+	}
+
+	var req taskdomain.UpdateTaskRequest
+
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_request",
+			"invalid request body",
+		)
+		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
+		return
+	}
+
+	task, err := h.service.Update(r.Context(), organizationID, taskID, req)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	api.WriteJSON(w, http.StatusOK, toResponse(task))
+}
+
 func (h *Handler) projectID(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -106,6 +143,23 @@ func (h *Handler) projectID(
 		return uuid.Nil, false
 	}
 	return projectID, true
+}
+
+func (h *Handler) taskID(
+	w http.ResponseWriter,
+	r *http.Request,
+) (uuid.UUID, bool) {
+	taskID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_task_id",
+			"invalid task id",
+		)
+		return uuid.Nil, false
+	}
+	return taskID, true
 }
 
 func (h *Handler) session(

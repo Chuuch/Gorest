@@ -84,6 +84,7 @@ func setupTaskTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 			title TEXT NOT NULL,
 			notes TEXT NOT NULL DEFAULT '',
 			status TEXT NOT NULL,
+			completed_at TIMESTAMPTZ NULL,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL,
 			CONSTRAINT tasks_project_title_unique UNIQUE (project_id, title),
@@ -383,4 +384,127 @@ func TestTaskService_Create_ProjectNotFound(t *testing.T) {
 	)
 
 	require.ErrorIs(t, err, projectdomain.ErrProjectNotFound)
+}
+
+func TestTaskService_Update_MemberCanComplete(t *testing.T) {
+	db, cleanup := setupTaskTestDatabase(t)
+	defer cleanup()
+
+	service := setupTaskService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		projectID,
+		orgdomain.RoleOwner,
+		taskdomain.CreateTaskRequest{
+			Title:  "Fix login",
+			Status: "todo",
+		},
+	)
+	require.NoError(t, err)
+	require.Nil(t, created.CompletedAt)
+
+	updated, err := service.Update(
+		context.Background(),
+		organizationID,
+		created.ID,
+		taskdomain.UpdateTaskRequest{Status: "done"},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, taskdomain.StatusDone, updated.Status)
+	require.NotNil(t, updated.CompletedAt)
+}
+
+func TestTaskService_Update_ReopenClearsCompletedAt(t *testing.T) {
+	db, cleanup := setupTaskTestDatabase(t)
+	defer cleanup()
+
+	service := setupTaskService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		projectID,
+		orgdomain.RoleOwner,
+		taskdomain.CreateTaskRequest{
+			Title:  "Fix login",
+			Status: "done",
+		},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, created.CompletedAt)
+
+	updated, err := service.Update(
+		context.Background(),
+		organizationID,
+		created.ID,
+		taskdomain.UpdateTaskRequest{Status: "in_progress"},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, taskdomain.StatusInProgress, updated.Status)
+	require.Nil(t, updated.CompletedAt)
+}
+
+func TestTaskService_Update_DoneTwiceKeepsCompletedAt(t *testing.T) {
+	db, cleanup := setupTaskTestDatabase(t)
+	defer cleanup()
+
+	service := setupTaskService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		projectID,
+		orgdomain.RoleOwner,
+		taskdomain.CreateTaskRequest{
+			Title:  "Fix login",
+			Status: "done",
+		},
+	)
+	require.NoError(t, err)
+
+	own, err := service.List(context.Background(), organizationID, projectID)
+	require.NoError(t, err)
+	require.NotNil(t, own[0].CompletedAt)
+	firstCompletedAt := *own[0].CompletedAt
+
+	updated, err := service.Update(
+		context.Background(),
+		organizationID,
+		created.ID,
+		taskdomain.UpdateTaskRequest{Status: "done"},
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, updated.CompletedAt)
+	require.True(t, updated.CompletedAt.Equal(firstCompletedAt))
+}
+
+func TestTaskService_Update_NotFound(t *testing.T) {
+	db, cleanup := setupTaskTestDatabase(t)
+	defer cleanup()
+
+	service := setupTaskService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+
+	_, err := service.Update(
+		context.Background(),
+		organizationID,
+		uuid.New(),
+		taskdomain.UpdateTaskRequest{Status: "done"},
+	)
+
+	require.ErrorIs(t, err, taskdomain.ErrTaskNotFound)
 }
