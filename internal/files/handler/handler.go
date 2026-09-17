@@ -190,16 +190,16 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 
 func toResponse(view *filedomain.FileView) filedomain.FileResponse {
 	return filedomain.FileResponse{
-		ID: view.File.ID,
+		ID:             view.File.ID,
 		OrganizationID: view.File.OrganizationID,
-		ProjectID: view.File.ID,
-		UploadedBy: view.File.UploadedBy,
-		Filename: view.File.Filename,
-		ContentType: view.File.ContentType,
-		Size: view.File.Size,
-		CreatedAt: view.File.CreatedAt,
-		UpdatedAt: view.File.UpdatedAt,
-		UploadURL: view.UploadURL,
-		DownloadURL: view.DownloadURL,
+		ProjectID:      view.File.ID,
+		UploadedBy:     view.File.UploadedBy,
+		Filename:       view.File.Filename,
+		ContentType:    view.File.ContentType,
+		Size:           view.File.Size,
+		CreatedAt:      view.File.CreatedAt,
+		UpdatedAt:      view.File.UpdatedAt,
+		UploadURL:      view.UploadURL,
+		DownloadURL:    view.DownloadURL,
 	}
 }

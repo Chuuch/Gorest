@@ -14,10 +14,10 @@ import (
 )
 
 type S3Store struct {
-	client *s3.Client
+	client  *s3.Client
 	presign *s3.PresignClient
-	bucket string
-	ttl time.Duration
+	bucket  string
+	ttl     time.Duration
 }
 
 func newClient(endpoint, region, accessKey, secretKey string, usePathStyle bool) *s3.Client {
@@ -25,9 +25,9 @@ func newClient(endpoint, region, accessKey, secretKey string, usePathStyle bool)
 		Region: region,
 		Credentials: aws.NewCredentialsCache(
 			credentials.NewStaticCredentialsProvider(accessKey, secretKey, ""),
-			),
+		),
 	}
-	
+
 	return s3.NewFromConfig(cfg, func(o *s3.Options) {
 		o.BaseEndpoint = aws.String(endpoint)
 		o.UsePathStyle = usePathStyle
@@ -51,10 +51,10 @@ func NewS3Store(cfg config.StorageConfig) (*S3Store, error) {
 	)
 
 	return &S3Store{
-		client: opClient,
+		client:  opClient,
 		presign: s3.NewPresignClient(signClient),
-		bucket: cfg.Bucket,
-		ttl: cfg.PresignTTL,
+		bucket:  cfg.Bucket,
+		ttl:     cfg.PresignTTL,
 	}, nil
 }
 
@@ -82,8 +82,8 @@ func (s *S3Store) EnsureBucket(ctx context.Context, allowedOrigins []string) err
 					AllowedHeaders: []string{"*"},
 					AllowedMethods: []string{"GET", "PUT", "HEAD"},
 					AllowedOrigins: allowedOrigins,
-					ExposeHeaders: []string{"ETag", "Content-Length", "Content-Type"},
-					MaxAgeSeconds: aws.Int32(3600),
+					ExposeHeaders:  []string{"ETag", "Content-Length", "Content-Type"},
+					MaxAgeSeconds:  aws.Int32(3600),
 				},
 			},
 		},
@@ -91,7 +91,7 @@ func (s *S3Store) EnsureBucket(ctx context.Context, allowedOrigins []string) err
 	if err != nil {
 		return fmt.Errorf("put bucket cors: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -102,8 +102,8 @@ func (s *S3Store) PresignPut(
 	out, err := s.presign.PresignPutObject(
 		ctx,
 		&s3.PutObjectInput{
-			Bucket: aws.String(s.bucket),
-			Key: aws.String(key),
+			Bucket:      aws.String(s.bucket),
+			Key:         aws.String(key),
 			ContentType: aws.String(contentType),
 		},
 		s3.WithPresignExpires(s.ttl),
@@ -122,11 +122,11 @@ func (s *S3Store) PresignGet(
 	out, err := s.presign.PresignGetObject(
 		ctx,
 		&s3.GetObjectInput{
-			Bucket: aws.String(s.bucket),
-			Key: aws.String(key),
+			Bucket:                     aws.String(s.bucket),
+			Key:                        aws.String(key),
 			ResponseContentDisposition: aws.String(contentDisposition(filename)),
 		},
-	s3.WithPresignExpires(s.ttl),
+		s3.WithPresignExpires(s.ttl),
 	)
 	if err != nil {
 		return "", fmt.Errorf("presign get: %w", err)

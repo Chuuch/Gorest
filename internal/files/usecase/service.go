@@ -28,9 +28,9 @@ type Service interface {
 }
 
 type service struct {
-	files filerepository.FileRepository
+	files    filerepository.FileRepository
 	projects projectrepository.ProjectRepository
-	store storage.ObjectStore
+	store    storage.ObjectStore
 }
 
 func NewService(
@@ -39,9 +39,9 @@ func NewService(
 	store storage.ObjectStore,
 ) Service {
 	return &service{
-		files: files,
+		files:    files,
 		projects: projects,
-		store: store,
+		store:    store,
 	}
 }
 
@@ -67,7 +67,7 @@ func (s *service) List(
 		}
 
 		views = append(views, &filedomain.FileView{
-			File: file,
+			File:        file,
 			DownloadURL: downloadURL,
 		})
 	}
@@ -103,16 +103,16 @@ func (s *service) Create(
 	fileID := uuid.New()
 
 	file := &filedomain.File{
-		ID: fileID,
+		ID:             fileID,
 		OrganizationID: organizationID,
-		ProjectID: projectID,
-		UploadedBy: userID,
-		ObjectKey: filedomain.ObjectKey(organizationID, projectID, fileID),
-		Filename: req.Filename,
-		ContentType: req.ContentType,
-		Size: req.Size,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ProjectID:      projectID,
+		UploadedBy:     userID,
+		ObjectKey:      filedomain.ObjectKey(organizationID, projectID, fileID),
+		Filename:       req.Filename,
+		ContentType:    req.ContentType,
+		Size:           req.Size,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 
 	if err := s.files.Create(ctx, file); err != nil {
@@ -125,7 +125,7 @@ func (s *service) Create(
 	}
 
 	return &filedomain.FileView{
-		File: file,
+		File:      file,
 		UploadURL: uploadURL,
 	}, nil
 }

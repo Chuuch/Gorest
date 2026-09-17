@@ -9,21 +9,21 @@ import (
 const MaxSizeBytes = 10 * 1024 * 1024
 
 type File struct {
-	ID uuid.UUID
+	ID             uuid.UUID
 	OrganizationID uuid.UUID
-	ProjectID uuid.UUID
-	UploadedBy uuid.UUID
-	ObjectKey string
-	Filename string
-	ContentType string
-	Size int
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ProjectID      uuid.UUID
+	UploadedBy     uuid.UUID
+	ObjectKey      string
+	Filename       string
+	ContentType    string
+	Size           int
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type FileView struct {
-	File *File
-	UploadURL string
+	File        *File
+	UploadURL   string
 	DownloadURL string
 }
 

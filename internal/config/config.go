@@ -15,7 +15,7 @@ type Config struct {
 	Database DatabaseConfig `envPrefix:"GOREST_DATABASE_"`
 	Auth     AuthConfig     `envPrefix:"GOREST_AUTH_"`
 	CORS     CORSConfig     `envPrefix:"GOREST_CORS_"`
-	Storage  StorageConfig	`envPrefix:"GOREST_STORAGE_"`
+	Storage  StorageConfig  `envPrefix:"GOREST_STORAGE_"`
 	Logger   LoggerConfig   `envPrefix:"GOREST_LOGGER_"`
 }
 
@@ -62,14 +62,14 @@ type CORSConfig struct {
 }
 
 type StorageConfig struct {
-	Endpoint string `env:"ENDPOINT,required"`
-	PublicEndpoint string `env:"PUBLIC_ENDPOINT,required"`
-	Region string `env:"REGION,required"`
-	Bucket string `env:"ACCESS_KEY,required"`
-	AccessKey string `env:"ACCESS_KEY,required"`
-	SecretKey string `env:"SECRET_KEY,required"`
-	UsePathStyle bool `env:"USE_PATH_STYLE,required"`
-	PresignTTL time.Duration `env:"PRESIGN_TTL,required"`
+	Endpoint       string        `env:"ENDPOINT,required"`
+	PublicEndpoint string        `env:"PUBLIC_ENDPOINT,required"`
+	Region         string        `env:"REGION,required"`
+	Bucket         string        `env:"ACCESS_KEY,required"`
+	AccessKey      string        `env:"ACCESS_KEY,required"`
+	SecretKey      string        `env:"SECRET_KEY,required"`
+	UsePathStyle   bool          `env:"USE_PATH_STYLE,required"`
+	PresignTTL     time.Duration `env:"PRESIGN_TTL,required"`
 }
 
 type LoggerConfig struct {
