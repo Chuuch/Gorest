@@ -12,6 +12,10 @@ type CreateTaskRequest struct {
 	Status string `json:"status" validate:"required,oneof=todo in_progress done"`
 }
 
+type UpdateTaskRequest struct {
+	Status string `json:"status" validate:"required,oneof=todo in_progress done"`
+}
+
 type TaskResponse struct {
 	ID             uuid.UUID `json:"id"`
 	OrganizationID uuid.UUID `json:"organization_id"`
@@ -19,6 +23,7 @@ type TaskResponse struct {
 	Title          string    `json:"title"`
 	Notes          string    `json:"notes"`
 	Status         Status    `json:"status"`
+	CompletedAt		 *time.Time `json:"completed_at"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }

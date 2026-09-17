@@ -33,10 +33,11 @@ func (r *Repository) Create(
 				title,
 				notes,
 				status,
+				completed_at,
 				created_at,
 				updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		`
 
 	_, err := database.QuerierFrom(ctx, r.db).Exec(
@@ -48,6 +49,7 @@ func (r *Repository) Create(
 		task.Title,
 		task.Notes,
 		task.Status,
+		task.CompletedAt,
 		task.CreatedAt,
 		task.UpdatedAt,
 	)
@@ -74,6 +76,7 @@ func (r *Repository) GetByID(
 				title,
 				notes,
 				status,
+				completed_at,
 				created_at,
 				updated_at
 			FROM tasks
@@ -94,6 +97,7 @@ func (r *Repository) GetByID(
 		&task.Title,
 		&task.Notes,
 		&task.Status,
+		&task.CompletedAt,
 		&task.CreatedAt,
 		&task.UpdatedAt,
 	)
@@ -108,6 +112,39 @@ func (r *Repository) GetByID(
 	return &task, nil
 }
 
+func (r *Repository) Update(
+	ctx context.Context,
+	task *domain.Task,
+) error {
+	const query = `
+			UPDATE tasks
+			SET
+					status = $1,
+					completed_at = $2,
+					updated_at = $3
+			WHERE id = $4 AND organization_id = $5
+		`
+
+	tag, err := database.QuerierFrom(ctx, r.db).Exec(
+		ctx,
+		query,
+		task.Status,
+		task.CompletedAt,
+		task.UpdatedAt,
+		task.ID,
+		task.OrganizationID,
+	)
+	if err != nil {
+		return fmt.Errorf("update task: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return domain.ErrTaskNotFound
+	}
+
+	return nil
+}
+
 func (r *Repository) ListByProjectID(
 	ctx context.Context,
 	organizationID, projectID uuid.UUID,
@@ -120,6 +157,7 @@ func (r *Repository) ListByProjectID(
 				title,
 				notes,
 				status,
+				completed_at,
 				created_at,
 				updated_at
 			FROM tasks
@@ -145,6 +183,7 @@ func (r *Repository) ListByProjectID(
 			&task.Title,
 			&task.Notes,
 			&task.Status,
+			&task.CompletedAt,
 			&task.CreatedAt,
 			&task.UpdatedAt,
 		); err != nil {
