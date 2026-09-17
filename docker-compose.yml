@@ -25,6 +25,20 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: gorest-minio
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${GOREST_STORAGE_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${GOREST_STORAGE_SECRET_KEY}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
   
   api:
     build:
@@ -43,6 +57,9 @@ services:
       GOREST_DATABASE_HOST: postgres
       GOREST_DATABASE_PORT: 5432
 
+      GOREST_STORAGE_ENDPOINT: http://minio:9000
+      GOREST_STORAGE_PUBLIC_ENDPOINT: http://localhost:9000
+
       GOREST_LOGGER_LEVEL: debug
       GOREST_LOGGER_FORMAT: json
       GOREST_LOGGER_ADD_SOURCE: "true"
@@ -56,3 +73,4 @@ services:
 
 volumes:
   postgres_data:
+  minio_data:
