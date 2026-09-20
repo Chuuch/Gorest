@@ -5,18 +5,19 @@ import (
 	"testing"
 	"time"
 
+	commentdomain "github.com/chuuch/gorest/internal/comments/domain"
+	commentpostgres "github.com/chuuch/gorest/internal/comments/postgres"
+	commentusecase "github.com/chuuch/gorest/internal/comments/usecase"
+	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	taskdomain "github.com/chuuch/gorest/internal/tasks/domain"
 	taskpostgres "github.com/chuuch/gorest/internal/tasks/postgres"
-	timeentrydomain "github.com/chuuch/gorest/internal/timeentries/domain"
-	timeentrypostgres "github.com/chuuch/gorest/internal/timeentries/postgres"
-	timeentryusecase "github.com/chuuch/gorest/internal/timeentries/usecase"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
-func setupTimeEntryTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
+func setupCommentTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 	t.Helper()
 
 	ctx := context.Background()
@@ -104,16 +105,15 @@ func setupTimeEntryTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 	require.NoError(t, err)
 
 	_, err = db.Exec(ctx, `
-		CREATE TABLE time_entries (
+		CREATE TABLE comments (
 			id UUID PRIMARY KEY,
 			organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
 			task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
 			user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-			minutes INTEGER NOT NULL,
-			notes TEXT NOT NULL DEFAULT '',
+			body TEXT NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL,
-			CONSTRAINT time_entries_minutes_check CHECK (minutes >= 1 AND minutes <= 1440)
+			CONSTRAINT comments_body_check CHECK (char_length(body) >= 1 AND char_length(body) <= 2000)
 		)
 	`)
 	require.NoError(t, err)
@@ -266,10 +266,11 @@ func seedTask(
 				title,
 				notes,
 				status,
+				completed_at,
 				created_at,
 				updated_at
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		`,
 		taskID,
 		organizationID,
@@ -277,6 +278,7 @@ func seedTask(
 		title,
 		"",
 		"todo",
+		nil,
 		now,
 		now,
 	)
@@ -285,18 +287,18 @@ func seedTask(
 	return taskID
 }
 
-func setupTimeEntryService(db *pgxpool.Pool) timeentryusecase.Service {
-	return timeentryusecase.NewService(
-		timeentrypostgres.NewRepository(db),
+func setupCommentService(db *pgxpool.Pool) commentusecase.Service {
+	return commentusecase.NewService(
+		commentpostgres.NewRepository(db),
 		taskpostgres.NewRepository(db),
 	)
 }
 
-func TestTimeEntryService_CreateAndList(t *testing.T) {
-	db, cleanup := setupTimeEntryTestDatabase(t)
+func TestCommentService_CreateAndList(t *testing.T) {
+	db, cleanup := setupCommentTestDatabase(t)
 	defer cleanup()
 
-	service := setupTimeEntryService(db)
+	service := setupCommentService(db)
 	userID := seedUser(t, db, "ada@example.com")
 	organizationID := seedOrganization(t, db, "Acme")
 	otherOrganizationID := seedOrganization(t, db, "Other")
@@ -307,21 +309,18 @@ func TestTimeEntryService_CreateAndList(t *testing.T) {
 	taskID := seedTask(t, db, organizationID, projectID, "Fix login")
 	otherTaskID := seedTask(t, db, otherOrganizationID, otherProjectID, "Fix login")
 
-	entry, err := service.Create(
+	comment, err := service.Create(
 		context.Background(),
 		organizationID,
 		taskID,
 		userID,
-		timeentrydomain.CreateTimeEntryRequest{
-			Minutes: 90,
-			Notes:   "OAuth",
-		},
+		commentdomain.CreateCommentRequest{Body: "Check the OAuth redirect"},
 	)
 
 	require.NoError(t, err)
-	require.Equal(t, 90, entry.Minutes)
-	require.Equal(t, taskID, entry.TaskID)
-	require.Equal(t, userID, entry.UserID)
+	require.Equal(t, "Check the OAuth redirect", comment.Body)
+	require.Equal(t, taskID, comment.TaskID)
+	require.Equal(t, userID, comment.UserID)
 
 	own, err := service.List(context.Background(), organizationID, taskID)
 	require.NoError(t, err)
@@ -335,68 +334,34 @@ func TestTimeEntryService_CreateAndList(t *testing.T) {
 	require.Empty(t, other)
 }
 
-func TestTimeEntryService_Create_MemberCanAdd(t *testing.T) {
-	db, cleanup := setupTimeEntryTestDatabase(t)
+func TestCommentService_Create_MemberCanAdd(t *testing.T) {
+	db, cleanup := setupCommentTestDatabase(t)
 	defer cleanup()
 
-	service := setupTimeEntryService(db)
+	service := setupCommentService(db)
 	userID := seedUser(t, db, "mike@example.com")
 	organizationID := seedOrganization(t, db, "Acme")
 	clientID := seedClient(t, db, organizationID, "Northwind")
 	projectID := seedProject(t, db, organizationID, clientID, "Website")
 	taskID := seedTask(t, db, organizationID, projectID, "Fix login")
 
-	entry, err := service.Create(
+	comment, err := service.Create(
 		context.Background(),
 		organizationID,
 		taskID,
 		userID,
-		timeentrydomain.CreateTimeEntryRequest{Minutes: 30},
+		commentdomain.CreateCommentRequest{Body: "Looks good"},
 	)
 
 	require.NoError(t, err)
-	require.Equal(t, 30, entry.Minutes)
+	require.Equal(t, "Looks good", comment.Body)
 }
 
-func TestTimeEntryService_Create_MultipleEntries(t *testing.T) {
-	db, cleanup := setupTimeEntryTestDatabase(t)
+func TestCommentService_Create_TaskNotFound(t *testing.T) {
+	db, cleanup := setupCommentTestDatabase(t)
 	defer cleanup()
 
-	service := setupTimeEntryService(db)
-	userID := seedUser(t, db, "ada@example.com")
-	organizationID := seedOrganization(t, db, "Acme")
-	clientID := seedClient(t, db, organizationID, "Northwind")
-	projectID := seedProject(t, db, organizationID, clientID, "Website")
-	taskID := seedTask(t, db, organizationID, projectID, "Fix login")
-
-	_, err := service.Create(
-		context.Background(),
-		organizationID,
-		taskID,
-		userID,
-		timeentrydomain.CreateTimeEntryRequest{Minutes: 30},
-	)
-	require.NoError(t, err)
-
-	_, err = service.Create(
-		context.Background(),
-		organizationID,
-		taskID,
-		userID,
-		timeentrydomain.CreateTimeEntryRequest{Minutes: 45},
-	)
-	require.NoError(t, err)
-
-	entries, err := service.List(context.Background(), organizationID, taskID)
-	require.NoError(t, err)
-	require.Len(t, entries, 2)
-}
-
-func TestTimeEntryService_Create_TaskNotFound(t *testing.T) {
-	db, cleanup := setupTimeEntryTestDatabase(t)
-	defer cleanup()
-
-	service := setupTimeEntryService(db)
+	service := setupCommentService(db)
 	userID := seedUser(t, db, "ada@example.com")
 	organizationID := seedOrganization(t, db, "Acme")
 
@@ -405,8 +370,201 @@ func TestTimeEntryService_Create_TaskNotFound(t *testing.T) {
 		organizationID,
 		uuid.New(),
 		userID,
-		timeentrydomain.CreateTimeEntryRequest{Minutes: 30},
+		commentdomain.CreateCommentRequest{Body: "Nope"},
 	)
 
 	require.ErrorIs(t, err, taskdomain.ErrTaskNotFound)
+}
+
+func TestCommentService_Update_Author(t *testing.T) {
+	db, cleanup := setupCommentTestDatabase(t)
+	defer cleanup()
+
+	service := setupCommentService(db)
+	userID := seedUser(t, db, "ada@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+	taskID := seedTask(t, db, organizationID, projectID, "Fix login")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		taskID,
+		userID,
+		commentdomain.CreateCommentRequest{Body: "First draft"},
+	)
+	require.NoError(t, err)
+
+	updated, err := service.Update(
+		context.Background(),
+		organizationID,
+		created.ID,
+		userID,
+		commentdomain.UpdateCommentRequest{Body: "Fixed draft"},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, "Fixed draft", updated.Body)
+}
+
+func TestCommentService_Update_OtherMemberForbidden(t *testing.T) {
+	db, cleanup := setupCommentTestDatabase(t)
+	defer cleanup()
+
+	service := setupCommentService(db)
+	authorID := seedUser(t, db, "ada@example.com")
+	otherID := seedUser(t, db, "mike@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+	taskID := seedTask(t, db, organizationID, projectID, "Fix login")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		taskID,
+		authorID,
+		commentdomain.CreateCommentRequest{Body: "First draft"},
+	)
+	require.NoError(t, err)
+
+	_, err = service.Update(
+		context.Background(),
+		organizationID,
+		created.ID,
+		otherID,
+		commentdomain.UpdateCommentRequest{Body: "Hijacked"},
+	)
+
+	require.ErrorIs(t, err, commentdomain.ErrForbidden)
+}
+
+func TestCommentService_Update_WrongOrgNotFound(t *testing.T) {
+	db, cleanup := setupCommentTestDatabase(t)
+	defer cleanup()
+
+	service := setupCommentService(db)
+	userID := seedUser(t, db, "ada@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	otherOrganizationID := seedOrganization(t, db, "Other")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+	taskID := seedTask(t, db, organizationID, projectID, "Fix login")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		taskID,
+		userID,
+		commentdomain.CreateCommentRequest{Body: "First draft"},
+	)
+	require.NoError(t, err)
+
+	_, err = service.Update(
+		context.Background(),
+		otherOrganizationID,
+		created.ID,
+		userID,
+		commentdomain.UpdateCommentRequest{Body: "Nope"},
+	)
+
+	require.ErrorIs(t, err, commentdomain.ErrCommentNotFound)
+}
+
+func TestCommentService_Delete_Author(t *testing.T) {
+	db, cleanup := setupCommentTestDatabase(t)
+	defer cleanup()
+
+	service := setupCommentService(db)
+	userID := seedUser(t, db, "ada@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+	taskID := seedTask(t, db, organizationID, projectID, "Fix login")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		taskID,
+		userID,
+		commentdomain.CreateCommentRequest{Body: "Remove me"},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		organizationID,
+		created.ID,
+		userID,
+		orgdomain.RoleMember,
+	)
+	require.NoError(t, err)
+
+	comments, err := service.List(context.Background(), organizationID, taskID)
+	require.NoError(t, err)
+	require.Empty(t, comments)
+}
+
+func TestCommentService_Delete_AdminCanDeleteOther(t *testing.T) {
+	db, cleanup := setupCommentTestDatabase(t)
+	defer cleanup()
+
+	service := setupCommentService(db)
+	authorID := seedUser(t, db, "ada@example.com")
+	adminID := seedUser(t, db, "olivia@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+	taskID := seedTask(t, db, organizationID, projectID, "Fix login")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		taskID,
+		authorID,
+		commentdomain.CreateCommentRequest{Body: "Remove me"},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		organizationID,
+		created.ID,
+		adminID,
+		orgdomain.RoleAdmin,
+	)
+	require.NoError(t, err)
+}
+
+func TestCommentService_Delete_MemberCannotDeleteOther(t *testing.T) {
+	db, cleanup := setupCommentTestDatabase(t)
+	defer cleanup()
+
+	service := setupCommentService(db)
+	authorID := seedUser(t, db, "ada@example.com")
+	otherID := seedUser(t, db, "mike@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+	taskID := seedTask(t, db, organizationID, projectID, "Fix login")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		taskID,
+		authorID,
+		commentdomain.CreateCommentRequest{Body: "Leave me"},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		organizationID,
+		created.ID,
+		otherID,
+		orgdomain.RoleMember,
+	)
+
+	require.ErrorIs(t, err, commentdomain.ErrForbidden)
 }

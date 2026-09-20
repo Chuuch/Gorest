@@ -26,7 +26,7 @@ func TestJwtManager_GenerateAccessToken(t *testing.T) {
 	userID := uuid.New()
 	organizationID := uuid.New()
 
-	token, err := manager.GenerateAccessToken(userID, organizationID, "owner")
+	token, err := manager.GenerateAccessToken(userID, organizationID, uuid.Nil, "owner")
 
 	require.NoError(t, err)
 	require.NotEmpty(t, token)
@@ -36,10 +36,33 @@ func TestJwtManager_GenerateAccessToken(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, userID, claims.UserID)
 	require.Equal(t, organizationID, claims.OrganizationID)
+	require.Equal(t, uuid.Nil, claims.ClientID)
 	require.Equal(t, "owner", claims.Role)
 	require.Equal(t, jwtTestIssuer, claims.Issuer)
 	require.True(t, claims.IssuedAt.Before(time.Now().UTC()) || claims.IssuedAt.Equal(time.Now().UTC()))
 	require.True(t, claims.ExpiresAt.After(time.Now().UTC()))
+}
+
+func TestJwtManager_GenerateAccessToken_Client(t *testing.T) {
+	manager := security.NewJwtManager(
+		jwtTestSecret,
+		jwtTestIssuer,
+		jwtTestTTL,
+	)
+
+	userID := uuid.New()
+	organizationID := uuid.New()
+	clientID := uuid.New()
+
+	token, err := manager.GenerateAccessToken(userID, organizationID, clientID, "client")
+
+	require.NoError(t, err)
+
+	claims, err := manager.ParseAccessToken(token)
+
+	require.NoError(t, err)
+	require.Equal(t, clientID, claims.ClientID)
+	require.Equal(t, "client", claims.Role)
 }
 
 func TestJwtManager_ParseAccessToken_InvalidSignature(t *testing.T) {
@@ -55,7 +78,7 @@ func TestJwtManager_ParseAccessToken_InvalidSignature(t *testing.T) {
 		jwtTestTTL,
 	)
 
-	token, err := otherManager.GenerateAccessToken(uuid.New(), uuid.New(), "owner")
+	token, err := otherManager.GenerateAccessToken(uuid.New(), uuid.New(), uuid.Nil, "owner")
 
 	require.NoError(t, err)
 
@@ -77,7 +100,7 @@ func TestJwtManager_ParseAccessToken_WrongIssuer(t *testing.T) {
 		jwtTestTTL,
 	)
 
-	token, err := otherManager.GenerateAccessToken(uuid.New(), uuid.New(), "owner")
+	token, err := otherManager.GenerateAccessToken(uuid.New(), uuid.New(), uuid.Nil, "owner")
 
 	require.NoError(t, err)
 
@@ -93,7 +116,7 @@ func TestJwtManager_ParseAccessToken_Expired(t *testing.T) {
 		-1*time.Minute,
 	)
 
-	token, err := manager.GenerateAccessToken(uuid.New(), uuid.New(), "owner")
+	token, err := manager.GenerateAccessToken(uuid.New(), uuid.New(), uuid.Nil, "owner")
 
 	require.NoError(t, err)
 
@@ -121,7 +144,7 @@ func TestJwtManager_ParseAccessToken_EmptyRole(t *testing.T) {
 		jwtTestTTL,
 	)
 
-	token, err := manager.GenerateAccessToken(uuid.New(), uuid.New(), "")
+	token, err := manager.GenerateAccessToken(uuid.New(), uuid.New(), uuid.Nil, "")
 
 	require.NoError(t, err)
 

@@ -17,8 +17,17 @@ import (
 	clienthandler "github.com/chuuch/gorest/internal/client/handler"
 	clientpostgres "github.com/chuuch/gorest/internal/client/postgres"
 	clientusecase "github.com/chuuch/gorest/internal/client/usecase"
+	clientuserhandler "github.com/chuuch/gorest/internal/clientusers/handler"
+	clientuserpostgres "github.com/chuuch/gorest/internal/clientusers/postgres"
+	clientuserusecase "github.com/chuuch/gorest/internal/clientusers/usecase"
+	commenthandler "github.com/chuuch/gorest/internal/comments/handler"
+	commentpostgres "github.com/chuuch/gorest/internal/comments/postgres"
+	commentusecase "github.com/chuuch/gorest/internal/comments/usecase"
 	"github.com/chuuch/gorest/internal/config"
 	"github.com/chuuch/gorest/internal/database"
+	filehandler "github.com/chuuch/gorest/internal/files/handler"
+	filepostgres "github.com/chuuch/gorest/internal/files/postgres"
+	fileusecase "github.com/chuuch/gorest/internal/files/usecase"
 	"github.com/chuuch/gorest/internal/middleware"
 	orghandler "github.com/chuuch/gorest/internal/organization/handler"
 	orgpostgres "github.com/chuuch/gorest/internal/organization/postgres"
@@ -26,9 +35,13 @@ import (
 	projecthandler "github.com/chuuch/gorest/internal/projects/handler"
 	projectpostgres "github.com/chuuch/gorest/internal/projects/postgres"
 	projectusecase "github.com/chuuch/gorest/internal/projects/usecase"
+	"github.com/chuuch/gorest/internal/storage"
 	taskhandler "github.com/chuuch/gorest/internal/tasks/handler"
 	taskpostgres "github.com/chuuch/gorest/internal/tasks/postgres"
 	taskusecase "github.com/chuuch/gorest/internal/tasks/usecase"
+	timeentryhandler "github.com/chuuch/gorest/internal/timeentries/handler"
+	timeentrypostgres "github.com/chuuch/gorest/internal/timeentries/postgres"
+	timeentryusecase "github.com/chuuch/gorest/internal/timeentries/usecase"
 	userhandler "github.com/chuuch/gorest/internal/user/handler"
 	userpostgres "github.com/chuuch/gorest/internal/user/postgres"
 	userusecase "github.com/chuuch/gorest/internal/user/usecase"
@@ -45,6 +58,15 @@ func New(cfg *config.Config) (*Server, error) {
 	db, err := database.NewPostgresPool(context.Background(), cfg.Database)
 	if err != nil {
 		return nil, fmt.Errorf("initialize database: %w", err)
+	}
+
+	objectStore, err := storage.NewS3Store(cfg.Storage)
+	if err != nil {
+		return nil, fmt.Errorf("initialize object storage: %w", err)
+	}
+
+	if err := objectStore.EnsureBucket(context.Background(), cfg.CORS.AllowedOrigins); err != nil {
+		return nil, fmt.Errorf("ensure storage bucket: %w", err)
 	}
 
 	// -------------------------------------------------------------
@@ -124,6 +146,49 @@ func New(cfg *config.Config) (*Server, error) {
 	taskHandler := taskhandler.NewHandler(taskService)
 
 	// -------------------------------------------------------------
+	// Time entry domain
+	// -------------------------------------------------------------
+	timeEntryRepository := timeentrypostgres.NewRepository(db)
+	timeEntryService := timeentryusecase.NewService(timeEntryRepository, taskRepository)
+	timeEntryHandler := timeentryhandler.NewHandler(timeEntryService)
+
+	// -------------------------------------------------------------
+	// File domain
+	// -------------------------------------------------------------
+	fileRepository := filepostgres.NewRepository(db)
+	fileSerivce := fileusecase.NewService(fileRepository, projectRepository, objectStore)
+	fileHandler := filehandler.NewHandler(fileSerivce)
+
+	// -------------------------------------------------------------
+	// Comment  domain
+	// -------------------------------------------------------------
+	commentRepository := commentpostgres.NewRepository(db)
+	commentService := commentusecase.NewService(commentRepository, taskRepository)
+	commentHandler := commenthandler.NewHandler(commentService)
+
+	// -------------------------------------------------------------
+	// Client User domain
+	// -------------------------------------------------------------
+	clientUserRepository := clientuserpostgres.NewRepository(db)
+	clientUserService := clientuserusecase.NewService(
+		userService,
+		clientRepository,
+		clientUserRepository,
+		membershipRepository,
+		organizationRepository,
+		refreshTokenRepository,
+		tokenManager,
+		passwordHasher,
+		db,
+		cfg.Auth.RefreshTokenTTL,
+	)
+	clientUserHandler := clientuserhandler.NewHandler(
+		clientUserService,
+		cfg.Auth.RefreshTokenTTL,
+		cfg.Auth.CookieSecure,
+	)
+
+	// -------------------------------------------------------------
 	// HTTP Server
 	// -------------------------------------------------------------
 	httpServer := &http.Server{
@@ -136,6 +201,10 @@ func New(cfg *config.Config) (*Server, error) {
 				clientHandler,
 				projectHandler,
 				taskHandler,
+				timeEntryHandler,
+				fileHandler,
+				commentHandler,
+				clientUserHandler,
 				tokenManager),
 		),
 		ReadTimeout:  cfg.Server.ReadTimeout,
