@@ -13,6 +13,8 @@ import (
 	orghandler "github.com/chuuch/gorest/internal/organization/handler"
 	projecthandler "github.com/chuuch/gorest/internal/projects/handler"
 	taskhandler "github.com/chuuch/gorest/internal/tasks/handler"
+	ticketfilehandler "github.com/chuuch/gorest/internal/ticketfiles/handler"
+	tickethandler "github.com/chuuch/gorest/internal/tickets/handler"
 	timeentryhandler "github.com/chuuch/gorest/internal/timeentries/handler"
 	userhandler "github.com/chuuch/gorest/internal/user/handler"
 )
@@ -36,6 +38,8 @@ func newRouter(
 	fileHandler *filehandler.Handler,
 	commentHandler *commenthandler.Handler,
 	clientUserHandler *clientuserhandler.Handler,
+	ticketHandler *tickethandler.Handler,
+	ticketFileHandler *ticketfilehandler.Handler,
 	tokenManager security.TokenManager,
 ) *http.ServeMux {
 	mux := http.NewServeMux()
@@ -52,6 +56,8 @@ func newRouter(
 		fileHandler,
 		commentHandler,
 		clientUserHandler,
+		ticketHandler,
+		ticketFileHandler,
 		tokenManager,
 	)
 
@@ -70,6 +76,8 @@ func registerRoutes(
 	fileHandler *filehandler.Handler,
 	commentHandler *commenthandler.Handler,
 	clientUserHandler *clientuserhandler.Handler,
+	ticketHandler *tickethandler.Handler,
+	ticketFileHandler *ticketfilehandler.Handler,
 	tokenManager security.TokenManager,
 ) {
 	// HEALTH
@@ -115,6 +123,16 @@ func registerRoutes(
 	mux.Handle("POST /api/v1/tasks/{id}/comments", staff(tokenManager, commentHandler.Create))
 	mux.Handle("PATCH /api/v1/comments/{id}", staff(tokenManager, commentHandler.Update))
 	mux.Handle("DELETE /api/v1/comments/{id}", staff(tokenManager, commentHandler.Delete))
+
+	// TICKETS
+	mux.Handle("GET /api/v1/clients/{id}/tickets", staff(tokenManager, ticketHandler.List))
+	mux.Handle("PATCH /api/v1/tickets/{id}", staff(tokenManager, ticketHandler.Update))
+	mux.Handle("GET /api/v1/tickets/{id}/files", staff(tokenManager, ticketFileHandler.List))
+	mux.Handle("POST /api/v1/tickets/{id}/files", staff(tokenManager, ticketFileHandler.Create))
+	mux.Handle("GET /api/v1/client-auth/tickets", portal(tokenManager, ticketHandler.ListPortal))
+	mux.Handle("POST /api/v1/client-auth/tickets", portal(tokenManager, ticketHandler.CreatePortal))
+	mux.Handle("GET /api/v1/client-auth/tickets/{id}/files", portal(tokenManager, ticketFileHandler.ListPortal))
+	mux.Handle("POST /api/v1/client-auth/tickets/{id}/files", portal(tokenManager, ticketFileHandler.CreatePortal))
 
 	// CLIENT USERS AUTH
 	mux.HandleFunc("POST /api/v1/client-auth/login", clientUserHandler.Login)
