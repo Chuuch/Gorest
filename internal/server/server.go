@@ -39,6 +39,12 @@ import (
 	taskhandler "github.com/chuuch/gorest/internal/tasks/handler"
 	taskpostgres "github.com/chuuch/gorest/internal/tasks/postgres"
 	taskusecase "github.com/chuuch/gorest/internal/tasks/usecase"
+	ticketfilehandler "github.com/chuuch/gorest/internal/ticketfiles/handler"
+	ticketfilepostgres "github.com/chuuch/gorest/internal/ticketfiles/postgres"
+	ticketfileusecase "github.com/chuuch/gorest/internal/ticketfiles/usecase"
+	tickethandler "github.com/chuuch/gorest/internal/tickets/handler"
+	ticketpostgres "github.com/chuuch/gorest/internal/tickets/postgres"
+	ticketusecase "github.com/chuuch/gorest/internal/tickets/usecase"
 	timeentryhandler "github.com/chuuch/gorest/internal/timeentries/handler"
 	timeentrypostgres "github.com/chuuch/gorest/internal/timeentries/postgres"
 	timeentryusecase "github.com/chuuch/gorest/internal/timeentries/usecase"
@@ -189,6 +195,20 @@ func New(cfg *config.Config) (*Server, error) {
 	)
 
 	// -------------------------------------------------------------
+	// Ticket domain
+	// -------------------------------------------------------------
+	ticketRepository := ticketpostgres.NewRepository(db)
+	ticketService := ticketusecase.NewService(ticketRepository, clientRepository)
+	ticketHandler := tickethandler.NewHandler(ticketService)
+
+	// -------------------------------------------------------------
+	// Ticket file domain
+	// -------------------------------------------------------------
+	ticketFileRepository := ticketfilepostgres.NewRepository(db)
+	ticketFileService := ticketfileusecase.NewService(ticketFileRepository, ticketRepository, objectStore)
+	ticketFileHandler := ticketfilehandler.NewHandler(ticketFileService)
+
+	// -------------------------------------------------------------
 	// HTTP Server
 	// -------------------------------------------------------------
 	httpServer := &http.Server{
@@ -205,6 +225,8 @@ func New(cfg *config.Config) (*Server, error) {
 				fileHandler,
 				commentHandler,
 				clientUserHandler,
+				ticketHandler,
+				ticketFileHandler,
 				tokenManager),
 		),
 		ReadTimeout:  cfg.Server.ReadTimeout,
