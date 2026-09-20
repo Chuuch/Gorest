@@ -111,7 +111,7 @@ func TestAuth_ValidToken(t *testing.T) {
 	userID := uuid.New()
 	organizationID := uuid.New()
 
-	token, err := tokenManager.GenerateAccessToken(userID, organizationID, "owner")
+	token, err := tokenManager.GenerateAccessToken(userID, organizationID, uuid.Nil, "owner")
 	require.NoError(t, err)
 
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -129,6 +129,9 @@ func TestAuth_ValidToken(t *testing.T) {
 
 		require.True(t, ok)
 		require.Equal(t, "owner", role)
+
+		_, ok = requestcontext.ClientID(r.Context())
+		require.False(t, ok)
 
 		w.WriteHeader(http.StatusNoContent)
 	})
@@ -148,4 +151,54 @@ func TestAuth_ValidToken(t *testing.T) {
 	handler.ServeHTTP(recorder, req)
 
 	require.Equal(t, http.StatusNoContent, recorder.Code)
+}
+
+func TestStaff_RejectsClient(t *testing.T) {
+	tokenManager := security.NewJwtManager(
+		middlewareTestSecret,
+		middlewareTestIssuer,
+		middlewareTestTTL,
+	)
+
+	token, err := tokenManager.GenerateAccessToken(uuid.New(), uuid.New(), uuid.New(), "client")
+	require.NoError(t, err)
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("next handler should not be called")
+	})
+
+	handler := middleware.Auth(tokenManager)(middleware.Staff(next))
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+}
+
+func TestClientPortal_RejectsStaff(t *testing.T) {
+	tokenManager := security.NewJwtManager(
+		middlewareTestSecret,
+		middlewareTestIssuer,
+		middlewareTestTTL,
+	)
+
+	token, err := tokenManager.GenerateAccessToken(uuid.New(), uuid.New(), uuid.Nil, "owner")
+	require.NoError(t, err)
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("next handler should not be called")
+	})
+
+	handler := middleware.Auth(tokenManager)(middleware.ClientPortal(next))
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
 }

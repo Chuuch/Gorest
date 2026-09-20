@@ -7,6 +7,7 @@ import (
 	"github.com/chuuch/gorest/internal/api"
 	"github.com/chuuch/gorest/internal/auth/security"
 	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/google/uuid"
 )
 
 func Auth(tokens security.TokenManager) func(http.Handler) http.Handler {
@@ -37,6 +38,10 @@ func Auth(tokens security.TokenManager) func(http.Handler) http.Handler {
 			ctx := requestcontext.WithUserID(r.Context(), claims.UserID)
 			ctx = requestcontext.WithOrganizationID(ctx, claims.OrganizationID)
 			ctx = requestcontext.WithRole(ctx, claims.Role)
+
+			if claims.ClientID != uuid.Nil {
+				ctx = requestcontext.WithClientID(ctx, claims.ClientID)
+			}
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

@@ -17,6 +17,9 @@ import (
 	clienthandler "github.com/chuuch/gorest/internal/client/handler"
 	clientpostgres "github.com/chuuch/gorest/internal/client/postgres"
 	clientusecase "github.com/chuuch/gorest/internal/client/usecase"
+	clientuserhandler "github.com/chuuch/gorest/internal/clientusers/handler"
+	clientuserpostgres "github.com/chuuch/gorest/internal/clientusers/postgres"
+	clientuserusecase "github.com/chuuch/gorest/internal/clientusers/usecase"
 	commenthandler "github.com/chuuch/gorest/internal/comments/handler"
 	commentpostgres "github.com/chuuch/gorest/internal/comments/postgres"
 	commentusecase "github.com/chuuch/gorest/internal/comments/usecase"
@@ -164,6 +167,28 @@ func New(cfg *config.Config) (*Server, error) {
 	commentHandler := commenthandler.NewHandler(commentService)
 
 	// -------------------------------------------------------------
+	// Client User domain
+	// -------------------------------------------------------------
+	clientUserRepository := clientuserpostgres.NewRepository(db)
+	clientUserService := clientuserusecase.NewService(
+		userService,
+		clientRepository,
+		clientUserRepository,
+		membershipRepository,
+		organizationRepository,
+		refreshTokenRepository,
+		tokenManager,
+		passwordHasher,
+		db,
+		cfg.Auth.RefreshTokenTTL,
+	)
+	clientUserHandler := clientuserhandler.NewHandler(
+		clientUserService,
+		cfg.Auth.RefreshTokenTTL,
+		cfg.Auth.CookieSecure,
+	)
+
+	// -------------------------------------------------------------
 	// HTTP Server
 	// -------------------------------------------------------------
 	httpServer := &http.Server{
@@ -179,6 +204,7 @@ func New(cfg *config.Config) (*Server, error) {
 				timeEntryHandler,
 				fileHandler,
 				commentHandler,
+				clientUserHandler,
 				tokenManager),
 		),
 		ReadTimeout:  cfg.Server.ReadTimeout,

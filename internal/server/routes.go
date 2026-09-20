@@ -6,6 +6,7 @@ import (
 	authhandler "github.com/chuuch/gorest/internal/auth/handler"
 	"github.com/chuuch/gorest/internal/auth/security"
 	clienthandler "github.com/chuuch/gorest/internal/client/handler"
+	clientuserhandler "github.com/chuuch/gorest/internal/clientusers/handler"
 	commenthandler "github.com/chuuch/gorest/internal/comments/handler"
 	filehandler "github.com/chuuch/gorest/internal/files/handler"
 	"github.com/chuuch/gorest/internal/middleware"
@@ -15,6 +16,14 @@ import (
 	timeentryhandler "github.com/chuuch/gorest/internal/timeentries/handler"
 	userhandler "github.com/chuuch/gorest/internal/user/handler"
 )
+
+func staff(tokenManager security.TokenManager, h http.HandlerFunc) http.Handler {
+	return middleware.Auth(tokenManager)(middleware.Staff(h))
+}
+
+func portal(tokenManager security.TokenManager, h http.HandlerFunc) http.Handler {
+	return middleware.Auth(tokenManager)(middleware.ClientPortal(h))
+}
 
 func newRouter(
 	userHandler *userhandler.Handler,
@@ -26,6 +35,7 @@ func newRouter(
 	timeEntryHandler *timeentryhandler.Handler,
 	fileHandler *filehandler.Handler,
 	commentHandler *commenthandler.Handler,
+	clientUserHandler *clientuserhandler.Handler,
 	tokenManager security.TokenManager,
 ) *http.ServeMux {
 	mux := http.NewServeMux()
@@ -41,6 +51,7 @@ func newRouter(
 		timeEntryHandler,
 		fileHandler,
 		commentHandler,
+		clientUserHandler,
 		tokenManager,
 	)
 
@@ -58,46 +69,58 @@ func registerRoutes(
 	timeEntryHandler *timeentryhandler.Handler,
 	fileHandler *filehandler.Handler,
 	commentHandler *commenthandler.Handler,
+	clientUserHandler *clientuserhandler.Handler,
 	tokenManager security.TokenManager,
 ) {
 	// HEALTH
 	mux.HandleFunc("GET /api/v1/health", healthHandler)
 
 	// USERS
-	mux.Handle("GET /api/v1/auth/me", middleware.Auth(tokenManager)(http.HandlerFunc(authHandler.Me)))
-	mux.Handle("GET /api/v1/users/{id}", middleware.Auth(tokenManager)(http.HandlerFunc(userHandler.GetByID)))
-	mux.Handle("PUT /api/v1/users/{id}", middleware.Auth(tokenManager)(http.HandlerFunc(userHandler.Update)))
-	mux.Handle("DELETE /api/v1/users/{id}", middleware.Auth(tokenManager)(http.HandlerFunc(userHandler.Delete)))
+	mux.Handle("GET /api/v1/auth/me", staff(tokenManager, authHandler.Me))
+	mux.Handle("GET /api/v1/users/{id}", staff(tokenManager, userHandler.GetByID))
+	mux.Handle("PUT /api/v1/users/{id}", staff(tokenManager, userHandler.Update))
+	mux.Handle("DELETE /api/v1/users/{id}", staff(tokenManager, userHandler.Delete))
 
 	// MEMBERS
-	mux.Handle("GET /api/v1/members", middleware.Auth(tokenManager)(http.HandlerFunc(orgHandler.ListMembers)))
-	mux.Handle("POST /api/v1/members", middleware.Auth(tokenManager)(http.HandlerFunc(orgHandler.CreateMember)))
+	mux.Handle("GET /api/v1/members", staff(tokenManager, orgHandler.ListMembers))
+	mux.Handle("POST /api/v1/members", staff(tokenManager, orgHandler.CreateMember))
 
 	// CLIENTS
-	mux.Handle("GET /api/v1/clients", middleware.Auth(tokenManager)(http.HandlerFunc(clientHandler.List)))
-	mux.Handle("POST /api/v1/clients", middleware.Auth(tokenManager)(http.HandlerFunc(clientHandler.Create)))
+	mux.Handle("GET /api/v1/clients", staff(tokenManager, clientHandler.List))
+	mux.Handle("POST /api/v1/clients", staff(tokenManager, clientHandler.Create))
 
 	// PROJECTS
-	mux.Handle("GET /api/v1/clients/{id}/projects", middleware.Auth(tokenManager)(http.HandlerFunc(projectHandler.List)))
-	mux.Handle("POST /api/v1/clients/{id}/projects", middleware.Auth(tokenManager)(http.HandlerFunc(projectHandler.Create)))
+	mux.Handle("GET /api/v1/clients/{id}/projects", staff(tokenManager, projectHandler.List))
+	mux.Handle("POST /api/v1/clients/{id}/projects", staff(tokenManager, projectHandler.Create))
+
+	// CLIENT USERS
+	mux.Handle("GET /api/v1/clients/{id}/users", staff(tokenManager, clientUserHandler.List))
+	mux.Handle("POST /api/v1/clients/{id}/users", staff(tokenManager, clientUserHandler.Create))
 
 	// TASKS
-	mux.Handle("GET /api/v1/projects/{id}/tasks", middleware.Auth(tokenManager)(http.HandlerFunc(taskHandler.List)))
-	mux.Handle("POST /api/v1/projects/{id}/tasks", middleware.Auth(tokenManager)(http.HandlerFunc(taskHandler.Create)))
+	mux.Handle("GET /api/v1/projects/{id}/tasks", staff(tokenManager, taskHandler.List))
+	mux.Handle("POST /api/v1/projects/{id}/tasks", staff(tokenManager, taskHandler.Create))
+	mux.Handle("PATCH /api/v1/tasks/{id}", staff(tokenManager, taskHandler.Update))
 
 	// TIME ENTRIES
-	mux.Handle("GET /api/v1/tasks/{id}/tasks", middleware.Auth(tokenManager)(http.HandlerFunc(timeEntryHandler.List)))
-	mux.Handle("POST /api/v1/tasks/{id}/tasks", middleware.Auth(tokenManager)(http.HandlerFunc(timeEntryHandler.Create)))
+	mux.Handle("GET /api/v1/tasks/{id}/time-entries", staff(tokenManager, timeEntryHandler.List))
+	mux.Handle("POST /api/v1/tasks/{id}/time-entries", staff(tokenManager, timeEntryHandler.Create))
 
 	// FILES
-	mux.Handle("GET /api/v1/projects/{id}/files", middleware.Auth(tokenManager)(http.HandlerFunc(fileHandler.List)))
-	mux.Handle("POST /api/v1/projects/{id}/files", middleware.Auth(tokenManager)(http.HandlerFunc(fileHandler.Create)))
+	mux.Handle("GET /api/v1/projects/{id}/files", staff(tokenManager, fileHandler.List))
+	mux.Handle("POST /api/v1/projects/{id}/files", staff(tokenManager, fileHandler.Create))
 
 	// COMMENTS
-	mux.Handle("GET /api/v1/tasks/{id}/comments", middleware.Auth(tokenManager)(http.HandlerFunc(commentHandler.List)))
-	mux.Handle("POST /api/v1/tasks/{id}/comments", middleware.Auth(tokenManager)(http.HandlerFunc(commentHandler.Create)))
-	mux.Handle("PATCH /api/v1/comments/{id}", middleware.Auth(tokenManager)(http.HandlerFunc(commentHandler.Update)))
-	mux.Handle("DELETE /api/v1/comments/{id}", middleware.Auth(tokenManager)(http.HandlerFunc(commentHandler.Delete)))
+	mux.Handle("GET /api/v1/tasks/{id}/comments", staff(tokenManager, commentHandler.List))
+	mux.Handle("POST /api/v1/tasks/{id}/comments", staff(tokenManager, commentHandler.Create))
+	mux.Handle("PATCH /api/v1/comments/{id}", staff(tokenManager, commentHandler.Update))
+	mux.Handle("DELETE /api/v1/comments/{id}", staff(tokenManager, commentHandler.Delete))
+
+	// CLIENT USERS AUTH
+	mux.HandleFunc("POST /api/v1/client-auth/login", clientUserHandler.Login)
+	mux.HandleFunc("POST /api/v1/client-auth/refresh", clientUserHandler.Refresh)
+	mux.HandleFunc("POST /api/v1/client-auth/logout", clientUserHandler.Logout)
+	mux.Handle("GET /api/v1/client-auth/me", portal(tokenManager, clientUserHandler.Me))
 
 	// AUTH
 	mux.HandleFunc("POST /api/v1/auth/register", authHandler.Register)

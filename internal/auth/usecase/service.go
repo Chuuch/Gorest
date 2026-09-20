@@ -232,7 +232,7 @@ func (s *service) issueTokens(
 		}
 	}
 
-	accessToken, err := s.tokens.GenerateAccessToken(userID, org.ID, string(membership.Role))
+	accessToken, err := s.tokens.GenerateAccessToken(userID, org.ID, uuid.Nil, string(membership.Role))
 	if err != nil {
 		return nil, fmt.Errorf("generate access token: %w", err)
 	}
@@ -287,7 +287,7 @@ func (s *service) Me(
 		return nil, fmt.Errorf("get membership: %w", err)
 	}
 
-	accessToken, err := s.tokens.GenerateAccessToken(userID, org.ID, string(membership.Role))
+	accessToken, err := s.tokens.GenerateAccessToken(userID, org.ID, uuid.Nil, string(membership.Role))
 	if err != nil {
 		return nil, fmt.Errorf("generate access token: %w", err)
 	}
