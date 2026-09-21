@@ -91,6 +91,7 @@ func setupTimeEntryTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 			id UUID PRIMARY KEY,
 			organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
 			project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			ticket_id UUID,
 			title TEXT NOT NULL,
 			notes TEXT NOT NULL DEFAULT '',
 			status TEXT NOT NULL,

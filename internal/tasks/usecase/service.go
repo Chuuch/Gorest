@@ -6,9 +6,11 @@ import (
 	"time"
 
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
 	projectrepository "github.com/chuuch/gorest/internal/projects/repository"
 	taskdomain "github.com/chuuch/gorest/internal/tasks/domain"
 	taskrepository "github.com/chuuch/gorest/internal/tasks/repository"
+	ticketrepository "github.com/chuuch/gorest/internal/tickets/repository"
 	"github.com/google/uuid"
 )
 
@@ -28,20 +30,29 @@ type Service interface {
 		organizationID, taskID uuid.UUID,
 		req taskdomain.UpdateTaskRequest,
 	) (*taskdomain.Task, error)
+	Convert(
+		ctx context.Context,
+		organizationID, ticketID uuid.UUID,
+		actorRole orgdomain.Role,
+		req taskdomain.ConvertTicketRequest,
+	) (*taskdomain.Task, error)
 }
 
 type service struct {
 	tasks    taskrepository.TaskRepository
 	projects projectrepository.ProjectRepository
+	tickets  ticketrepository.TicketRepository
 }
 
 func NewService(
 	tasks taskrepository.TaskRepository,
 	projects projectrepository.ProjectRepository,
+	tickets ticketrepository.TicketRepository,
 ) Service {
 	return &service{
 		tasks:    tasks,
 		projects: projects,
+		tickets:  tickets,
 	}
 }
 
@@ -115,6 +126,63 @@ func (s *service) Update(
 	task.UpdatedAt = now
 
 	if err := s.tasks.Update(ctx, task); err != nil {
+		return nil, err
+	}
+
+	return task, nil
+}
+
+func (s *service) Convert(
+	ctx context.Context,
+	organizationID, ticketID uuid.UUID,
+	actorRole orgdomain.Role,
+	req taskdomain.ConvertTicketRequest,
+) (*taskdomain.Task, error) {
+	if !actorRole.CanManageMembers() {
+		return nil, taskdomain.ErrForbidden
+	}
+
+	ticket, err := s.tickets.GetByID(ctx, ticketID, organizationID)
+	if err != nil {
+		return nil, err
+	}
+
+	project, err := s.projects.GetByID(ctx, req.ProjectID, organizationID)
+	if err != nil {
+		return nil, err
+	}
+
+	if project.ClientID != ticket.ClientID {
+		return nil, projectdomain.ErrProjectNotFound
+	}
+
+	existing, err := s.tasks.ListByProjectID(ctx, organizationID, project.ID)
+	if err != nil {
+		return nil, fmt.Errorf("list tasks: %w", err)
+	}
+
+	for _, task := range existing {
+		if task.TicketID != nil && *task.TicketID == ticket.ID {
+			return nil, taskdomain.ErrTicketAlreadyConverted
+		}
+	}
+
+	now := time.Now().UTC()
+	ticketIDCopy := ticket.ID
+
+	task := &taskdomain.Task{
+		ID:             uuid.New(),
+		OrganizationID: organizationID,
+		ProjectID:      project.ID,
+		TicketID:       &ticketIDCopy,
+		Title:          ticket.Title,
+		Notes:          ticket.Body,
+		Status:         taskdomain.StatusTodo,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+
+	if err := s.tasks.Create(ctx, task); err != nil {
 		return nil, err
 	}
 

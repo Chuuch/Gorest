@@ -145,10 +145,17 @@ func New(cfg *config.Config) (*Server, error) {
 	projectHandler := projecthandler.NewHandler(projectService)
 
 	// -------------------------------------------------------------
+	// Ticket domain
+	// -------------------------------------------------------------
+	ticketRepository := ticketpostgres.NewRepository(db)
+	ticketService := ticketusecase.NewService(ticketRepository, clientRepository)
+	ticketHandler := tickethandler.NewHandler(ticketService)
+
+	// -------------------------------------------------------------
 	// Task domain
 	// -------------------------------------------------------------
 	taskRepository := taskpostgres.NewRepository(db)
-	taskService := taskusecase.NewService(taskRepository, projectRepository)
+	taskService := taskusecase.NewService(taskRepository, projectRepository, ticketRepository)
 	taskHandler := taskhandler.NewHandler(taskService)
 
 	// -------------------------------------------------------------
@@ -193,13 +200,6 @@ func New(cfg *config.Config) (*Server, error) {
 		cfg.Auth.RefreshTokenTTL,
 		cfg.Auth.CookieSecure,
 	)
-
-	// -------------------------------------------------------------
-	// Ticket domain
-	// -------------------------------------------------------------
-	ticketRepository := ticketpostgres.NewRepository(db)
-	ticketService := ticketusecase.NewService(ticketRepository, clientRepository)
-	ticketHandler := tickethandler.NewHandler(ticketService)
 
 	// -------------------------------------------------------------
 	// Ticket file domain

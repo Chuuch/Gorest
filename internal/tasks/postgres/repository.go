@@ -30,6 +30,7 @@ func (r *Repository) Create(
 				id,
 				organization_id,
 				project_id,
+				ticket_id,
 				title,
 				notes,
 				status,
@@ -37,7 +38,7 @@ func (r *Repository) Create(
 				created_at,
 				updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		`
 
 	_, err := database.QuerierFrom(ctx, r.db).Exec(
@@ -46,6 +47,7 @@ func (r *Repository) Create(
 		task.ID,
 		task.OrganizationID,
 		task.ProjectID,
+		task.TicketID,
 		task.Title,
 		task.Notes,
 		task.Status,
@@ -56,6 +58,9 @@ func (r *Repository) Create(
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			if pgErr.ConstraintName == "idx_tasks_project_ticket_unique" {
+				return domain.ErrTicketAlreadyConverted
+			}
 			return domain.ErrTaskTitleExists
 		}
 		return fmt.Errorf("create task: %w", err)
@@ -73,6 +78,7 @@ func (r *Repository) GetByID(
 				id,
 				organization_id,
 				project_id,
+				ticket_id,
 				title,
 				notes,
 				status,
@@ -94,6 +100,7 @@ func (r *Repository) GetByID(
 		&task.ID,
 		&task.OrganizationID,
 		&task.ProjectID,
+		&task.TicketID,
 		&task.Title,
 		&task.Notes,
 		&task.Status,
@@ -154,6 +161,7 @@ func (r *Repository) ListByProjectID(
 				id,
 				organization_id,
 				project_id,
+				ticket_id,
 				title,
 				notes,
 				status,
@@ -180,6 +188,7 @@ func (r *Repository) ListByProjectID(
 			&task.ID,
 			&task.OrganizationID,
 			&task.ProjectID,
+			&task.TicketID,
 			&task.Title,
 			&task.Notes,
 			&task.Status,
