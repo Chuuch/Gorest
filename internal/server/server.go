@@ -39,6 +39,9 @@ import (
 	taskhandler "github.com/chuuch/gorest/internal/tasks/handler"
 	taskpostgres "github.com/chuuch/gorest/internal/tasks/postgres"
 	taskusecase "github.com/chuuch/gorest/internal/tasks/usecase"
+	ticketcommenthandler "github.com/chuuch/gorest/internal/ticketcomments/handler"
+	ticketcommentpostgres "github.com/chuuch/gorest/internal/ticketcomments/postgres"
+	ticketcommentusecase "github.com/chuuch/gorest/internal/ticketcomments/usecase"
 	ticketfilehandler "github.com/chuuch/gorest/internal/ticketfiles/handler"
 	ticketfilepostgres "github.com/chuuch/gorest/internal/ticketfiles/postgres"
 	ticketfileusecase "github.com/chuuch/gorest/internal/ticketfiles/usecase"
@@ -209,6 +212,13 @@ func New(cfg *config.Config) (*Server, error) {
 	ticketFileHandler := ticketfilehandler.NewHandler(ticketFileService)
 
 	// -------------------------------------------------------------
+	// Ticket comment domain
+	// -------------------------------------------------------------
+	ticketCommentRepository := ticketcommentpostgres.NewRepository(db)
+	ticketCommentService := ticketcommentusecase.NewService(ticketCommentRepository, ticketRepository)
+	ticketCommentHandler := ticketcommenthandler.NewHandler(ticketCommentService)
+
+	// -------------------------------------------------------------
 	// HTTP Server
 	// -------------------------------------------------------------
 	router := newRouter(
@@ -224,6 +234,7 @@ func New(cfg *config.Config) (*Server, error) {
 		clientUserHandler,
 		ticketHandler,
 		ticketFileHandler,
+		ticketCommentHandler,
 		tokenManager,
 	)
 

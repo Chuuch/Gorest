@@ -14,6 +14,7 @@ import (
 	orghandler "github.com/chuuch/gorest/internal/organization/handler"
 	projecthandler "github.com/chuuch/gorest/internal/projects/handler"
 	taskhandler "github.com/chuuch/gorest/internal/tasks/handler"
+	ticketcommenthandler "github.com/chuuch/gorest/internal/ticketcomments/handler"
 	ticketfilehandler "github.com/chuuch/gorest/internal/ticketfiles/handler"
 	tickethandler "github.com/chuuch/gorest/internal/tickets/handler"
 	timeentryhandler "github.com/chuuch/gorest/internal/timeentries/handler"
@@ -41,6 +42,7 @@ func newRouter(
 	clientUserHandler *clientuserhandler.Handler,
 	ticketHandler *tickethandler.Handler,
 	ticketFileHandler *ticketfilehandler.Handler,
+	ticketCommentHandler *ticketcommenthandler.Handler,
 	tokenManager security.TokenManager,
 ) *http.ServeMux {
 	mux := http.NewServeMux()
@@ -59,6 +61,7 @@ func newRouter(
 		clientUserHandler,
 		ticketHandler,
 		ticketFileHandler,
+		ticketCommentHandler,
 		tokenManager,
 	)
 
@@ -79,6 +82,7 @@ func registerRoutes(
 	clientUserHandler *clientuserhandler.Handler,
 	ticketHandler *tickethandler.Handler,
 	ticketFileHandler *ticketfilehandler.Handler,
+	ticketCommentHandler *ticketcommenthandler.Handler,
 	tokenManager security.TokenManager,
 ) {
 	loginLimiter := middleware.NewLimiter(10, 15*time.Minute)
@@ -134,10 +138,14 @@ func registerRoutes(
 	mux.Handle("PATCH /api/v1/tickets/{id}", staff(tokenManager, ticketHandler.Update))
 	mux.Handle("GET /api/v1/tickets/{id}/files", staff(tokenManager, ticketFileHandler.List))
 	mux.Handle("POST /api/v1/tickets/{id}/files", staff(tokenManager, ticketFileHandler.Create))
+	mux.Handle("GET /api/v1/tickets/{id}/comments", staff(tokenManager, ticketCommentHandler.List))
+	mux.Handle("POST /api/v1/tickets/{id}/comments", staff(tokenManager, ticketCommentHandler.Create))
 	mux.Handle("GET /api/v1/client-auth/tickets", portal(tokenManager, ticketHandler.ListPortal))
 	mux.Handle("POST /api/v1/client-auth/tickets", portal(tokenManager, ticketHandler.CreatePortal))
 	mux.Handle("GET /api/v1/client-auth/tickets/{id}/files", portal(tokenManager, ticketFileHandler.ListPortal))
 	mux.Handle("POST /api/v1/client-auth/tickets/{id}/files", portal(tokenManager, ticketFileHandler.CreatePortal))
+	mux.Handle("GET /api/v1/client-auth/tickets/{id}/comments", portal(tokenManager, ticketCommentHandler.ListPortal))
+	mux.Handle("POST /api/v1/client-auth/tickets/{id}/comments", portal(tokenManager, ticketCommentHandler.CreatePortal))
 
 	// CLIENT USERS AUTH
 	mux.Handle("POST /api/v1/client-auth/login", loginLimiter.Login(http.HandlerFunc(clientUserHandler.Login)))
