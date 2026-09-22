@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"time"
 
 	authhandler "github.com/chuuch/gorest/internal/auth/handler"
 	"github.com/chuuch/gorest/internal/auth/security"
@@ -80,6 +81,8 @@ func registerRoutes(
 	ticketFileHandler *ticketfilehandler.Handler,
 	tokenManager security.TokenManager,
 ) {
+	loginLimiter := middleware.NewLimiter(10, 15*time.Minute)
+	refreshLimiter := middleware.NewLimiter(30, 15*time.Minute)
 	// HEALTH
 	mux.HandleFunc("GET /api/v1/health", healthHandler)
 	mux.Handle("GET /metrics", middleware.MetricsHandler())
@@ -137,15 +140,15 @@ func registerRoutes(
 	mux.Handle("POST /api/v1/client-auth/tickets/{id}/files", portal(tokenManager, ticketFileHandler.CreatePortal))
 
 	// CLIENT USERS AUTH
-	mux.HandleFunc("POST /api/v1/client-auth/login", clientUserHandler.Login)
-	mux.HandleFunc("POST /api/v1/client-auth/refresh", clientUserHandler.Refresh)
+	mux.Handle("POST /api/v1/client-auth/login", loginLimiter.Login(http.HandlerFunc(clientUserHandler.Login)))
+	mux.Handle("POST /api/v1/client-auth/refresh", refreshLimiter.Refresh(http.HandlerFunc(clientUserHandler.Refresh)))
 	mux.HandleFunc("POST /api/v1/client-auth/logout", clientUserHandler.Logout)
 	mux.Handle("GET /api/v1/client-auth/me", portal(tokenManager, clientUserHandler.Me))
 
 	// AUTH
 	mux.HandleFunc("POST /api/v1/auth/register", authHandler.Register)
-	mux.HandleFunc("POST /api/v1/auth/login", authHandler.Login)
-	mux.HandleFunc("POST /api/v1/auth/refresh", authHandler.Refresh)
+	mux.Handle("POST /api/v1/auth/login", loginLimiter.Login(http.HandlerFunc(authHandler.Login)))
+	mux.Handle("POST /api/v1/auth/refresh", refreshLimiter.Refresh(http.HandlerFunc(authHandler.Refresh)))
 	mux.HandleFunc("POST /api/v1/auth/logout", authHandler.Logout)
 }
 
