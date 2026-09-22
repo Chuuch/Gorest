@@ -2,7 +2,9 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 	"github.com/chuuch/gorest/internal/config"
 )
 
@@ -31,6 +34,8 @@ func newClient(endpoint, region, accessKey, secretKey string, usePathStyle bool)
 	return s3.NewFromConfig(cfg, func(o *s3.Options) {
 		o.BaseEndpoint = aws.String(endpoint)
 		o.UsePathStyle = usePathStyle
+		o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+		o.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
 	})
 }
 
@@ -89,6 +94,11 @@ func (s *S3Store) EnsureBucket(ctx context.Context, allowedOrigins []string) err
 		},
 	})
 	if err != nil {
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "NotImplemented" {
+			slog.Warn("put bucket cors skipped", "error", err)
+			return nil
+		}
 		return fmt.Errorf("put bucket cors: %w", err)
 	}
 
