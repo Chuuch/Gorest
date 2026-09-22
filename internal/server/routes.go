@@ -82,6 +82,7 @@ func registerRoutes(
 ) {
 	// HEALTH
 	mux.HandleFunc("GET /api/v1/health", healthHandler)
+	mux.Handle("GET /metrics", middleware.MetricsHandler())
 
 	// USERS
 	mux.Handle("GET /api/v1/auth/me", staff(tokenManager, authHandler.Me))

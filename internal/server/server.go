@@ -211,23 +211,28 @@ func New(cfg *config.Config) (*Server, error) {
 	// -------------------------------------------------------------
 	// HTTP Server
 	// -------------------------------------------------------------
+	router := newRouter(
+		userHandler,
+		authHandler,
+		orgHandler,
+		clientHandler,
+		projectHandler,
+		taskHandler,
+		timeEntryHandler,
+		fileHandler,
+		commentHandler,
+		clientUserHandler,
+		ticketHandler,
+		ticketFileHandler,
+		tokenManager,
+	)
+
 	httpServer := &http.Server{
 		Addr: fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		Handler: middleware.CORS(cfg.CORS.AllowedOrigins)(
-			newRouter(
-				userHandler,
-				authHandler,
-				orgHandler,
-				clientHandler,
-				projectHandler,
-				taskHandler,
-				timeEntryHandler,
-				fileHandler,
-				commentHandler,
-				clientUserHandler,
-				ticketHandler,
-				ticketFileHandler,
-				tokenManager),
+			middleware.RequestLog(
+				middleware.Metrics(router),
+			),
 		),
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
