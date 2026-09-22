@@ -14,7 +14,7 @@ func Setup(level, format string, addSource bool) error {
 	}
 
 	options := &slog.HandlerOptions{
-		Level: logLevel,
+		Level:     logLevel,
 		AddSource: addSource,
 	}
 
