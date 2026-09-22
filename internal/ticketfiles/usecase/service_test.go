@@ -95,6 +95,7 @@ func setupTicketFileTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 			status TEXT NOT NULL,
 			title TEXT NOT NULL,
 			body TEXT NOT NULL,
+			version INTEGER NOT NULL DEFAULT 1,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL
 		)

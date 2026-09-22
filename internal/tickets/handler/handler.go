@@ -243,6 +243,14 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 			"forbidden",
 		)
 
+	case errors.Is(err, ticketdomain.ErrTicketVersionMismatch):
+		api.WriteError(
+			w,
+			http.StatusConflict,
+			"ticket_version_mismatch",
+			"ticket was updated by someone else",
+		)
+
 	case errors.Is(err, clientdomain.ErrClientNotFound):
 		api.WriteError(
 			w,
@@ -279,6 +287,7 @@ func toResponse(ticket *ticketdomain.Ticket) ticketdomain.TicketResponse {
 		Status:         ticket.Status,
 		Title:          ticket.Title,
 		Body:           ticket.Body,
+		Version:        ticket.Version,
 		CreatedAt:      ticket.CreatedAt,
 		UpdatedAt:      ticket.UpdatedAt,
 	}

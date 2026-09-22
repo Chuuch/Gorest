@@ -23,6 +23,7 @@ type Task struct {
 	Notes          string
 	Status         Status
 	CompletedAt    *time.Time
+	Version        int
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }

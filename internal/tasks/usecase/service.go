@@ -97,6 +97,7 @@ func (s *service) Create(
 		Notes:          req.Notes,
 		Status:         status,
 		CompletedAt:    completedAtFor(status, nil, now),
+		Version:        1,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
@@ -124,6 +125,7 @@ func (s *service) Update(
 	task.Status = status
 	task.CompletedAt = completedAtFor(status, task.CompletedAt, now)
 	task.UpdatedAt = now
+	task.Version = req.Version
 
 	if err := s.tasks.Update(ctx, task); err != nil {
 		return nil, err
@@ -178,6 +180,7 @@ func (s *service) Convert(
 		Title:          ticket.Title,
 		Notes:          ticket.Body,
 		Status:         taskdomain.StatusTodo,
+		Version:        1,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}

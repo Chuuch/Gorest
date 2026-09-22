@@ -97,6 +97,7 @@ func setupCommentTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 			notes TEXT NOT NULL DEFAULT '',
 			status TEXT NOT NULL,
 			completed_at TIMESTAMPTZ NULL,
+			version INTEGER NOT NULL DEFAULT 1,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL,
 			CONSTRAINT tasks_project_title_unique UNIQUE (project_id, title),

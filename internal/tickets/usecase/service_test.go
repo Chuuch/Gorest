@@ -5,18 +5,31 @@ import (
 	"testing"
 	"time"
 
-	clientdomain "github.com/chuuch/gorest/internal/client/domain"
-	clientpostgres "github.com/chuuch/gorest/internal/client/postgres"
+	ticketfiledomain "github.com/chuuch/gorest/internal/ticketfiles/domain"
+	ticketfilepostgres "github.com/chuuch/gorest/internal/ticketfiles/postgres"
+	ticketfileusecase "github.com/chuuch/gorest/internal/ticketfiles/usecase"
 	ticketdomain "github.com/chuuch/gorest/internal/tickets/domain"
 	ticketpostgres "github.com/chuuch/gorest/internal/tickets/postgres"
-	ticketusecase "github.com/chuuch/gorest/internal/tickets/usecase"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
-func setupTicketTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
+type mockStore struct {
+	putURL string
+	getURL string
+}
+
+func (m *mockStore) PresignPut(context.Context, string, string) (string, error) {
+	return m.putURL, nil
+}
+
+func (m *mockStore) PresignGet(context.Context, string, string) (string, error) {
+	return m.getURL, nil
+}
+
+func setupTicketFileTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 	t.Helper()
 
 	ctx := context.Background()
@@ -82,12 +95,26 @@ func setupTicketTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 			status TEXT NOT NULL,
 			title TEXT NOT NULL,
 			body TEXT NOT NULL,
+			version INTEGER NOT NULL DEFAULT 1,
+			created_at TIMESTAMPTZ NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL
+		)
+	`)
+	require.NoError(t, err)
+
+	_, err = db.Exec(ctx, `
+		CREATE TABLE ticket_files (
+			id UUID PRIMARY KEY,
+			organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+			ticket_id UUID NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+			uploaded_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+			object_key TEXT NOT NULL UNIQUE,
+			filename TEXT NOT NULL,
+			content_type TEXT NOT NULL,
+			size_bytes INTEGER NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL,
-			CONSTRAINT tickets_kind_check CHECK (kind IN ('bug', 'feature', 'question', 'other')),
-			CONSTRAINT tickets_status_check CHECK (status IN ('open', 'in_progress', 'resolved', 'closed')),
-			CONSTRAINT tickets_title_check CHECK (char_length(title) >= 4 AND char_length(title) <= 100),
-			CONSTRAINT tickets_body_check CHECK (char_length(body) >= 1 AND char_length(body) <= 2000)
+			CONSTRAINT ticket_files_size_bytes_check CHECK (size_bytes >= 1 AND size_bytes <= 10485760)
 		)
 	`)
 	require.NoError(t, err)
@@ -159,14 +186,7 @@ func seedClient(
 	_, err := db.Exec(
 		context.Background(),
 		`
-			INSERT INTO clients (
-				id,
-				organization_id,
-				name,
-				notes,
-				created_at,
-				updated_at
-			)
+			INSERT INTO clients (id, organization_id, name, notes, created_at, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6)
 		`,
 		clientID,
@@ -181,77 +201,177 @@ func seedClient(
 	return clientID
 }
 
-func setupTicketService(db *pgxpool.Pool) ticketusecase.Service {
-	return ticketusecase.NewService(
+func seedTicket(
+	t *testing.T,
+	db *pgxpool.Pool,
+	organizationID, clientID, userID uuid.UUID,
+	title string,
+) uuid.UUID {
+	t.Helper()
+
+	ticketID := uuid.New()
+	now := time.Now().UTC()
+
+	_, err := db.Exec(
+		context.Background(),
+		`
+			INSERT INTO tickets (
+				id, organization_id, client_id, user_id, kind, status, title, body, created_at, updated_at
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		`,
+		ticketID,
+		organizationID,
+		clientID,
+		userID,
+		"bug",
+		"open",
+		title,
+		"Clicking Sign in does nothing on mobile.",
+		now,
+		now,
+	)
+	require.NoError(t, err)
+
+	return ticketID
+}
+
+func setupTicketFileService(db *pgxpool.Pool) ticketfileusecase.Service {
+	return ticketfileusecase.NewService(
+		ticketfilepostgres.NewRepository(db),
 		ticketpostgres.NewRepository(db),
-		clientpostgres.NewRepository(db),
+		&mockStore{putURL: "http://minio/put", getURL: "http://minio/get"},
 	)
 }
 
-func TestTicketService_CreateAndList(t *testing.T) {
-	db, cleanup := setupTicketTestDatabase(t)
+func TestTicketFileService_CreateAndList(t *testing.T) {
+	db, cleanup := setupTicketFileTestDatabase(t)
 	defer cleanup()
 
-	service := setupTicketService(db)
+	service := setupTicketFileService(db)
 	userID := seedUser(t, db, "pat@example.com")
 	organizationID := seedOrganization(t, db, "Acme")
-	otherOrganizationID := seedOrganization(t, db, "Other")
 	clientID := seedClient(t, db, organizationID, "Northwind")
 	otherClientID := seedClient(t, db, organizationID, "Contoso")
-	foreignClientID := seedClient(t, db, otherOrganizationID, "Northwind")
+	ticketID := seedTicket(t, db, organizationID, clientID, userID, "Login button broken")
+	otherTicketID := seedTicket(t, db, organizationID, otherClientID, userID, "Other login issue")
 
-	ticket, err := service.Create(
+	created, err := service.Create(
 		context.Background(),
 		organizationID,
-		clientID,
+		ticketID,
 		userID,
-		ticketdomain.CreateTicketRequest{
-			Kind:  "bug",
-			Title: "Login button broken",
-			Body:  "Clicking Sign in does nothing on mobile.",
+		clientID,
+		ticketfiledomain.CreateFileRequest{
+			Filename:    "bug.png",
+			ContentType: "image/png",
+			Size:        2048,
 		},
 	)
 	require.NoError(t, err)
-	require.Equal(t, ticketdomain.KindBug, ticket.Kind)
-	require.Equal(t, ticketdomain.StatusOpen, ticket.Status)
-	require.Equal(t, clientID, ticket.ClientID)
-	require.Equal(t, userID, ticket.UserID)
+	require.Equal(t, "bug.png", created.File.Filename)
+	require.Equal(t, ticketID, created.File.TicketID)
+	require.Equal(t, "http://minio/put", created.UploadURL)
+	require.Contains(t, created.File.ObjectKey, "/tickets/")
 
-	_, err = service.Create(
-		context.Background(),
-		organizationID,
-		clientID,
-		userID,
-		ticketdomain.CreateTicketRequest{
-			Kind:  "feature",
-			Title: "Export invoices",
-			Body:  "We need a CSV export from the billing page.",
-		},
-	)
+	own, err := service.List(context.Background(), organizationID, ticketID, clientID)
 	require.NoError(t, err)
+	require.Len(t, own, 1)
+	require.Equal(t, "http://minio/get", own[0].DownloadURL)
 
-	own, err := service.List(context.Background(), organizationID, clientID)
+	staff, err := service.List(context.Background(), organizationID, ticketID, uuid.Nil)
 	require.NoError(t, err)
-	require.Len(t, own, 2)
-	require.Equal(t, "Export invoices", own[0].Title)
+	require.Len(t, staff, 1)
 
-	other, err := service.List(context.Background(), organizationID, otherClientID)
+	_, err = service.List(context.Background(), organizationID, ticketID, otherClientID)
+	require.ErrorIs(t, err, ticketdomain.ErrTicketNotFound)
+
+	other, err := service.List(context.Background(), organizationID, otherTicketID, otherClientID)
 	require.NoError(t, err)
 	require.Empty(t, other)
-
-	_, err = service.List(context.Background(), otherOrganizationID, clientID)
-	require.ErrorIs(t, err, clientdomain.ErrClientNotFound)
-
-	foreign, err := service.List(context.Background(), otherOrganizationID, foreignClientID)
-	require.NoError(t, err)
-	require.Empty(t, foreign)
 }
 
-func TestTicketService_Create_ClientNotFound(t *testing.T) {
-	db, cleanup := setupTicketTestDatabase(t)
+func TestTicketFileService_Create_OtherClientNotFound(t *testing.T) {
+	db, cleanup := setupTicketFileTestDatabase(t)
 	defer cleanup()
 
-	service := setupTicketService(db)
+	service := setupTicketFileService(db)
+	userID := seedUser(t, db, "pat@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	otherClientID := seedClient(t, db, organizationID, "Contoso")
+	ticketID := seedTicket(t, db, organizationID, clientID, userID, "Login button broken")
+
+	_, err := service.Create(
+		context.Background(),
+		organizationID,
+		ticketID,
+		userID,
+		otherClientID,
+		ticketfiledomain.CreateFileRequest{
+			Filename:    "bug.png",
+			ContentType: "image/png",
+			Size:        2048,
+		},
+	)
+	require.ErrorIs(t, err, ticketdomain.ErrTicketNotFound)
+}
+
+func TestTicketFileService_Create_InvalidFilename(t *testing.T) {
+	db, cleanup := setupTicketFileTestDatabase(t)
+	defer cleanup()
+
+	service := setupTicketFileService(db)
+	userID := seedUser(t, db, "pat@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	ticketID := seedTicket(t, db, organizationID, clientID, userID, "Login button broken")
+
+	_, err := service.Create(
+		context.Background(),
+		organizationID,
+		ticketID,
+		userID,
+		uuid.Nil,
+		ticketfiledomain.CreateFileRequest{
+			Filename:    "../bug.png",
+			ContentType: "image/png",
+			Size:        2048,
+		},
+	)
+	require.ErrorIs(t, err, ticketfiledomain.ErrInvalidFilename)
+}
+
+func TestTicketFileService_Create_UnsupportedType(t *testing.T) {
+	db, cleanup := setupTicketFileTestDatabase(t)
+	defer cleanup()
+
+	service := setupTicketFileService(db)
+	userID := seedUser(t, db, "pat@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	ticketID := seedTicket(t, db, organizationID, clientID, userID, "Login button broken")
+
+	_, err := service.Create(
+		context.Background(),
+		organizationID,
+		ticketID,
+		userID,
+		uuid.Nil,
+		ticketfiledomain.CreateFileRequest{
+			Filename:    "payload.exe",
+			ContentType: "application/octet-stream",
+			Size:        2048,
+		},
+	)
+	require.ErrorIs(t, err, ticketfiledomain.ErrUnsupportedContentType)
+}
+
+func TestTicketFileService_Create_TicketNotFound(t *testing.T) {
+	db, cleanup := setupTicketFileTestDatabase(t)
+	defer cleanup()
+
+	service := setupTicketFileService(db)
 	userID := seedUser(t, db, "pat@example.com")
 	organizationID := seedOrganization(t, db, "Acme")
 
@@ -260,79 +380,12 @@ func TestTicketService_Create_ClientNotFound(t *testing.T) {
 		organizationID,
 		uuid.New(),
 		userID,
-		ticketdomain.CreateTicketRequest{
-			Kind:  "question",
-			Title: "Where are invoices",
-			Body:  "Can we see last month somewhere?",
+		uuid.Nil,
+		ticketfiledomain.CreateFileRequest{
+			Filename:    "bug.png",
+			ContentType: "image/png",
+			Size:        2048,
 		},
-	)
-	require.ErrorIs(t, err, clientdomain.ErrClientNotFound)
-}
-
-func TestTicketService_Update_Status(t *testing.T) {
-	db, cleanup := setupTicketTestDatabase(t)
-	defer cleanup()
-
-	service := setupTicketService(db)
-	userID := seedUser(t, db, "pat@example.com")
-	organizationID := seedOrganization(t, db, "Acme")
-	clientID := seedClient(t, db, organizationID, "Northwind")
-
-	created, err := service.Create(
-		context.Background(),
-		organizationID,
-		clientID,
-		userID,
-		ticketdomain.CreateTicketRequest{
-			Kind:  "bug",
-			Title: "Login button broken",
-			Body:  "Clicking Sign in does nothing on mobile.",
-		},
-	)
-	require.NoError(t, err)
-
-	updated, err := service.Update(
-		context.Background(),
-		organizationID,
-		created.ID,
-		ticketdomain.UpdateTicketRequest{Status: "in_progress"},
-	)
-	require.NoError(t, err)
-	require.Equal(t, ticketdomain.StatusInProgress, updated.Status)
-
-	listed, err := service.List(context.Background(), organizationID, clientID)
-	require.NoError(t, err)
-	require.Equal(t, ticketdomain.StatusInProgress, listed[0].Status)
-}
-
-func TestTicketService_Update_WrongOrgNotFound(t *testing.T) {
-	db, cleanup := setupTicketTestDatabase(t)
-	defer cleanup()
-
-	service := setupTicketService(db)
-	userID := seedUser(t, db, "pat@example.com")
-	organizationID := seedOrganization(t, db, "Acme")
-	otherOrganizationID := seedOrganization(t, db, "Other")
-	clientID := seedClient(t, db, organizationID, "Northwind")
-
-	created, err := service.Create(
-		context.Background(),
-		organizationID,
-		clientID,
-		userID,
-		ticketdomain.CreateTicketRequest{
-			Kind:  "other",
-			Title: "Need a call",
-			Body:  "Can someone ring us this week?",
-		},
-	)
-	require.NoError(t, err)
-
-	_, err = service.Update(
-		context.Background(),
-		otherOrganizationID,
-		created.ID,
-		ticketdomain.UpdateTicketRequest{Status: "closed"},
 	)
 	require.ErrorIs(t, err, ticketdomain.ErrTicketNotFound)
 }

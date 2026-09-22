@@ -34,10 +34,11 @@ func (r *Repository) Create(
 				status,
 				title,
 				body,
+				version,
 				created_at,
 				updated_at
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		`
 
 	_, err := database.QuerierFrom(ctx, r.db).Exec(
@@ -51,6 +52,7 @@ func (r *Repository) Create(
 		ticket.Status,
 		ticket.Title,
 		ticket.Body,
+		ticket.Version,
 		ticket.CreatedAt,
 		ticket.UpdatedAt,
 	)
@@ -74,6 +76,7 @@ func (r *Repository) GetByID(
 				status,
 				title,
 				body,
+				version,
 				created_at,
 				updated_at
 			FROM tickets
@@ -95,6 +98,7 @@ func (r *Repository) GetByID(
 		&ticket.Status,
 		&ticket.Title,
 		&ticket.Body,
+		&ticket.Version,
 		&ticket.CreatedAt,
 		&ticket.UpdatedAt,
 	)
@@ -116,25 +120,26 @@ func (r *Repository) Update(
 			SET
 					status = $1,
 					updated_at = $2
-			WHERE id = $3 AND organization_id = $4
+					version = version + 1
+			WHERE id = $3 AND organization_id = $4 AND version = $5
+		RETURNING version
 		`
 
-	tag, err := database.QuerierFrom(ctx, r.db).Exec(
+	err := database.QuerierFrom(ctx, r.db).QueryRow(
 		ctx,
 		query,
 		ticket.Status,
 		ticket.UpdatedAt,
 		ticket.ID,
 		ticket.OrganizationID,
-	)
+		ticket.Version,
+	).Scan(&ticket.Version)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return r.conflictOrNotFound(ctx, ticket.ID, ticket.OrganizationID)
+		}
 		return fmt.Errorf("update ticket: %w", err)
 	}
-
-	if tag.RowsAffected() == 0 {
-		return domain.ErrTicketNotFound
-	}
-
 	return nil
 }
 
@@ -152,6 +157,7 @@ func (r *Repository) ListByClientID(
 				status,
 				title,
 				body,
+				version,
 				created_at,
 				updated_at
 			FROM tickets
@@ -179,6 +185,7 @@ func (r *Repository) ListByClientID(
 			&ticket.Status,
 			&ticket.Title,
 			&ticket.Body,
+			&ticket.Version,
 			&ticket.CreatedAt,
 			&ticket.UpdatedAt,
 		); err != nil {
@@ -192,4 +199,14 @@ func (r *Repository) ListByClientID(
 		return nil, fmt.Errorf("list tickets: %w", err)
 	}
 	return tickets, nil
+}
+
+func (r *Repository) conflictOrNotFound(
+	ctx context.Context,
+	id, organizationID uuid.UUID,
+) error {
+	if _, err := r.GetByID(ctx, id, organizationID); err != nil {
+		return err
+	}
+	return domain.ErrTicketVersionMismatch
 }

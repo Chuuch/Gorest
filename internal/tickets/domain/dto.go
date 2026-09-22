@@ -13,7 +13,8 @@ type CreateTicketRequest struct {
 }
 
 type UpdateTicketRequest struct {
-	Status string `json:"status" validate:"required,oneof=open in_progress resolved closed"`
+	Status  string `json:"status" validate:"required,oneof=open in_progress resolved closed"`
+	Version int    `json:"version" validate:"required,min=1"`
 }
 
 type TicketResponse struct {
@@ -25,6 +26,7 @@ type TicketResponse struct {
 	Status         Status    `json:"status"`
 	Title          string    `json:"title"`
 	Body           string    `json:"body"`
+	Version        int       `json:"version"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }

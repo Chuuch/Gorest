@@ -99,6 +99,7 @@ func setupTaskTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 			status TEXT NOT NULL,
 			title TEXT NOT NULL,
 			body TEXT NOT NULL,
+			version INTEGER NOT NULL DEFAULT 1,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL
 		)
@@ -115,6 +116,7 @@ func setupTaskTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 			notes TEXT NOT NULL DEFAULT '',
 			status TEXT NOT NULL,
 			completed_at TIMESTAMPTZ NULL,
+			version INTEGER NOT NULL DEFAULT 1,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL,
 			CONSTRAINT tasks_project_title_unique UNIQUE (project_id, title),
@@ -328,10 +330,12 @@ func TestTaskService_CreateAndList(t *testing.T) {
 	require.Equal(t, "Fix login", task.Title)
 	require.Equal(t, taskdomain.StatusTodo, task.Status)
 	require.Equal(t, projectID, task.ProjectID)
+	require.Equal(t, 1, task.Version)
 
 	own, err := service.List(context.Background(), organizationID, projectID)
 	require.NoError(t, err)
 	require.Len(t, own, 1)
+	require.Equal(t, 1, own[0].Version)
 
 	_, err = service.List(context.Background(), otherOrganizationID, projectID)
 	require.ErrorIs(t, err, projectdomain.ErrProjectNotFound)
@@ -364,6 +368,7 @@ func TestTaskService_Create_AdminCanAdd(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "Fix login", task.Title)
 	require.Equal(t, taskdomain.StatusInProgress, task.Status)
+	require.Equal(t, 1, task.Version)
 }
 
 func TestTaskService_Create_Forbidden(t *testing.T) {
@@ -503,17 +508,19 @@ func TestTaskService_Update_MemberCanComplete(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Nil(t, created.CompletedAt)
+	require.Equal(t, 1, created.Version)
 
 	updated, err := service.Update(
 		context.Background(),
 		organizationID,
 		created.ID,
-		taskdomain.UpdateTaskRequest{Status: "done"},
+		taskdomain.UpdateTaskRequest{Status: "done", Version: created.Version},
 	)
 
 	require.NoError(t, err)
 	require.Equal(t, taskdomain.StatusDone, updated.Status)
 	require.NotNil(t, updated.CompletedAt)
+	require.Equal(t, 2, updated.Version)
 }
 
 func TestTaskService_Update_ReopenClearsCompletedAt(t *testing.T) {
@@ -542,12 +549,13 @@ func TestTaskService_Update_ReopenClearsCompletedAt(t *testing.T) {
 		context.Background(),
 		organizationID,
 		created.ID,
-		taskdomain.UpdateTaskRequest{Status: "in_progress"},
+		taskdomain.UpdateTaskRequest{Status: "in_progress", Version: created.Version},
 	)
 
 	require.NoError(t, err)
 	require.Equal(t, taskdomain.StatusInProgress, updated.Status)
 	require.Nil(t, updated.CompletedAt)
+	require.Equal(t, 2, updated.Version)
 }
 
 func TestTaskService_Update_DoneTwiceKeepsCompletedAt(t *testing.T) {
@@ -580,12 +588,62 @@ func TestTaskService_Update_DoneTwiceKeepsCompletedAt(t *testing.T) {
 		context.Background(),
 		organizationID,
 		created.ID,
-		taskdomain.UpdateTaskRequest{Status: "done"},
+		taskdomain.UpdateTaskRequest{Status: "done", Version: created.Version},
 	)
 
 	require.NoError(t, err)
 	require.NotNil(t, updated.CompletedAt)
 	require.True(t, updated.CompletedAt.Equal(firstCompletedAt))
+	require.Equal(t, 2, updated.Version)
+}
+
+func TestTaskService_Update_VersionMismatch(t *testing.T) {
+	db, cleanup := setupTaskTestDatabase(t)
+	defer cleanup()
+
+	service := setupTaskService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		projectID,
+		orgdomain.RoleOwner,
+		taskdomain.CreateTaskRequest{
+			Title:  "Fix login",
+			Status: "todo",
+		},
+	)
+	require.NoError(t, err)
+
+	updated, err := service.Update(
+		context.Background(),
+		organizationID,
+		created.ID,
+		taskdomain.UpdateTaskRequest{Status: "done", Version: created.Version},
+	)
+	require.NoError(t, err)
+	require.Equal(t, 2, updated.Version)
+
+	_, err = service.Update(
+		context.Background(),
+		organizationID,
+		created.ID,
+		taskdomain.UpdateTaskRequest{Status: "in_progress", Version: created.Version},
+	)
+	require.ErrorIs(t, err, taskdomain.ErrTaskVersionMismatch)
+
+	again, err := service.Update(
+		context.Background(),
+		organizationID,
+		created.ID,
+		taskdomain.UpdateTaskRequest{Status: "in_progress", Version: updated.Version},
+	)
+	require.NoError(t, err)
+	require.Equal(t, taskdomain.StatusInProgress, again.Status)
+	require.Equal(t, 3, again.Version)
 }
 
 func TestTaskService_Update_NotFound(t *testing.T) {
@@ -599,7 +657,7 @@ func TestTaskService_Update_NotFound(t *testing.T) {
 		context.Background(),
 		organizationID,
 		uuid.New(),
-		taskdomain.UpdateTaskRequest{Status: "done"},
+		taskdomain.UpdateTaskRequest{Status: "done", Version: 1},
 	)
 
 	require.ErrorIs(t, err, taskdomain.ErrTaskNotFound)
@@ -633,6 +691,7 @@ func TestTaskService_Convert(t *testing.T) {
 	require.Equal(t, projectID, task.ProjectID)
 	require.NotNil(t, task.TicketID)
 	require.Equal(t, ticketID, *task.TicketID)
+	require.Equal(t, 1, task.Version)
 
 	_, err = service.Convert(
 		context.Background(),
@@ -652,6 +711,7 @@ func TestTaskService_Convert(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, otherProjectID, second.ProjectID)
+	require.Equal(t, 1, second.Version)
 
 	_, err = service.Convert(
 		context.Background(),

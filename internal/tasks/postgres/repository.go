@@ -35,10 +35,11 @@ func (r *Repository) Create(
 				notes,
 				status,
 				completed_at,
+				"version",
 				created_at,
 				updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		`
 
 	_, err := database.QuerierFrom(ctx, r.db).Exec(
@@ -52,6 +53,7 @@ func (r *Repository) Create(
 		task.Notes,
 		task.Status,
 		task.CompletedAt,
+		task.Version,
 		task.CreatedAt,
 		task.UpdatedAt,
 	)
@@ -83,6 +85,7 @@ func (r *Repository) GetByID(
 				notes,
 				status,
 				completed_at,
+				"version",
 				created_at,
 				updated_at
 			FROM tasks
@@ -105,6 +108,7 @@ func (r *Repository) GetByID(
 		&task.Notes,
 		&task.Status,
 		&task.CompletedAt,
+		&task.Version,
 		&task.CreatedAt,
 		&task.UpdatedAt,
 	)
@@ -128,11 +132,13 @@ func (r *Repository) Update(
 			SET
 					status = $1,
 					completed_at = $2,
-					updated_at = $3
-			WHERE id = $4 AND organization_id = $5
+					updated_at = $3,
+					"version" = tasks."version" + 1
+			WHERE id = $4 AND organization_id = $5 AND "version" = $6
+			RETURNING "version"
 		`
 
-	tag, err := database.QuerierFrom(ctx, r.db).Exec(
+	err := database.QuerierFrom(ctx, r.db).QueryRow(
 		ctx,
 		query,
 		task.Status,
@@ -140,13 +146,14 @@ func (r *Repository) Update(
 		task.UpdatedAt,
 		task.ID,
 		task.OrganizationID,
-	)
-	if err != nil {
-		return fmt.Errorf("update task: %w", err)
-	}
+		task.Version,
+	).Scan(&task.Version)
 
-	if tag.RowsAffected() == 0 {
-		return domain.ErrTaskNotFound
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return r.conflictOrNotFound(ctx, task.ID, task.OrganizationID)
+		}
+		return fmt.Errorf("update task: %w", err)
 	}
 
 	return nil
@@ -166,6 +173,7 @@ func (r *Repository) ListByProjectID(
 				notes,
 				status,
 				completed_at,
+				"version",
 				created_at,
 				updated_at
 			FROM tasks
@@ -193,6 +201,7 @@ func (r *Repository) ListByProjectID(
 			&task.Notes,
 			&task.Status,
 			&task.CompletedAt,
+			&task.Version,
 			&task.CreatedAt,
 			&task.UpdatedAt,
 		); err != nil {
@@ -207,4 +216,15 @@ func (r *Repository) ListByProjectID(
 	}
 
 	return tasks, nil
+}
+
+func (r *Repository) conflictOrNotFound(
+	ctx context.Context,
+	id, organizationID uuid.UUID,
+) error {
+	if _, err := r.GetByID(ctx, id, organizationID); err != nil {
+		return err
+	}
+
+	return domain.ErrTaskVersionMismatch
 }

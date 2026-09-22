@@ -39,6 +39,7 @@ func testTask() *taskdomain.Task {
 		Title:          "Fix login",
 		Notes:          "OAuth",
 		Status:         taskdomain.StatusTodo,
+		Version:        1,
 		CreatedAt:      time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		UpdatedAt:      time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 	}
@@ -127,6 +128,7 @@ func TestHandler_List(t *testing.T) {
 	require.Len(t, response, 1)
 	require.Equal(t, "Fix login", response[0].Title)
 	require.Equal(t, taskdomain.StatusTodo, response[0].Status)
+	require.Equal(t, 1, response[0].Version)
 }
 
 func TestHandler_List_ProjectNotFound(t *testing.T) {
@@ -282,6 +284,7 @@ func TestHandler_Update(t *testing.T) {
 	organizationID := testOrganizationID()
 	task := testTask()
 	task.Status = taskdomain.StatusDone
+	task.Version = 2
 
 	service := &mockService{
 		updateFunc: func(
@@ -292,6 +295,7 @@ func TestHandler_Update(t *testing.T) {
 			require.Equal(t, organizationID, gotOrganizationID)
 			require.Equal(t, task.ID, gotTaskID)
 			require.Equal(t, "done", req.Status)
+			require.Equal(t, 1, req.Version)
 			return task, nil
 		},
 	}
@@ -301,7 +305,7 @@ func TestHandler_Update(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPatch,
 		"/api/v1/tasks/"+task.ID.String(),
-		bytes.NewBufferString(`{"status":"done"}`),
+		bytes.NewBufferString(`{"status":"done","version":1}`),
 	)
 	req.SetPathValue("id", task.ID.String())
 	req = withSession(req, organizationID, "member")
@@ -310,6 +314,10 @@ func TestHandler_Update(t *testing.T) {
 	handler.Update(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response taskdomain.TaskResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Equal(t, 2, response.Version)
 }
 
 func TestHandler_Update_NotFound(t *testing.T) {
@@ -329,7 +337,7 @@ func TestHandler_Update_NotFound(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPatch,
 		"/api/v1/tasks/"+taskID.String(),
-		bytes.NewBufferString(`{"status":"done"}`),
+		bytes.NewBufferString(`{"status":"done","version":1}`),
 	)
 	req.SetPathValue("id", taskID.String())
 	req = withSession(req, testOrganizationID(), "member")
@@ -338,6 +346,63 @@ func TestHandler_Update_NotFound(t *testing.T) {
 	handler.Update(rec, req)
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestHandler_Update_VersionMismatch(t *testing.T) {
+	service := &mockService{
+		updateFunc: func(
+			uuid.UUID,
+			uuid.UUID,
+			taskdomain.UpdateTaskRequest,
+		) (*taskdomain.Task, error) {
+			return nil, taskdomain.ErrTaskVersionMismatch
+		},
+	}
+
+	handler := taskhandler.NewHandler(service)
+	taskID := testTask().ID
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/tasks/"+taskID.String(),
+		bytes.NewBufferString(`{"status":"done","version":1}`),
+	)
+	req.SetPathValue("id", taskID.String())
+	req = withSession(req, testOrganizationID(), "member")
+
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+}
+
+func TestHandler_Update_MissingVersion(t *testing.T) {
+	service := &mockService{
+		updateFunc: func(
+			uuid.UUID,
+			uuid.UUID,
+			taskdomain.UpdateTaskRequest,
+		) (*taskdomain.Task, error) {
+			t.Fatal("service should not be called")
+			return nil, nil
+		},
+	}
+
+	handler := taskhandler.NewHandler(service)
+	taskID := testTask().ID
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/tasks/"+taskID.String(),
+		bytes.NewBufferString(`{"status":"done"}`),
+	)
+	req.SetPathValue("id", taskID.String())
+	req = withSession(req, testOrganizationID(), "member")
+
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
 func TestHandler_Update_InvalidStatus(t *testing.T) {
@@ -358,7 +423,7 @@ func TestHandler_Update_InvalidStatus(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPatch,
 		"/api/v1/tasks/"+taskID.String(),
-		bytes.NewBufferString(`{"status":"blocked"}`),
+		bytes.NewBufferString(`{"status":"blocked","version":1}`),
 	)
 	req.SetPathValue("id", taskID.String())
 	req = withSession(req, testOrganizationID(), "owner")
@@ -411,6 +476,7 @@ func TestHandler_Convert(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
 	require.Equal(t, ticketID, *response.TicketID)
 	require.Equal(t, "Fix login", response.Title)
+	require.Equal(t, 1, response.Version)
 }
 
 func TestHandler_Convert_Forbidden(t *testing.T) {

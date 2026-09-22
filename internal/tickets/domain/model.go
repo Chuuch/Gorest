@@ -33,6 +33,7 @@ type Ticket struct {
 	Status         Status
 	Title          string
 	Body           string
+	Version        int
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }

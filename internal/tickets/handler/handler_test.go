@@ -39,6 +39,7 @@ func testTicket() *ticketdomain.Ticket {
 		Status:         ticketdomain.StatusOpen,
 		Title:          "Login button broken",
 		Body:           "Clicking Sign in does nothing on mobile.",
+		Version:        1,
 		CreatedAt:      time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		UpdatedAt:      time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 	}
@@ -120,6 +121,7 @@ func TestHandler_List(t *testing.T) {
 	require.Len(t, response, 1)
 	require.Equal(t, ticketdomain.KindBug, response[0].Kind)
 	require.Equal(t, "Login button broken", response[0].Title)
+	require.Equal(t, 1, response[0].Version)
 }
 
 func TestHandler_List_ClientNotFound(t *testing.T) {
@@ -169,6 +171,7 @@ func TestHandler_ListPortal(t *testing.T) {
 	var response []ticketdomain.TicketResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
 	require.Equal(t, ticketdomain.StatusOpen, response[0].Status)
+	require.Equal(t, 1, response[0].Version)
 }
 
 func TestHandler_CreatePortal(t *testing.T) {
@@ -238,6 +241,7 @@ func TestHandler_Update(t *testing.T) {
 	organizationID := testOrganizationID()
 	ticket := testTicket()
 	ticket.Status = ticketdomain.StatusInProgress
+	ticket.Version = 2
 
 	service := &mockService{
 		updateFunc: func(
@@ -247,6 +251,7 @@ func TestHandler_Update(t *testing.T) {
 			require.Equal(t, organizationID, gotOrganizationID)
 			require.Equal(t, ticket.ID, gotTicketID)
 			require.Equal(t, "in_progress", req.Status)
+			require.Equal(t, 1, req.Version)
 			return ticket, nil
 		},
 	}
@@ -256,7 +261,7 @@ func TestHandler_Update(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPatch,
 		"/api/v1/tickets/"+ticket.ID.String(),
-		bytes.NewBufferString(`{"status":"in_progress"}`),
+		bytes.NewBufferString(`{"status":"in_progress","version":1}`),
 	)
 	req.SetPathValue("id", ticket.ID.String())
 	req = withStaffSession(req, organizationID, "member")
@@ -269,12 +274,62 @@ func TestHandler_Update(t *testing.T) {
 	var response ticketdomain.TicketResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
 	require.Equal(t, ticketdomain.StatusInProgress, response.Status)
+	require.Equal(t, 2, response.Version)
 }
 
 func TestHandler_Update_NotFound(t *testing.T) {
 	service := &mockService{
 		updateFunc: func(uuid.UUID, uuid.UUID, ticketdomain.UpdateTicketRequest) (*ticketdomain.Ticket, error) {
 			return nil, ticketdomain.ErrTicketNotFound
+		},
+	}
+
+	handler := tickethandler.NewHandler(service)
+	ticketID := uuid.MustParse("99999999-9999-9999-9999-999999999999")
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/tickets/"+ticketID.String(),
+		bytes.NewBufferString(`{"status":"closed","version":1}`),
+	)
+	req.SetPathValue("id", ticketID.String())
+	req = withStaffSession(req, testOrganizationID(), "admin")
+
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestHandler_Update_VersionMismatch(t *testing.T) {
+	service := &mockService{
+		updateFunc: func(uuid.UUID, uuid.UUID, ticketdomain.UpdateTicketRequest) (*ticketdomain.Ticket, error) {
+			return nil, ticketdomain.ErrTicketVersionMismatch
+		},
+	}
+
+	handler := tickethandler.NewHandler(service)
+	ticketID := uuid.MustParse("99999999-9999-9999-9999-999999999999")
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/tickets/"+ticketID.String(),
+		bytes.NewBufferString(`{"status":"closed","version":1}`),
+	)
+	req.SetPathValue("id", ticketID.String())
+	req = withStaffSession(req, testOrganizationID(), "admin")
+
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+}
+
+func TestHandler_Update_MissingVersion(t *testing.T) {
+	service := &mockService{
+		updateFunc: func(uuid.UUID, uuid.UUID, ticketdomain.UpdateTicketRequest) (*ticketdomain.Ticket, error) {
+			t.Fatal("service should not be called")
+			return nil, nil
 		},
 	}
 
@@ -292,5 +347,5 @@ func TestHandler_Update_NotFound(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.Update(rec, req)
 
-	require.Equal(t, http.StatusNotFound, rec.Code)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
 }

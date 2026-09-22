@@ -13,7 +13,8 @@ type CreateTaskRequest struct {
 }
 
 type UpdateTaskRequest struct {
-	Status string `json:"status" validate:"required,oneof=todo in_progress done"`
+	Status  string `json:"status" validate:"required,oneof=todo in_progress done"`
+	Version int    `json:"version" validate:"required,min=1"`
 }
 
 type ConvertTicketRequest struct {
@@ -29,6 +30,7 @@ type TaskResponse struct {
 	Notes          string     `json:"notes"`
 	Status         Status     `json:"status"`
 	CompletedAt    *time.Time `json:"completed_at"`
+	Version        int        `json:"version"`
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`
 }

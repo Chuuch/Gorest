@@ -269,6 +269,14 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 			"task title already exists",
 		)
 
+	case errors.Is(err, taskdomain.ErrTaskVersionMismatch):
+		api.WriteError(
+			w,
+			http.StatusConflict,
+			"task_version_mismatch",
+			"task was updated by someone else",
+		)
+
 	case errors.Is(err, taskdomain.ErrTicketAlreadyConverted):
 		api.WriteError(
 			w,
@@ -320,6 +328,8 @@ func toResponse(task *taskdomain.Task) taskdomain.TaskResponse {
 		Title:          task.Title,
 		Notes:          task.Notes,
 		Status:         task.Status,
+		CompletedAt:    task.CompletedAt,
+		Version:        task.Version,
 		CreatedAt:      task.CreatedAt,
 		UpdatedAt:      task.UpdatedAt,
 	}

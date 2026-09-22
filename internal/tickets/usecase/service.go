@@ -78,6 +78,7 @@ func (s *service) Create(
 		Status:         ticketdomain.StatusOpen,
 		Title:          req.Title,
 		Body:           req.Body,
+		Version:        1,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
@@ -101,6 +102,7 @@ func (s *service) Update(
 
 	ticket.Status = ticketdomain.Status(req.Status)
 	ticket.UpdatedAt = time.Now().UTC()
+	ticket.Version = req.Version
 
 	if err := s.tickets.Update(ctx, ticket); err != nil {
 		return nil, err
