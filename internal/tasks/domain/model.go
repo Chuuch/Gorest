@@ -18,10 +18,12 @@ type Task struct {
 	ID             uuid.UUID
 	OrganizationID uuid.UUID
 	ProjectID      uuid.UUID
+	TicketID       *uuid.UUID
 	Title          string
 	Notes          string
 	Status         Status
 	CompletedAt    *time.Time
+	Version        int
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }

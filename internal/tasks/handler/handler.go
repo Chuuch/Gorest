@@ -11,6 +11,7 @@ import (
 	"github.com/chuuch/gorest/internal/requestcontext"
 	taskdomain "github.com/chuuch/gorest/internal/tasks/domain"
 	"github.com/chuuch/gorest/internal/tasks/usecase"
+	ticketdomain "github.com/chuuch/gorest/internal/tickets/domain"
 	"github.com/chuuch/gorest/internal/validation"
 	"github.com/google/uuid"
 )
@@ -128,6 +129,49 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusOK, toResponse(task))
 }
 
+func (h *Handler) Convert(w http.ResponseWriter, r *http.Request) {
+	organizationID, actorRole, ok := h.session(w, r)
+	if !ok {
+		return
+	}
+
+	ticketID, ok := h.ticketID(w, r)
+	if !ok {
+		return
+	}
+
+	var req taskdomain.ConvertTicketRequest
+
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_request",
+			"invalid request body",
+		)
+		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
+		return
+	}
+
+	task, err := h.service.Convert(
+		r.Context(),
+		organizationID,
+		ticketID,
+		actorRole,
+		req,
+	)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	api.WriteJSON(w, http.StatusCreated, toResponse(task))
+}
+
 func (h *Handler) projectID(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -160,6 +204,23 @@ func (h *Handler) taskID(
 		return uuid.Nil, false
 	}
 	return taskID, true
+}
+
+func (h *Handler) ticketID(
+	w http.ResponseWriter,
+	r *http.Request,
+) (uuid.UUID, bool) {
+	ticketID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_ticket_id",
+			"invalid ticket id",
+		)
+		return uuid.Nil, false
+	}
+	return ticketID, true
 }
 
 func (h *Handler) session(
@@ -208,12 +269,36 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 			"task title already exists",
 		)
 
+	case errors.Is(err, taskdomain.ErrTaskVersionMismatch):
+		api.WriteError(
+			w,
+			http.StatusConflict,
+			"task_version_mismatch",
+			"task was updated by someone else",
+		)
+
+	case errors.Is(err, taskdomain.ErrTicketAlreadyConverted):
+		api.WriteError(
+			w,
+			http.StatusConflict,
+			"ticket_already_converted",
+			"ticket already converted",
+		)
+
 	case errors.Is(err, projectdomain.ErrProjectNotFound):
 		api.WriteError(
 			w,
 			http.StatusNotFound,
 			"project_not_found",
 			"project not found",
+		)
+
+	case errors.Is(err, ticketdomain.ErrTicketNotFound):
+		api.WriteError(
+			w,
+			http.StatusNotFound,
+			"ticket_not_found",
+			"ticket not found",
 		)
 
 	case errors.Is(err, taskdomain.ErrTaskNotFound):
@@ -239,9 +324,12 @@ func toResponse(task *taskdomain.Task) taskdomain.TaskResponse {
 		ID:             task.ID,
 		OrganizationID: task.OrganizationID,
 		ProjectID:      task.ProjectID,
+		TicketID:       task.TicketID,
 		Title:          task.Title,
 		Notes:          task.Notes,
 		Status:         task.Status,
+		CompletedAt:    task.CompletedAt,
+		Version:        task.Version,
 		CreatedAt:      task.CreatedAt,
 		UpdatedAt:      task.UpdatedAt,
 	}
