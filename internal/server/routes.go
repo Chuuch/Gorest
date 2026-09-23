@@ -129,6 +129,8 @@ func registerRoutes(
 	// TIME ENTRIES
 	mux.Handle("GET /api/v1/tasks/{id}/time-entries", staff(tokenManager, timeEntryHandler.List))
 	mux.Handle("POST /api/v1/tasks/{id}/time-entries", staff(tokenManager, timeEntryHandler.Create))
+	mux.Handle("PATCH /api/v1/time-entries/{id}", staff(tokenManager, timeEntryHandler.Update))
+	mux.Handle("DELETE /api/v1/time-entries/{id}", staff(tokenManager, timeEntryHandler.Delete))
 
 	// FILES
 	mux.Handle("GET /api/v1/projects/{id}/files", staff(tokenManager, fileHandler.List))

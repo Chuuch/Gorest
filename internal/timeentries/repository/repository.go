@@ -9,5 +9,8 @@ import (
 
 type TimeEntryRepository interface {
 	Create(ctx context.Context, entry *domain.TimeEntry) error
+	GetByID(ctx context.Context, id, organizationID uuid.UUID) (*domain.TimeEntry, error)
 	ListByTaskID(ctx context.Context, organizationID, taskID uuid.UUID) ([]*domain.TimeEntry, error)
+	Update(ctx context.Context, entry *domain.TimeEntry) error
+	Delete(ctx context.Context, id, organizationID uuid.UUID) error
 }
