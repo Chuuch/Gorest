@@ -102,6 +102,68 @@ func (r *Repository) GetByID(
 	return &client, nil
 }
 
+func (r *Repository) Update(
+	ctx context.Context,
+	client *domain.Client,
+) error {
+	const query = `
+			UPDATE clients
+			SET
+					name = $1,
+					notes = $2,
+					updated_at = $3
+			WHERE id = $4 AND organization_id = $5
+		`
+
+	tag, err := database.QuerierFrom(ctx, r.db).Exec(
+		ctx,
+		query,
+		client.Name,
+		client.Notes,
+		client.UpdatedAt,
+		client.ID,
+		client.OrganizationID,
+	)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return domain.ErrClientNameExists
+		}
+
+		return fmt.Errorf("update client: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return domain.ErrClientNotFound
+	}
+	return nil
+}
+
+func (r *Repository) Delete(
+	ctx context.Context,
+	id, organizationID uuid.UUID,
+) error {
+	const query = `
+			DELETE FROM clients
+			WHERE id = $1 AND organization_id = $2
+		`
+
+	tag, err := database.QuerierFrom(ctx, r.db).Exec(
+		ctx,
+		query,
+		id,
+		organizationID,
+	)
+	if err != nil {
+		return fmt.Errorf("delete client: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return domain.ErrClientNotFound
+	}
+	return nil
+}
+
 func (r *Repository) ListByOrganizationID(
 	ctx context.Context,
 	organizationID uuid.UUID,

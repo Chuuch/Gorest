@@ -182,3 +182,188 @@ func TestClientService_Create_NameExists(t *testing.T) {
 
 	require.ErrorIs(t, err, clientdomain.ErrClientNameExists)
 }
+
+func TestClientService_Update(t *testing.T) {
+	db, cleanup := setupClientTestDatabase(t)
+	defer cleanup()
+
+	service := clientusecase.NewService(clientpostgres.NewRepository(db))
+	organizationID := seedOrganization(t, db, "Acme")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		orgdomain.RoleOwner,
+		clientdomain.CreateClientRequest{Name: "Northwind", Notes: "Retail"},
+	)
+	require.NoError(t, err)
+
+	updated, err := service.Update(
+		context.Background(),
+		organizationID,
+		created.ID,
+		orgdomain.RoleAdmin,
+		clientdomain.UpdateClientRequest{Name: "Contoso", Notes: "Wholesale"},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, "Contoso", updated.Name)
+	require.Equal(t, "Wholesale", updated.Notes)
+}
+
+func TestClientService_Update_Forbidden(t *testing.T) {
+	db, cleanup := setupClientTestDatabase(t)
+	defer cleanup()
+
+	service := clientusecase.NewService(clientpostgres.NewRepository(db))
+	organizationID := seedOrganization(t, db, "Acme")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		orgdomain.RoleOwner,
+		clientdomain.CreateClientRequest{Name: "Northwind"},
+	)
+	require.NoError(t, err)
+
+	_, err = service.Update(
+		context.Background(),
+		organizationID,
+		created.ID,
+		orgdomain.RoleMember,
+		clientdomain.UpdateClientRequest{Name: "Contoso"},
+	)
+
+	require.ErrorIs(t, err, clientdomain.ErrForbidden)
+}
+
+func TestClientService_Update_WrongOrgNotFound(t *testing.T) {
+	db, cleanup := setupClientTestDatabase(t)
+	defer cleanup()
+
+	service := clientusecase.NewService(clientpostgres.NewRepository(db))
+	organizationID := seedOrganization(t, db, "Acme")
+	otherOrganizationID := seedOrganization(t, db, "Other")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		orgdomain.RoleOwner,
+		clientdomain.CreateClientRequest{Name: "Northwind"},
+	)
+	require.NoError(t, err)
+
+	_, err = service.Update(
+		context.Background(),
+		otherOrganizationID,
+		created.ID,
+		orgdomain.RoleOwner,
+		clientdomain.UpdateClientRequest{Name: "Contoso"},
+	)
+
+	require.ErrorIs(t, err, clientdomain.ErrClientNotFound)
+}
+
+func TestClientService_Update_NameExists(t *testing.T) {
+	db, cleanup := setupClientTestDatabase(t)
+	defer cleanup()
+
+	service := clientusecase.NewService(clientpostgres.NewRepository(db))
+	organizationID := seedOrganization(t, db, "Acme")
+
+	_, err := service.Create(
+		context.Background(),
+		organizationID,
+		orgdomain.RoleOwner,
+		clientdomain.CreateClientRequest{Name: "Northwind"},
+	)
+	require.NoError(t, err)
+
+	other, err := service.Create(
+		context.Background(),
+		organizationID,
+		orgdomain.RoleOwner,
+		clientdomain.CreateClientRequest{Name: "Contoso"},
+	)
+	require.NoError(t, err)
+
+	_, err = service.Update(
+		context.Background(),
+		organizationID,
+		other.ID,
+		orgdomain.RoleOwner,
+		clientdomain.UpdateClientRequest{Name: "Northwind"},
+	)
+
+	require.ErrorIs(t, err, clientdomain.ErrClientNameExists)
+}
+
+func TestClientService_Delete(t *testing.T) {
+	db, cleanup := setupClientTestDatabase(t)
+	defer cleanup()
+
+	service := clientusecase.NewService(clientpostgres.NewRepository(db))
+	organizationID := seedOrganization(t, db, "Acme")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		orgdomain.RoleOwner,
+		clientdomain.CreateClientRequest{Name: "Northwind"},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		organizationID,
+		created.ID,
+		orgdomain.RoleAdmin,
+	)
+	require.NoError(t, err)
+
+	clients, err := service.List(context.Background(), organizationID)
+	require.NoError(t, err)
+	require.Empty(t, clients)
+}
+
+func TestClientService_Delete_Forbidden(t *testing.T) {
+	db, cleanup := setupClientTestDatabase(t)
+	defer cleanup()
+
+	service := clientusecase.NewService(clientpostgres.NewRepository(db))
+	organizationID := seedOrganization(t, db, "Acme")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		orgdomain.RoleOwner,
+		clientdomain.CreateClientRequest{Name: "Northwind"},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		organizationID,
+		created.ID,
+		orgdomain.RoleMember,
+	)
+
+	require.ErrorIs(t, err, clientdomain.ErrForbidden)
+}
+
+func TestClientService_Delete_NotFound(t *testing.T) {
+	db, cleanup := setupClientTestDatabase(t)
+	defer cleanup()
+
+	service := clientusecase.NewService(clientpostgres.NewRepository(db))
+	organizationID := seedOrganization(t, db, "Acme")
+
+	err := service.Delete(
+		context.Background(),
+		organizationID,
+		uuid.New(),
+		orgdomain.RoleOwner,
+	)
+
+	require.ErrorIs(t, err, clientdomain.ErrClientNotFound)
+}
