@@ -39,6 +39,9 @@ import (
 	taskhandler "github.com/chuuch/gorest/internal/tasks/handler"
 	taskpostgres "github.com/chuuch/gorest/internal/tasks/postgres"
 	taskusecase "github.com/chuuch/gorest/internal/tasks/usecase"
+	ticketcommenthandler "github.com/chuuch/gorest/internal/ticketcomments/handler"
+	ticketcommentpostgres "github.com/chuuch/gorest/internal/ticketcomments/postgres"
+	ticketcommentusecase "github.com/chuuch/gorest/internal/ticketcomments/usecase"
 	ticketfilehandler "github.com/chuuch/gorest/internal/ticketfiles/handler"
 	ticketfilepostgres "github.com/chuuch/gorest/internal/ticketfiles/postgres"
 	ticketfileusecase "github.com/chuuch/gorest/internal/ticketfiles/usecase"
@@ -209,25 +212,38 @@ func New(cfg *config.Config) (*Server, error) {
 	ticketFileHandler := ticketfilehandler.NewHandler(ticketFileService)
 
 	// -------------------------------------------------------------
+	// Ticket comment domain
+	// -------------------------------------------------------------
+	ticketCommentRepository := ticketcommentpostgres.NewRepository(db)
+	ticketCommentService := ticketcommentusecase.NewService(ticketCommentRepository, ticketRepository)
+	ticketCommentHandler := ticketcommenthandler.NewHandler(ticketCommentService)
+
+	// -------------------------------------------------------------
 	// HTTP Server
 	// -------------------------------------------------------------
+	router := newRouter(
+		userHandler,
+		authHandler,
+		orgHandler,
+		clientHandler,
+		projectHandler,
+		taskHandler,
+		timeEntryHandler,
+		fileHandler,
+		commentHandler,
+		clientUserHandler,
+		ticketHandler,
+		ticketFileHandler,
+		ticketCommentHandler,
+		tokenManager,
+	)
+
 	httpServer := &http.Server{
 		Addr: fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		Handler: middleware.CORS(cfg.CORS.AllowedOrigins)(
-			newRouter(
-				userHandler,
-				authHandler,
-				orgHandler,
-				clientHandler,
-				projectHandler,
-				taskHandler,
-				timeEntryHandler,
-				fileHandler,
-				commentHandler,
-				clientUserHandler,
-				ticketHandler,
-				ticketFileHandler,
-				tokenManager),
+			middleware.RequestLog(
+				middleware.Metrics(router),
+			),
 		),
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,

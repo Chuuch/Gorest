@@ -394,3 +394,220 @@ func TestOrganizationService_CreateMember_ExistingUserWithoutMembership(t *testi
 	require.Equal(t, "ada@example.com", member.Email)
 	require.Equal(t, orgdomain.RoleAdmin, member.Role)
 }
+
+func TestOrganizationService_UpdateMember(t *testing.T) {
+	db, cleanup := setupOrganizationTestDatabase(t)
+	defer cleanup()
+
+	deps := setupOrganizationService(t, db)
+	organizationID := seedOrganization(t, db)
+	_ = seedMembership(t, deps, organizationID, "owner@example.com", orgdomain.RoleOwner)
+	member := seedMembership(t, deps, organizationID, "ada@example.com", orgdomain.RoleMember)
+
+	updated, err := deps.service.UpdateMember(
+		context.Background(),
+		organizationID,
+		member.ID,
+		orgdomain.RoleAdmin,
+		orgdomain.UpdateMemberRequest{Role: "admin"},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, member.ID, updated.UserID)
+	require.Equal(t, orgdomain.RoleAdmin, updated.Role)
+}
+
+func TestOrganizationService_UpdateMember_Forbidden(t *testing.T) {
+	db, cleanup := setupOrganizationTestDatabase(t)
+	defer cleanup()
+
+	deps := setupOrganizationService(t, db)
+	organizationID := seedOrganization(t, db)
+	member := seedMembership(t, deps, organizationID, "ada@example.com", orgdomain.RoleMember)
+
+	_, err := deps.service.UpdateMember(
+		context.Background(),
+		organizationID,
+		member.ID,
+		orgdomain.RoleMember,
+		orgdomain.UpdateMemberRequest{Role: "admin"},
+	)
+
+	require.ErrorIs(t, err, orgdomain.ErrForbidden)
+}
+
+func TestOrganizationService_UpdateMember_CannotAssignOwner(t *testing.T) {
+	db, cleanup := setupOrganizationTestDatabase(t)
+	defer cleanup()
+
+	deps := setupOrganizationService(t, db)
+	organizationID := seedOrganization(t, db)
+	_ = seedMembership(t, deps, organizationID, "owner@example.com", orgdomain.RoleOwner)
+	member := seedMembership(t, deps, organizationID, "ada@example.com", orgdomain.RoleMember)
+
+	_, err := deps.service.UpdateMember(
+		context.Background(),
+		organizationID,
+		member.ID,
+		orgdomain.RoleOwner,
+		orgdomain.UpdateMemberRequest{Role: "owner"},
+	)
+
+	require.ErrorIs(t, err, orgdomain.ErrCannotAssignOwner)
+}
+
+func TestOrganizationService_UpdateMember_LastOwner(t *testing.T) {
+	db, cleanup := setupOrganizationTestDatabase(t)
+	defer cleanup()
+
+	deps := setupOrganizationService(t, db)
+	organizationID := seedOrganization(t, db)
+	owner := seedMembership(t, deps, organizationID, "owner@example.com", orgdomain.RoleOwner)
+
+	_, err := deps.service.UpdateMember(
+		context.Background(),
+		organizationID,
+		owner.ID,
+		orgdomain.RoleOwner,
+		orgdomain.UpdateMemberRequest{Role: "admin"},
+	)
+
+	require.ErrorIs(t, err, orgdomain.ErrLastOwner)
+}
+
+func TestOrganizationService_UpdateMember_SecondOwnerCanBeDemoted(t *testing.T) {
+	db, cleanup := setupOrganizationTestDatabase(t)
+	defer cleanup()
+
+	deps := setupOrganizationService(t, db)
+	organizationID := seedOrganization(t, db)
+	_ = seedMembership(t, deps, organizationID, "owner@example.com", orgdomain.RoleOwner)
+	otherOwner := seedMembership(t, deps, organizationID, "other@example.com", orgdomain.RoleOwner)
+
+	updated, err := deps.service.UpdateMember(
+		context.Background(),
+		organizationID,
+		otherOwner.ID,
+		orgdomain.RoleOwner,
+		orgdomain.UpdateMemberRequest{Role: "admin"},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, orgdomain.RoleAdmin, updated.Role)
+}
+
+func TestOrganizationService_UpdateMember_WrongOrgNotFound(t *testing.T) {
+	db, cleanup := setupOrganizationTestDatabase(t)
+	defer cleanup()
+
+	deps := setupOrganizationService(t, db)
+	organizationID := seedOrganization(t, db)
+	otherOrganizationID := seedOrganization(t, db)
+	_ = seedMembership(t, deps, organizationID, "owner@example.com", orgdomain.RoleOwner)
+	member := seedMembership(t, deps, organizationID, "ada@example.com", orgdomain.RoleMember)
+
+	_, err := deps.service.UpdateMember(
+		context.Background(),
+		otherOrganizationID,
+		member.ID,
+		orgdomain.RoleOwner,
+		orgdomain.UpdateMemberRequest{Role: "admin"},
+	)
+
+	require.ErrorIs(t, err, orgdomain.ErrMembershipNotFound)
+}
+
+func TestOrganizationService_DeleteMember(t *testing.T) {
+	db, cleanup := setupOrganizationTestDatabase(t)
+	defer cleanup()
+
+	deps := setupOrganizationService(t, db)
+	organizationID := seedOrganization(t, db)
+	_ = seedMembership(t, deps, organizationID, "owner@example.com", orgdomain.RoleOwner)
+	member := seedMembership(t, deps, organizationID, "ada@example.com", orgdomain.RoleMember)
+
+	err := deps.service.DeleteMember(
+		context.Background(),
+		organizationID,
+		member.ID,
+		orgdomain.RoleOwner,
+	)
+	require.NoError(t, err)
+
+	members, err := deps.service.ListMembers(context.Background(), organizationID)
+	require.NoError(t, err)
+	require.Len(t, members, 1)
+	require.Equal(t, orgdomain.RoleOwner, members[0].Role)
+}
+
+func TestOrganizationService_DeleteMember_LastOwner(t *testing.T) {
+	db, cleanup := setupOrganizationTestDatabase(t)
+	defer cleanup()
+
+	deps := setupOrganizationService(t, db)
+	organizationID := seedOrganization(t, db)
+	owner := seedMembership(t, deps, organizationID, "owner@example.com", orgdomain.RoleOwner)
+
+	err := deps.service.DeleteMember(
+		context.Background(),
+		organizationID,
+		owner.ID,
+		orgdomain.RoleOwner,
+	)
+
+	require.ErrorIs(t, err, orgdomain.ErrLastOwner)
+}
+
+func TestOrganizationService_DeleteMember_SecondOwner(t *testing.T) {
+	db, cleanup := setupOrganizationTestDatabase(t)
+	defer cleanup()
+
+	deps := setupOrganizationService(t, db)
+	organizationID := seedOrganization(t, db)
+	_ = seedMembership(t, deps, organizationID, "owner@example.com", orgdomain.RoleOwner)
+	otherOwner := seedMembership(t, deps, organizationID, "other@example.com", orgdomain.RoleOwner)
+
+	err := deps.service.DeleteMember(
+		context.Background(),
+		organizationID,
+		otherOwner.ID,
+		orgdomain.RoleAdmin,
+	)
+	require.NoError(t, err)
+}
+
+func TestOrganizationService_DeleteMember_Forbidden(t *testing.T) {
+	db, cleanup := setupOrganizationTestDatabase(t)
+	defer cleanup()
+
+	deps := setupOrganizationService(t, db)
+	organizationID := seedOrganization(t, db)
+	member := seedMembership(t, deps, organizationID, "ada@example.com", orgdomain.RoleMember)
+
+	err := deps.service.DeleteMember(
+		context.Background(),
+		organizationID,
+		member.ID,
+		orgdomain.RoleMember,
+	)
+
+	require.ErrorIs(t, err, orgdomain.ErrForbidden)
+}
+
+func TestOrganizationService_DeleteMember_NotFound(t *testing.T) {
+	db, cleanup := setupOrganizationTestDatabase(t)
+	defer cleanup()
+
+	deps := setupOrganizationService(t, db)
+	organizationID := seedOrganization(t, db)
+	_ = seedMembership(t, deps, organizationID, "owner@example.com", orgdomain.RoleOwner)
+
+	err := deps.service.DeleteMember(
+		context.Background(),
+		organizationID,
+		uuid.New(),
+		orgdomain.RoleOwner,
+	)
+
+	require.ErrorIs(t, err, orgdomain.ErrMembershipNotFound)
+}

@@ -78,6 +78,100 @@ func (h *Handler) CreateMember(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) UpdateMember(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	organizationID, actorRole, ok := h.session(w, r)
+	if !ok {
+		return
+	}
+
+	memberUserID, ok := h.memberUserID(w, r)
+	if !ok {
+		return
+	}
+
+	var req orgdomain.UpdateMemberRequest
+
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_request",
+			"invalid request body",
+		)
+		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
+		return
+	}
+
+	member, err := h.service.UpdateMember(
+		r.Context(),
+		organizationID,
+		memberUserID,
+		actorRole,
+		req,
+	)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	api.WriteJSON(w, http.StatusOK, orgdomain.MemberResponse{
+		UserID:    member.UserID,
+		Email:     member.Email,
+		Role:      member.Role,
+		CreatedAt: member.CreatedAt,
+	})
+}
+
+func (h *Handler) DeleteMember(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	organizationID, actorRole, ok := h.session(w, r)
+	if !ok {
+		return
+	}
+
+	memberUserID, ok := h.memberUserID(w, r)
+	if !ok {
+		return
+	}
+
+	if err := h.service.DeleteMember(
+		r.Context(),
+		organizationID,
+		memberUserID,
+		actorRole,
+	); err != nil {
+		h.handleError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) memberUserID(
+	w http.ResponseWriter,
+	r *http.Request,
+) (uuid.UUID, bool) {
+	memberUserID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_member_id",
+			"invalid member id",
+		)
+		return uuid.Nil, false
+	}
+	return memberUserID, true
+}
+
 func (h *Handler) session(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -107,6 +201,15 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 
 	case errors.Is(err, orgdomain.ErrCannotCreateOwner):
 		api.WriteError(w, http.StatusBadRequest, "invalid_role", "cannot create owner")
+
+	case errors.Is(err, orgdomain.ErrCannotAssignOwner):
+		api.WriteError(w, http.StatusBadRequest, "invalid_role", "cannot assign owner")
+
+	case errors.Is(err, orgdomain.ErrLastOwner):
+		api.WriteError(w, http.StatusConflict, "last_owner", "cannot remove the last owner")
+
+	case errors.Is(err, orgdomain.ErrMembershipNotFound):
+		api.WriteError(w, http.StatusNotFound, "member_not_found", "member not found")
 
 	default:
 		api.WriteError(w, http.StatusInternalServerError, "internal_error", "internal server error")

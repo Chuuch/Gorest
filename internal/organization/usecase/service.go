@@ -23,8 +23,27 @@ type Member struct {
 }
 
 type Service interface {
-	ListMembers(ctx context.Context, organizationID uuid.UUID) ([]Member, error)
-	CreateMember(ctx context.Context, organizationID uuid.UUID, actorRole orgdomain.Role, req orgdomain.CreateMemberRequest) (*Member, error)
+	ListMembers(
+		ctx context.Context,
+		organizationID uuid.UUID,
+	) ([]Member, error)
+	CreateMember(
+		ctx context.Context,
+		organizationID uuid.UUID,
+		actorRole orgdomain.Role,
+		req orgdomain.CreateMemberRequest,
+	) (*Member, error)
+	UpdateMember(
+		ctx context.Context,
+		organizationID, memberUserID uuid.UUID,
+		actorRole orgdomain.Role,
+		req orgdomain.UpdateMemberRequest,
+	) (*Member, error)
+	DeleteMember(
+		ctx context.Context,
+		organizationID, memberUserID uuid.UUID,
+		actorRole orgdomain.Role,
+	) error
 }
 
 type service struct {
@@ -146,4 +165,121 @@ func (s *service) CreateMember(
 	}
 
 	return member, nil
+}
+
+func (s *service) membershipInOrg(
+	ctx context.Context,
+	organizationID, memberUserID uuid.UUID,
+) (*orgdomain.Membership, error) {
+	membership, err := s.memberships.GetByUserID(ctx, memberUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	if membership.OrganizationID != organizationID {
+		return nil, orgdomain.ErrMembershipNotFound
+	}
+
+	return membership, nil
+}
+
+func (s *service) guardLastOwner(
+	ctx context.Context,
+	organizationID uuid.UUID,
+	membership *orgdomain.Membership,
+) error {
+	if membership.Role != orgdomain.RoleOwner {
+		return nil
+	}
+
+	count, err := s.memberships.CountOwners(ctx, organizationID)
+	if err != nil {
+		return err
+	}
+
+	if count <= 1 {
+		return orgdomain.ErrLastOwner
+	}
+
+	return nil
+}
+
+func (s *service) UpdateMember(
+	ctx context.Context,
+	organizationID, memberUserID uuid.UUID,
+	actorRole orgdomain.Role,
+	req orgdomain.UpdateMemberRequest,
+) (*Member, error) {
+	if !actorRole.CanManageMembers() {
+		return nil, orgdomain.ErrForbidden
+	}
+
+	if req.Role == string(orgdomain.RoleOwner) {
+		return nil, orgdomain.ErrCannotAssignOwner
+	}
+
+	var member *Member
+
+	err := database.WithTransaction(ctx, s.db, func(ctx context.Context) error {
+		membership, err := s.membershipInOrg(ctx, organizationID, memberUserID)
+		if err != nil {
+			return err
+		}
+
+		if err := s.guardLastOwner(ctx, organizationID, membership); err != nil {
+			return err
+		}
+
+		if err := s.memberships.UpdateRole(
+			ctx,
+			organizationID,
+			memberUserID,
+			orgdomain.Role(req.Role),
+		); err != nil {
+			return err
+		}
+
+		user, err := s.users.GetByID(ctx, memberUserID)
+		if err != nil {
+			return fmt.Errorf("get member user: %w", err)
+		}
+
+		member = &Member{
+			UserID:    user.ID,
+			Email:     user.Email,
+			Role:      orgdomain.Role(req.Role),
+			CreatedAt: membership.CreatedAt,
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return member, nil
+}
+
+func (s *service) DeleteMember(
+	ctx context.Context,
+	organizationID, memberUserID uuid.UUID,
+	actorRole orgdomain.Role,
+) error {
+	if !actorRole.CanManageMembers() {
+		return orgdomain.ErrForbidden
+	}
+
+	return database.WithTransaction(ctx, s.db, func(ctx context.Context) error {
+		membership, err := s.membershipInOrg(ctx, organizationID, memberUserID)
+		if err != nil {
+			return err
+		}
+
+		if err := s.guardLastOwner(ctx, organizationID, membership); err != nil {
+			return err
+		}
+
+		return s.memberships.Delete(ctx, organizationID, memberUserID)
+	})
 }
