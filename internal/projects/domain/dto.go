@@ -11,6 +11,11 @@ type CreateProjectRequest struct {
 	Notes string `json:"notes" validate:"max=2000"`
 }
 
+type UpdateProjectRequest struct {
+	Name  string `json:"name" validate:"required,min=4,max=100"`
+	Notes string `json:"notes" validate:"max=2000"`
+}
+
 type ProjectResponse struct {
 	ID             uuid.UUID `json:"id"`
 	OrganizationID uuid.UUID `json:"organization_id"`
