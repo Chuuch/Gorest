@@ -135,6 +135,7 @@ func registerRoutes(
 	// FILES
 	mux.Handle("GET /api/v1/projects/{id}/files", staff(tokenManager, fileHandler.List))
 	mux.Handle("POST /api/v1/projects/{id}/files", staff(tokenManager, fileHandler.Create))
+	mux.Handle("DELETE /api/v1/files/{id}", staff(tokenManager, fileHandler.Delete))
 
 	// COMMENTS
 	mux.Handle("GET /api/v1/tasks/{id}/comments", staff(tokenManager, commentHandler.List))

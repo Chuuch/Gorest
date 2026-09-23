@@ -92,6 +92,34 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusCreated, toResponse(view))
 }
 
+func (h *Handler) Delete(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	organizationID, userID, actorRole, ok := h.session(w, r)
+	if !ok {
+		return
+	}
+
+	fileID, ok := h.fileID(w, r)
+	if !ok {
+		return
+	}
+
+	if err := h.service.Delete(
+		r.Context(),
+		organizationID,
+		fileID,
+		userID,
+		actorRole,
+	); err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) projectID(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -107,6 +135,23 @@ func (h *Handler) projectID(
 		return uuid.Nil, false
 	}
 	return projectID, true
+}
+
+func (h *Handler) fileID(
+	w http.ResponseWriter,
+	r *http.Request,
+) (uuid.UUID, bool) {
+	fileID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_file_id",
+			"invalid file id",
+		)
+		return uuid.Nil, false
+	}
+	return fileID, true
 }
 
 func (h *Handler) session(w http.ResponseWriter, r *http.Request) (uuid.UUID, uuid.UUID, orgdomain.Role, bool) {
