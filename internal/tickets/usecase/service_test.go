@@ -29,6 +29,10 @@ func (m *mockStore) PresignGet(context.Context, string, string) (string, error) 
 	return m.getURL, nil
 }
 
+func (m *mockStore) Delete(context.Context, string) error {
+	return nil
+}
+
 func setupTicketFileTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 	t.Helper()
 

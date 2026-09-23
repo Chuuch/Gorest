@@ -2,12 +2,14 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/chuuch/gorest/internal/database"
 	"github.com/chuuch/gorest/internal/files/domain"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -58,6 +60,54 @@ func (r *Repository) Create(
 	}
 
 	return nil
+}
+
+func (r *Repository) GetByID(
+	ctx context.Context,
+	id, organizationID uuid.UUID,
+) (*domain.File, error) {
+	const query = `
+			SELECT
+				id,
+				organization_id,
+				project_id,
+				uploaded_by,
+				object_key,
+				filename,
+				content_type,
+				size_bytes,
+				created_at,
+				updated_at
+			FROM files
+			WHERE id = $1 AND organization_id = $2
+		`
+
+	var file domain.File
+
+	err := database.QuerierFrom(ctx, r.db).QueryRow(
+		ctx,
+		query,
+		id,
+		organizationID,
+	).Scan(
+		&file.ID,
+		&file.OrganizationID,
+		&file.ProjectID,
+		&file.UploadedBy,
+		&file.ObjectKey,
+		&file.Filename,
+		&file.ContentType,
+		&file.Size,
+		&file.CreatedAt,
+		&file.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrFileNotFound
+		}
+		return nil, fmt.Errorf("get file: %w", err)
+	}
+	return &file, nil
 }
 
 func (r *Repository) ListByProjectID(
@@ -115,4 +165,30 @@ func (r *Repository) ListByProjectID(
 	}
 
 	return files, nil
+}
+
+func (r *Repository) Delete(
+	ctx context.Context,
+	id, organizationID uuid.UUID,
+) error {
+	const query = `
+			DELETE FROM files
+			WHERE id = $1 AND organization_id = $2
+		`
+
+	tag, err := database.QuerierFrom(ctx, r.db).Exec(
+		ctx,
+		query,
+		id,
+		organizationID,
+	)
+	if err != nil {
+		return fmt.Errorf("delete file: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return domain.ErrFileNotFound
+	}
+
+	return nil
 }
