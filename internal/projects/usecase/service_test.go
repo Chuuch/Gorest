@@ -270,3 +270,201 @@ func TestProjectService_Create_ClientNotFound(t *testing.T) {
 
 	require.ErrorIs(t, err, clientdomain.ErrClientNotFound)
 }
+
+func TestProjectService_Update(t *testing.T) {
+	db, cleanup := setupProjectTestDatabase(t)
+	defer cleanup()
+
+	service := setupProjectService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		clientID,
+		orgdomain.RoleOwner,
+		projectdomain.CreateProjectRequest{Name: "Website", Notes: "Launch"},
+	)
+	require.NoError(t, err)
+
+	updated, err := service.Update(
+		context.Background(),
+		organizationID,
+		created.ID,
+		orgdomain.RoleAdmin,
+		projectdomain.UpdateProjectRequest{Name: "Mobile", Notes: "App"},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, "Mobile", updated.Name)
+	require.Equal(t, "App", updated.Notes)
+}
+
+func TestProjectService_Update_Forbidden(t *testing.T) {
+	db, cleanup := setupProjectTestDatabase(t)
+	defer cleanup()
+
+	service := setupProjectService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		clientID,
+		orgdomain.RoleOwner,
+		projectdomain.CreateProjectRequest{Name: "Website"},
+	)
+	require.NoError(t, err)
+
+	_, err = service.Update(
+		context.Background(),
+		organizationID,
+		created.ID,
+		orgdomain.RoleMember,
+		projectdomain.UpdateProjectRequest{Name: "Mobile"},
+	)
+
+	require.ErrorIs(t, err, projectdomain.ErrForbidden)
+}
+
+func TestProjectService_Update_WrongOrgNotFound(t *testing.T) {
+	db, cleanup := setupProjectTestDatabase(t)
+	defer cleanup()
+
+	service := setupProjectService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+	otherOrganizationID := seedOrganization(t, db, "Other")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		clientID,
+		orgdomain.RoleOwner,
+		projectdomain.CreateProjectRequest{Name: "Website"},
+	)
+	require.NoError(t, err)
+
+	_, err = service.Update(
+		context.Background(),
+		otherOrganizationID,
+		created.ID,
+		orgdomain.RoleOwner,
+		projectdomain.UpdateProjectRequest{Name: "Mobile"},
+	)
+
+	require.ErrorIs(t, err, projectdomain.ErrProjectNotFound)
+}
+
+func TestProjectService_Update_NameExists(t *testing.T) {
+	db, cleanup := setupProjectTestDatabase(t)
+	defer cleanup()
+
+	service := setupProjectService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+
+	_, err := service.Create(
+		context.Background(),
+		organizationID,
+		clientID,
+		orgdomain.RoleOwner,
+		projectdomain.CreateProjectRequest{Name: "Website"},
+	)
+	require.NoError(t, err)
+
+	other, err := service.Create(
+		context.Background(),
+		organizationID,
+		clientID,
+		orgdomain.RoleOwner,
+		projectdomain.CreateProjectRequest{Name: "Mobile"},
+	)
+	require.NoError(t, err)
+
+	_, err = service.Update(
+		context.Background(),
+		organizationID,
+		other.ID,
+		orgdomain.RoleOwner,
+		projectdomain.UpdateProjectRequest{Name: "Website"},
+	)
+
+	require.ErrorIs(t, err, projectdomain.ErrProjectNameExists)
+}
+
+func TestProjectService_Delete(t *testing.T) {
+	db, cleanup := setupProjectTestDatabase(t)
+	defer cleanup()
+
+	service := setupProjectService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		clientID,
+		orgdomain.RoleOwner,
+		projectdomain.CreateProjectRequest{Name: "Website"},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		organizationID,
+		created.ID,
+		orgdomain.RoleAdmin,
+	)
+	require.NoError(t, err)
+
+	projects, err := service.List(context.Background(), organizationID, clientID)
+	require.NoError(t, err)
+	require.Empty(t, projects)
+}
+
+func TestProjectService_Delete_Forbidden(t *testing.T) {
+	db, cleanup := setupProjectTestDatabase(t)
+	defer cleanup()
+
+	service := setupProjectService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		clientID,
+		orgdomain.RoleOwner,
+		projectdomain.CreateProjectRequest{Name: "Website"},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		organizationID,
+		created.ID,
+		orgdomain.RoleMember,
+	)
+
+	require.ErrorIs(t, err, projectdomain.ErrForbidden)
+}
+
+func TestProjectService_Delete_NotFound(t *testing.T) {
+	db, cleanup := setupProjectTestDatabase(t)
+	defer cleanup()
+
+	service := setupProjectService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+
+	err := service.Delete(
+		context.Background(),
+		organizationID,
+		uuid.New(),
+		orgdomain.RoleOwner,
+	)
+
+	require.ErrorIs(t, err, projectdomain.ErrProjectNotFound)
+}
