@@ -94,6 +94,36 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusCreated, toMemberResponse(*member))
 }
 
+func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
+	organizationID, actorRole, ok := h.staffSession(w, r)
+	if !ok {
+		return
+	}
+
+	clientID, ok := h.clientID(w, r)
+	if !ok {
+		return
+	}
+
+	userID, ok := h.userID(w, r)
+	if !ok {
+		return
+	}
+
+	if err := h.service.Delete(
+		r.Context(),
+		organizationID,
+		clientID,
+		userID,
+		actorRole,
+	); err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var req clientuserdomain.LoginRequest
 
@@ -192,6 +222,23 @@ func (h *Handler) clientID(
 	return clientID, true
 }
 
+func (h *Handler) userID(
+	w http.ResponseWriter,
+	r *http.Request,
+) (uuid.UUID, bool) {
+	userID, err := uuid.Parse(r.PathValue("userId"))
+	if err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_user_id",
+			"invlaid user id",
+		)
+		return uuid.Nil, false
+	}
+	return userID, true
+}
+
 func (h *Handler) staffSession(
 	w http.ResponseWriter, r *http.Request,
 ) (uuid.UUID, orgdomain.Role, bool) {
@@ -287,6 +334,9 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 
 	case errors.Is(err, clientuserdomain.ErrClientUserAlreadyExists):
 		api.WriteError(w, http.StatusConflict, "client_user_already_exists", "client user already exists")
+
+	case errors.Is(err, clientuserdomain.ErrClientUserNotFound):
+		api.WriteError(w, http.StatusNotFound, "client_user_not_found", "client user not found")
 
 	case errors.Is(err, clientdomain.ErrClientNotFound):
 		api.WriteError(w, http.StatusNotFound, "client_not_found", "client not found")

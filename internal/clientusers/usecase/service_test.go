@@ -388,3 +388,149 @@ func TestClientUserService_Login_StaffRejected(t *testing.T) {
 
 	require.ErrorIs(t, err, authdomain.ErrInvalidCredentials)
 }
+
+func TestClientUserService_Delete(t *testing.T) {
+	db, cleanup := setupClientUserTestDatabase(t)
+	defer cleanup()
+
+	deps := setupClientUserService(t, db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+
+	member, err := deps.service.Create(
+		context.Background(),
+		organizationID,
+		clientID,
+		orgdomain.RoleOwner,
+		clientuserdomain.CreateClientUserRequest{
+			Email:    "pat@northwind.test",
+			Password: testPassword,
+		},
+	)
+	require.NoError(t, err)
+
+	err = deps.service.Delete(
+		context.Background(),
+		organizationID,
+		clientID,
+		member.UserID,
+		orgdomain.RoleAdmin,
+	)
+	require.NoError(t, err)
+
+	listed, err := deps.service.List(context.Background(), organizationID, clientID)
+	require.NoError(t, err)
+	require.Empty(t, listed)
+
+	_, err = deps.users.GetByID(context.Background(), member.UserID)
+	require.NoError(t, err)
+}
+
+func TestClientUserService_Delete_LastAllowed(t *testing.T) {
+	db, cleanup := setupClientUserTestDatabase(t)
+	defer cleanup()
+
+	deps := setupClientUserService(t, db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+
+	member, err := deps.service.Create(
+		context.Background(),
+		organizationID,
+		clientID,
+		orgdomain.RoleOwner,
+		clientuserdomain.CreateClientUserRequest{
+			Email:    "pat@northwind.test",
+			Password: testPassword,
+		},
+	)
+	require.NoError(t, err)
+
+	err = deps.service.Delete(
+		context.Background(),
+		organizationID,
+		clientID,
+		member.UserID,
+		orgdomain.RoleOwner,
+	)
+	require.NoError(t, err)
+}
+
+func TestClientUserService_Delete_MemberForbidden(t *testing.T) {
+	db, cleanup := setupClientUserTestDatabase(t)
+	defer cleanup()
+
+	deps := setupClientUserService(t, db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+
+	member, err := deps.service.Create(
+		context.Background(),
+		organizationID,
+		clientID,
+		orgdomain.RoleOwner,
+		clientuserdomain.CreateClientUserRequest{
+			Email:    "pat@northwind.test",
+			Password: testPassword,
+		},
+	)
+	require.NoError(t, err)
+
+	err = deps.service.Delete(
+		context.Background(),
+		organizationID,
+		clientID,
+		member.UserID,
+		orgdomain.RoleMember,
+	)
+	require.ErrorIs(t, err, clientuserdomain.ErrForbidden)
+}
+
+func TestClientUserService_Delete_WrongClient(t *testing.T) {
+	db, cleanup := setupClientUserTestDatabase(t)
+	defer cleanup()
+
+	deps := setupClientUserService(t, db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	otherClientID := seedClient(t, db, organizationID, "Contoso")
+
+	member, err := deps.service.Create(
+		context.Background(),
+		organizationID,
+		clientID,
+		orgdomain.RoleOwner,
+		clientuserdomain.CreateClientUserRequest{
+			Email:    "pat@northwind.test",
+			Password: testPassword,
+		},
+	)
+	require.NoError(t, err)
+
+	err = deps.service.Delete(
+		context.Background(),
+		organizationID,
+		otherClientID,
+		member.UserID,
+		orgdomain.RoleOwner,
+	)
+	require.ErrorIs(t, err, clientuserdomain.ErrClientUserNotFound)
+}
+
+func TestClientUserService_Delete_NotFound(t *testing.T) {
+	db, cleanup := setupClientUserTestDatabase(t)
+	defer cleanup()
+
+	deps := setupClientUserService(t, db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+
+	err := deps.service.Delete(
+		context.Background(),
+		organizationID,
+		clientID,
+		uuid.New(),
+		orgdomain.RoleOwner,
+	)
+	require.ErrorIs(t, err, clientuserdomain.ErrClientUserNotFound)
+}

@@ -48,6 +48,11 @@ type Service interface {
 		actorRole orgdomain.Role,
 		req clientuserdomain.CreateClientUserRequest,
 	) (*Member, error)
+	Delete(
+		ctx context.Context,
+		organizationID, clientID, userID uuid.UUID,
+		actorRole orgdomain.Role,
+	) error
 	Login(ctx context.Context, req clientuserdomain.LoginRequest) (*AuthResult, error)
 	Refresh(ctx context.Context, refreshToken string) (*AuthResult, error)
 	Logout(ctx context.Context, refreshToken string) error
@@ -209,6 +214,22 @@ func (s *service) Create(
 	}
 
 	return member, nil
+}
+
+func (s *service) Delete(
+	ctx context.Context,
+	organizationID, clientID, userID uuid.UUID,
+	actorRole orgdomain.Role,
+) error {
+	if !actorRole.CanManageMembers() {
+		return clientuserdomain.ErrForbidden
+	}
+
+	if _, err := s.clients.GetByID(ctx, clientID, organizationID); err != nil {
+		return err
+	}
+
+	return s.clientUsers.Delete(ctx, organizationID, clientID, userID)
 }
 
 func (s *service) Login(

@@ -136,3 +136,30 @@ func (r *Repository) ListByClientID(
 
 	return clientUsers, nil
 }
+
+func (r *Repository) Delete(
+	ctx context.Context,
+	organizationID, clientID, userID uuid.UUID,
+) error {
+	const query = `
+			DELETE FROM client_users
+			WHERE organization_id = $1 AND client_id = $2 AND user_id = $3
+		`
+
+	tag, err := database.QuerierFrom(ctx, r.db).Exec(
+		ctx,
+		query,
+		organizationID,
+		clientID,
+		userID,
+	)
+	if err != nil {
+		return fmt.Errorf("delete client user: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return domain.ErrClientUserNotFound
+	}
+
+	return nil
+}

@@ -47,6 +47,7 @@ func withStaffSession(req *http.Request, organizationID uuid.UUID, role string) 
 type mockService struct {
 	listFunc   func(uuid.UUID, uuid.UUID) ([]clientuserusecase.Member, error)
 	createFunc func(uuid.UUID, uuid.UUID, orgdomain.Role, clientuserdomain.CreateClientUserRequest) (*clientuserusecase.Member, error)
+	deleteFunc func(uuid.UUID, uuid.UUID, uuid.UUID, orgdomain.Role) error
 	loginFunc  func(clientuserdomain.LoginRequest) (*clientuserusecase.AuthResult, error)
 }
 
@@ -61,6 +62,14 @@ func (m *mockService) Create(
 	req clientuserdomain.CreateClientUserRequest,
 ) (*clientuserusecase.Member, error) {
 	return m.createFunc(organizationID, clientID, actorRole, req)
+}
+
+func (m *mockService) Delete(
+	_ context.Context,
+	organizationID, clientID, userID uuid.UUID,
+	actorRole orgdomain.Role,
+) error {
+	return m.deleteFunc(organizationID, clientID, userID, actorRole)
 }
 
 func (m *mockService) Login(_ context.Context, req clientuserdomain.LoginRequest) (*clientuserusecase.AuthResult, error) {
@@ -226,4 +235,95 @@ func TestHandler_Login(t *testing.T) {
 	require.Equal(t, "client", response.Role)
 	require.Equal(t, clientID, response.Client.ID)
 	require.Equal(t, "refresh", rec.Result().Cookies()[0].Value)
+}
+
+func TestHandler_Delete(t *testing.T) {
+	organizationID := testOrganizationID()
+	clientID := testClientID()
+	member := testMember()
+
+	service := &mockService{
+		deleteFunc: func(
+			gotOrganizationID, gotClientID, gotUserID uuid.UUID,
+			actorRole orgdomain.Role,
+		) error {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, clientID, gotClientID)
+			require.Equal(t, member.UserID, gotUserID)
+			require.Equal(t, orgdomain.RoleOwner, actorRole)
+			return nil
+		},
+	}
+
+	handler := clientuserhandler.NewHandler(service, time.Hour, false)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/clients/"+clientID.String()+"/users/"+member.UserID.String(),
+		nil,
+	)
+	req.SetPathValue("id", clientID.String())
+	req.SetPathValue("userId", member.UserID.String())
+	req = withStaffSession(req, organizationID, "owner")
+
+	rec := httptest.NewRecorder()
+	handler.Delete(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestHandler_Delete_Forbidden(t *testing.T) {
+	organizationID := testOrganizationID()
+	clientID := testClientID()
+	member := testMember()
+
+	service := &mockService{
+		deleteFunc: func(uuid.UUID, uuid.UUID, uuid.UUID, orgdomain.Role) error {
+			return clientuserdomain.ErrForbidden
+		},
+	}
+
+	handler := clientuserhandler.NewHandler(service, time.Hour, false)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/clients/"+clientID.String()+"/users/"+member.UserID.String(),
+		nil,
+	)
+	req.SetPathValue("id", clientID.String())
+	req.SetPathValue("userId", member.UserID.String())
+	req = withStaffSession(req, organizationID, "member")
+
+	rec := httptest.NewRecorder()
+	handler.Delete(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestHandler_Delete_NotFound(t *testing.T) {
+	organizationID := testOrganizationID()
+	clientID := testClientID()
+	userID := uuid.New()
+
+	service := &mockService{
+		deleteFunc: func(uuid.UUID, uuid.UUID, uuid.UUID, orgdomain.Role) error {
+			return clientuserdomain.ErrClientUserNotFound
+		},
+	}
+
+	handler := clientuserhandler.NewHandler(service, time.Hour, false)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/clients/"+clientID.String()+"/users/"+userID.String(),
+		nil,
+	)
+	req.SetPathValue("id", clientID.String())
+	req.SetPathValue("userId", userID.String())
+	req = withStaffSession(req, organizationID, "admin")
+
+	rec := httptest.NewRecorder()
+	handler.Delete(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
 }
