@@ -8,4 +8,6 @@ var (
 	ErrMemberAlreadyExists  = errors.New("member already exists")
 	ErrForbidden            = errors.New("forbidden")
 	ErrCannotCreateOwner    = errors.New("cannot create owner")
+	ErrCannotAssignOwner    = errors.New("cannot assign owner")
+	ErrLastOwner            = errors.New("last owner")
 )
