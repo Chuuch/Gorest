@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	taskrepository "github.com/chuuch/gorest/internal/tasks/repository"
 	timeentrydomain "github.com/chuuch/gorest/internal/timeentries/domain"
 	timeentryrepository "github.com/chuuch/gorest/internal/timeentries/repository"
@@ -18,6 +19,17 @@ type Service interface {
 		organizationID, taskID, userID uuid.UUID,
 		req timeentrydomain.CreateTimeEntryRequest,
 	) (*timeentrydomain.TimeEntry, error)
+	Update(
+		ctx context.Context,
+		organizationID, entryID, actorUserID uuid.UUID,
+		actorRole orgdomain.Role,
+		req timeentrydomain.UpdateTimeEntryRequest,
+	) (*timeentrydomain.TimeEntry, error)
+	Delete(
+		ctx context.Context,
+		organizationID, entryID, actorUserID uuid.UUID,
+		actorRole orgdomain.Role,
+	) error
 }
 
 type service struct {
@@ -77,4 +89,55 @@ func (s *service) Create(
 	}
 
 	return entry, nil
+}
+
+func (s *service) Update(
+	ctx context.Context,
+	organizationID, entryID, actorUserID uuid.UUID,
+	actorRole orgdomain.Role,
+	req timeentrydomain.UpdateTimeEntryRequest,
+) (*timeentrydomain.TimeEntry, error) {
+	entry, err := s.entries.GetByID(ctx, entryID, organizationID)
+	if err != nil {
+		return nil, err
+	}
+
+	if !canMutateTimeEntry(actorRole, actorUserID, entry.UserID) {
+		return nil, timeentrydomain.ErrForbidden
+	}
+
+	entry.Minutes = req.Minutes
+	entry.Notes = req.Notes
+	entry.UpdatedAt = time.Now().UTC()
+
+	if err := s.entries.Update(ctx, entry); err != nil {
+		return nil, err
+	}
+
+	return entry, nil
+}
+
+func (s *service) Delete(
+	ctx context.Context,
+	organizationID, entryID, actorUserID uuid.UUID,
+	actorRole orgdomain.Role,
+) error {
+	entry, err := s.entries.GetByID(ctx, entryID, organizationID)
+	if err != nil {
+		return err
+	}
+
+	if !canMutateTimeEntry(actorRole, actorUserID, entry.UserID) {
+		return timeentrydomain.ErrForbidden
+	}
+
+	return s.entries.Delete(ctx, entryID, organizationID)
+}
+
+func canMutateTimeEntry(actorRole orgdomain.Role, actorUserID, ownerUserID uuid.UUID) bool {
+	if actorRole.CanManageMembers() {
+		return true
+	}
+
+	return actorUserID == ownerUserID
 }

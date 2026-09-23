@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/chuuch/gorest/internal/api"
+	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	"github.com/chuuch/gorest/internal/requestcontext"
 	taskdomain "github.com/chuuch/gorest/internal/tasks/domain"
 	timeentrydomain "github.com/chuuch/gorest/internal/timeentries/domain"
@@ -90,6 +91,78 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusCreated, toResponse(entry))
 }
 
+func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
+	organizationID, userID, actorRole, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+
+	entryID, ok := h.timeEntryID(w, r)
+	if !ok {
+		return
+	}
+
+	var req timeentrydomain.UpdateTimeEntryRequest
+
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_request",
+			"invalid request body",
+		)
+		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
+		return
+	}
+
+	entry, err := h.service.Update(
+		r.Context(),
+		organizationID,
+		entryID,
+		userID,
+		actorRole,
+		req,
+	)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	api.WriteJSON(w, http.StatusOK, toResponse(entry))
+}
+
+func (h *Handler) Delete(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	organizationID, userID, actorRole, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+
+	entryID, ok := h.timeEntryID(w, r)
+	if !ok {
+		return
+	}
+
+	if err := h.service.Delete(
+		r.Context(),
+		organizationID,
+		entryID,
+		userID,
+		actorRole,
+	); err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) taskID(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -105,6 +178,46 @@ func (h *Handler) taskID(
 		return uuid.Nil, false
 	}
 	return taskID, true
+}
+
+func (h *Handler) timeEntryID(
+	w http.ResponseWriter,
+	r *http.Request,
+) (uuid.UUID, bool) {
+	entryID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_time_entry_id",
+			"invalid time entry id",
+		)
+		return uuid.Nil, false
+	}
+	return entryID, true
+}
+
+func (h *Handler) actor(
+	w http.ResponseWriter,
+	r *http.Request,
+) (uuid.UUID, uuid.UUID, orgdomain.Role, bool) {
+	organizationID, userID, ok := h.session(w, r)
+	if !ok {
+		return uuid.Nil, uuid.Nil, "", false
+	}
+
+	role, ok := requestcontext.Role(r.Context())
+	if !ok {
+		api.WriteError(
+			w,
+			http.StatusUnauthorized,
+			"unauthorized",
+			"unauthorized",
+		)
+		return uuid.Nil, uuid.Nil, "", false
+	}
+
+	return organizationID, userID, orgdomain.Role(role), true
 }
 
 func (h *Handler) session(
@@ -138,6 +251,14 @@ func (h *Handler) session(
 
 func (h *Handler) handleError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, timeentrydomain.ErrForbidden):
+		api.WriteError(
+			w,
+			http.StatusForbidden,
+			"forbidden",
+			"forbidden",
+		)
+
 	case errors.Is(err, taskdomain.ErrTaskNotFound):
 		api.WriteError(
 			w,
