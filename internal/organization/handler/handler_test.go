@@ -40,6 +40,8 @@ func withSession(req *http.Request, organizationID uuid.UUID, role string) *http
 type mockService struct {
 	listFunc   func(uuid.UUID) ([]orgusecase.Member, error)
 	createFunc func(uuid.UUID, orgdomain.Role, orgdomain.CreateMemberRequest) (*orgusecase.Member, error)
+	updateFunc func(uuid.UUID, uuid.UUID, orgdomain.Role, orgdomain.UpdateMemberRequest) (*orgusecase.Member, error)
+	deleteFunc func(uuid.UUID, uuid.UUID, orgdomain.Role) error
 }
 
 func (m *mockService) ListMembers(
@@ -56,6 +58,23 @@ func (m *mockService) CreateMember(
 	req orgdomain.CreateMemberRequest,
 ) (*orgusecase.Member, error) {
 	return m.createFunc(organizationID, actorRole, req)
+}
+
+func (m *mockService) UpdateMember(
+	_ context.Context,
+	organizationID, memberUserID uuid.UUID,
+	actorRole orgdomain.Role,
+	req orgdomain.UpdateMemberRequest,
+) (*orgusecase.Member, error) {
+	return m.updateFunc(organizationID, memberUserID, actorRole, req)
+}
+
+func (m *mockService) DeleteMember(
+	_ context.Context,
+	organizationID, memberUserID uuid.UUID,
+	actorRole orgdomain.Role,
+) error {
+	return m.deleteFunc(organizationID, memberUserID, actorRole)
 }
 
 func TestHandler_ListMembers(t *testing.T) {
@@ -369,4 +388,215 @@ func TestHandler_CreateMember_Unauthorized(t *testing.T) {
 	handler.CreateMember(rec, req)
 
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestHandler_UpdateMember(t *testing.T) {
+	organizationID := testOrganizationID()
+	member := testMember()
+	member.Role = orgdomain.RoleAdmin
+
+	service := &mockService{
+		updateFunc: func(
+			gotOrganizationID, gotMemberUserID uuid.UUID,
+			actorRole orgdomain.Role,
+			req orgdomain.UpdateMemberRequest,
+		) (*orgusecase.Member, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, member.UserID, gotMemberUserID)
+			require.Equal(t, orgdomain.RoleOwner, actorRole)
+			require.Equal(t, "admin", req.Role)
+			return member, nil
+		},
+	}
+
+	handler := orghandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/members/"+member.UserID.String(),
+		bytes.NewBufferString(`{"role":"admin"}`),
+	)
+	req.SetPathValue("id", member.UserID.String())
+	req = withSession(req, organizationID, "owner")
+
+	rec := httptest.NewRecorder()
+	handler.UpdateMember(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response orgdomain.MemberResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Equal(t, orgdomain.RoleAdmin, response.Role)
+}
+
+func TestHandler_UpdateMember_LastOwner(t *testing.T) {
+	member := testMember()
+
+	service := &mockService{
+		updateFunc: func(
+			uuid.UUID,
+			uuid.UUID,
+			orgdomain.Role,
+			orgdomain.UpdateMemberRequest,
+		) (*orgusecase.Member, error) {
+			return nil, orgdomain.ErrLastOwner
+		},
+	}
+
+	handler := orghandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/members/"+member.UserID.String(),
+		bytes.NewBufferString(`{"role":"admin"}`),
+	)
+	req.SetPathValue("id", member.UserID.String())
+	req = withSession(req, testOrganizationID(), "owner")
+
+	rec := httptest.NewRecorder()
+	handler.UpdateMember(rec, req)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+}
+
+func TestHandler_UpdateMember_CannotAssignOwner(t *testing.T) {
+	member := testMember()
+
+	service := &mockService{
+		updateFunc: func(
+			uuid.UUID,
+			uuid.UUID,
+			orgdomain.Role,
+			orgdomain.UpdateMemberRequest,
+		) (*orgusecase.Member, error) {
+			t.Fatal("service should not be called")
+			return nil, nil
+		},
+	}
+
+	handler := orghandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/members/"+member.UserID.String(),
+		bytes.NewBufferString(`{"role":"owner"}`),
+	)
+	req.SetPathValue("id", member.UserID.String())
+	req = withSession(req, testOrganizationID(), "owner")
+
+	rec := httptest.NewRecorder()
+	handler.UpdateMember(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandler_UpdateMember_InvalidMemberID(t *testing.T) {
+	service := &mockService{
+		updateFunc: func(
+			uuid.UUID,
+			uuid.UUID,
+			orgdomain.Role,
+			orgdomain.UpdateMemberRequest,
+		) (*orgusecase.Member, error) {
+			t.Fatal("service should not be called")
+			return nil, nil
+		},
+	}
+
+	handler := orghandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/members/not-a-uuid",
+		bytes.NewBufferString(`{"role":"admin"}`),
+	)
+	req.SetPathValue("id", "not-a-uuid")
+	req = withSession(req, testOrganizationID(), "owner")
+
+	rec := httptest.NewRecorder()
+	handler.UpdateMember(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandler_DeleteMember(t *testing.T) {
+	organizationID := testOrganizationID()
+	member := testMember()
+
+	service := &mockService{
+		deleteFunc: func(
+			gotOrganizationID, gotMemberUserID uuid.UUID,
+			actorRole orgdomain.Role,
+		) error {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, member.UserID, gotMemberUserID)
+			require.Equal(t, orgdomain.RoleAdmin, actorRole)
+			return nil
+		},
+	}
+
+	handler := orghandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/members/"+member.UserID.String(),
+		nil,
+	)
+	req.SetPathValue("id", member.UserID.String())
+	req = withSession(req, organizationID, "admin")
+
+	rec := httptest.NewRecorder()
+	handler.DeleteMember(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestHandler_DeleteMember_NotFound(t *testing.T) {
+	member := testMember()
+
+	service := &mockService{
+		deleteFunc: func(uuid.UUID, uuid.UUID, orgdomain.Role) error {
+			return orgdomain.ErrMembershipNotFound
+		},
+	}
+
+	handler := orghandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/members/"+member.UserID.String(),
+		nil,
+	)
+	req.SetPathValue("id", member.UserID.String())
+	req = withSession(req, testOrganizationID(), "owner")
+
+	rec := httptest.NewRecorder()
+	handler.DeleteMember(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestHandler_DeleteMember_LastOwner(t *testing.T) {
+	member := testMember()
+
+	service := &mockService{
+		deleteFunc: func(uuid.UUID, uuid.UUID, orgdomain.Role) error {
+			return orgdomain.ErrLastOwner
+		},
+	}
+
+	handler := orghandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/members/"+member.UserID.String(),
+		nil,
+	)
+	req.SetPathValue("id", member.UserID.String())
+	req = withSession(req, testOrganizationID(), "owner")
+
+	rec := httptest.NewRecorder()
+	handler.DeleteMember(rec, req)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
 }

@@ -25,3 +25,7 @@ type CreateMemberRequest struct {
 	Password string `json:"password" validate:"required,min=8"`
 	Role     string `json:"role" validate:"required,oneof=admin member"`
 }
+
+type UpdateMemberRequest struct {
+	Role string `json:"role" validate:"required,oneof=admin member"`
+}

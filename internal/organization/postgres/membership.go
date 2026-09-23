@@ -118,3 +118,83 @@ func (r *MembershipRepository) ListByOrganizationID(
 
 	return memberships, nil
 }
+
+func (r *MembershipRepository) CountOwners(
+	ctx context.Context,
+	organizationID uuid.UUID,
+) (int, error) {
+	const query = `
+			SELECT COUNT(*)
+			FROM memberships
+			WHERE organization_id = $1 AND role = $2
+		`
+
+	var count int
+
+	err := database.QuerierFrom(ctx, r.db).QueryRow(
+		ctx,
+		query,
+		organizationID,
+		domain.RoleOwner,
+	).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count owners: %w", err)
+	}
+
+	return count, nil
+}
+
+func (r *MembershipRepository) UpdateRole(
+	ctx context.Context,
+	organizationID, userID uuid.UUID,
+	role domain.Role,
+) error {
+	const query = `
+			UPDATE memberships
+			SET role = $1
+			WHERE organization_id = $2 AND user_id = $3
+		`
+
+	tag, err := database.QuerierFrom(ctx, r.db).Exec(
+		ctx,
+		query,
+		role,
+		organizationID,
+		userID,
+	)
+	if err != nil {
+		return fmt.Errorf("update membership role: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return domain.ErrMembershipNotFound
+	}
+
+	return nil
+}
+
+func (r *MembershipRepository) Delete(
+	ctx context.Context,
+	organizationID, userID uuid.UUID,
+) error {
+	const query = `
+			DELETE FROM memberships
+			WHERE organization_id = $1 AND user_id = $2
+		`
+
+	tag, err := database.QuerierFrom(ctx, r.db).Exec(
+		ctx,
+		query,
+		organizationID,
+		userID,
+	)
+	if err != nil {
+		return fmt.Errorf("delete membership: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return domain.ErrMembershipNotFound
+	}
+
+	return nil
+}
