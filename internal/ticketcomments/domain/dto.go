@@ -10,6 +10,10 @@ type CreateCommentRequest struct {
 	Body string `json:"body" validate:"required,min=1,max=2000"`
 }
 
+type UpdateCommentRequest struct {
+	Body string `json:"body" validate:"required,min=1,max=2000"`
+}
+
 type CommentResponse struct {
 	ID             uuid.UUID `json:"id"`
 	OrganizationID uuid.UUID `json:"organization_id"`

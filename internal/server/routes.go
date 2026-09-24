@@ -158,6 +158,10 @@ func registerRoutes(
 	mux.Handle("POST /api/v1/client-auth/tickets/{id}/files", portal(tokenManager, ticketFileHandler.CreatePortal))
 	mux.Handle("GET /api/v1/client-auth/tickets/{id}/comments", portal(tokenManager, ticketCommentHandler.ListPortal))
 	mux.Handle("POST /api/v1/client-auth/tickets/{id}/comments", portal(tokenManager, ticketCommentHandler.CreatePortal))
+	mux.Handle("PATCH /api/v1/ticket-comments/{id}", staff(tokenManager, ticketCommentHandler.Update))
+	mux.Handle("DELETE /api/v1/ticket-comments/{id}", staff(tokenManager, ticketCommentHandler.Delete))
+	mux.Handle("PATCH /api/v1/client-auth/ticket-comments/{id}", portal(tokenManager, ticketCommentHandler.UpdatePortal))
+	mux.Handle("DELETE /api/v1/client-auth/ticket-comments/{id}", portal(tokenManager, ticketCommentHandler.DeletePortal))
 
 	// CLIENT USERS AUTH
 	mux.Handle("POST /api/v1/client-auth/login", loginLimiter.Login(http.HandlerFunc(clientUserHandler.Login)))
