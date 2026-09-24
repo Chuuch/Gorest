@@ -148,6 +148,8 @@ func registerRoutes(
 	mux.Handle("PATCH /api/v1/tickets/{id}", staff(tokenManager, ticketHandler.Update))
 	mux.Handle("GET /api/v1/tickets/{id}/files", staff(tokenManager, ticketFileHandler.List))
 	mux.Handle("POST /api/v1/tickets/{id}/files", staff(tokenManager, ticketFileHandler.Create))
+	mux.Handle("DELETE /api/v1/ticket-files/{id}", staff(tokenManager, ticketFileHandler.Delete))
+	mux.Handle("DELETE /api/v1/client-auth/ticket-files/{id}", staff(tokenManager, ticketFileHandler.DeletePortal))
 	mux.Handle("GET /api/v1/tickets/{id}/comments", staff(tokenManager, ticketCommentHandler.List))
 	mux.Handle("POST /api/v1/tickets/{id}/comments", staff(tokenManager, ticketCommentHandler.Create))
 	mux.Handle("GET /api/v1/client-auth/tickets", portal(tokenManager, ticketHandler.ListPortal))

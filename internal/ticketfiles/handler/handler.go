@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/chuuch/gorest/internal/api"
+	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	"github.com/chuuch/gorest/internal/requestcontext"
 	ticketfiledomain "github.com/chuuch/gorest/internal/ticketfiles/domain"
 	"github.com/chuuch/gorest/internal/ticketfiles/usecase"
@@ -76,6 +77,63 @@ func (h *Handler) CreatePortal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.writeCreate(w, r, organizationID, ticketID, userID, clientID)
+}
+
+func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
+	organizationID, userID, actorRole, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+
+	fileID, ok := h.fileID(w, r)
+	if !ok {
+		return
+	}
+
+	if err := h.service.Delete(
+		r.Context(),
+		organizationID,
+		fileID,
+		userID,
+		uuid.Nil,
+		actorRole,
+	); err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) DeletePortal(w http.ResponseWriter, r *http.Request) {
+	organizationID, userID, clientID, ok := h.portalSession(w, r)
+	if !ok {
+		return
+	}
+
+	actorRole, ok := h.role(w, r)
+	if !ok {
+		return
+	}
+
+	fileID, ok := h.fileID(w, r)
+	if !ok {
+		return
+	}
+
+	if err := h.service.Delete(
+		r.Context(),
+		organizationID,
+		fileID,
+		userID,
+		clientID,
+		actorRole,
+	); err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) writeList(
@@ -152,6 +210,57 @@ func (h *Handler) ticketID(
 	return ticketID, true
 }
 
+func (h *Handler) fileID(
+	w http.ResponseWriter,
+	r *http.Request,
+) (uuid.UUID, bool) {
+	fileID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_file_id",
+			"invalid file id",
+		)
+		return uuid.Nil, false
+	}
+	return fileID, true
+}
+
+func (h *Handler) role(
+	w http.ResponseWriter,
+	r *http.Request,
+) (orgdomain.Role, bool) {
+	role, ok := requestcontext.Role(r.Context())
+	if !ok {
+		api.WriteError(
+			w,
+			http.StatusUnauthorized,
+			"unauthorized",
+			"unauthorized",
+		)
+		return "", false
+	}
+	return orgdomain.Role(role), true
+}
+
+func (h *Handler) actor(
+	w http.ResponseWriter,
+	r *http.Request,
+) (uuid.UUID, uuid.UUID, orgdomain.Role, bool) {
+	organizationID, userID, ok := h.staffSession(w, r)
+	if !ok {
+		return uuid.Nil, uuid.Nil, "", false
+	}
+
+	actorRole, ok := h.role(w, r)
+	if !ok {
+		return uuid.Nil, uuid.Nil, "", false
+	}
+
+	return organizationID, userID, actorRole, true
+}
+
 func (h *Handler) staffSession(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -205,6 +314,9 @@ func (h *Handler) portalSession(
 
 func (h *Handler) handleError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ticketfiledomain.ErrForbidden):
+		api.WriteError(w, http.StatusForbidden, "forbidden", "forbidden")
+
 	case errors.Is(err, ticketfiledomain.ErrUnsupportedContentType):
 		api.WriteError(
 			w,
