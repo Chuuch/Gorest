@@ -129,6 +129,25 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusOK, toResponse(task))
 }
 
+func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
+	organizationID, actorRole, ok := h.session(w, r)
+	if !ok {
+		return
+	}
+
+	taskID, ok := h.taskID(w, r)
+	if !ok {
+		return
+	}
+
+	if err := h.service.Delete(r.Context(), organizationID, taskID, actorRole); err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) Convert(w http.ResponseWriter, r *http.Request) {
 	organizationID, actorRole, ok := h.session(w, r)
 	if !ok {

@@ -159,6 +159,32 @@ func (r *Repository) Update(
 	return nil
 }
 
+func (r *Repository) Delete(
+	ctx context.Context,
+	id, organizationID uuid.UUID,
+) error {
+	const query = `
+			DELETE FROM tasks
+			WHERE id = $1 AND organization_id = $2
+		`
+
+	tag, err := database.QuerierFrom(ctx, r.db).Exec(
+		ctx,
+		query,
+		id,
+		organizationID,
+	)
+	if err != nil {
+		return fmt.Errorf("delete task: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return domain.ErrTaskNotFound
+	}
+
+	return nil
+}
+
 func (r *Repository) ListByProjectID(
 	ctx context.Context,
 	organizationID, projectID uuid.UUID,
