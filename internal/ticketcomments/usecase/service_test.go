@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	ticketcommentdomain "github.com/chuuch/gorest/internal/ticketcomments/domain"
 	ticketcommentpostgres "github.com/chuuch/gorest/internal/ticketcomments/postgres"
 	ticketcommentusecase "github.com/chuuch/gorest/internal/ticketcomments/usecase"
@@ -335,4 +336,240 @@ func TestTicketCommentService_Create_TicketNotFound(t *testing.T) {
 		ticketcommentdomain.CreateCommentRequest{Body: "Nope"},
 	)
 	require.ErrorIs(t, err, ticketdomain.ErrTicketNotFound)
+}
+
+func TestTicketCommentService_Update(t *testing.T) {
+	db, cleanup := setupTicketCommentTestDatabase(t)
+	defer cleanup()
+
+	service := setupTicketCommentService(db)
+	userID := seedUser(t, db, "ada@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	ticketID := seedTicket(t, db, organizationID, clientID, userID, "Login button broken")
+
+	comment, err := service.Create(
+		context.Background(),
+		organizationID,
+		ticketID,
+		userID,
+		uuid.Nil,
+		ticketcommentdomain.CreateCommentRequest{Body: "Can you try another browser?"},
+	)
+	require.NoError(t, err)
+
+	updated, err := service.Update(
+		context.Background(),
+		organizationID,
+		comment.ID,
+		userID,
+		uuid.Nil,
+		orgdomain.RoleMember,
+		ticketcommentdomain.UpdateCommentRequest{Body: "Try Safari first."},
+	)
+	require.NoError(t, err)
+	require.Equal(t, "Try Safari first.", updated.Body)
+
+	listed, err := service.List(context.Background(), organizationID, ticketID, uuid.Nil)
+	require.NoError(t, err)
+	require.Equal(t, "Try Safari first.", listed[0].Body)
+}
+
+func TestTicketCommentService_Update_AdminCanEditOthers(t *testing.T) {
+	db, cleanup := setupTicketCommentTestDatabase(t)
+	defer cleanup()
+
+	service := setupTicketCommentService(db)
+	authorID := seedUser(t, db, "mike@example.com")
+	adminID := seedUser(t, db, "ada@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	ticketID := seedTicket(t, db, organizationID, clientID, authorID, "Login button broken")
+
+	comment, err := service.Create(
+		context.Background(),
+		organizationID,
+		ticketID,
+		authorID,
+		uuid.Nil,
+		ticketcommentdomain.CreateCommentRequest{Body: "Can you try another browser?"},
+	)
+	require.NoError(t, err)
+
+	updated, err := service.Update(
+		context.Background(),
+		organizationID,
+		comment.ID,
+		adminID,
+		uuid.Nil,
+		orgdomain.RoleAdmin,
+		ticketcommentdomain.UpdateCommentRequest{Body: "Edited by admin."},
+	)
+	require.NoError(t, err)
+	require.Equal(t, "Edited by admin.", updated.Body)
+}
+
+func TestTicketCommentService_Update_MemberForbiddenOnOthers(t *testing.T) {
+	db, cleanup := setupTicketCommentTestDatabase(t)
+	defer cleanup()
+
+	service := setupTicketCommentService(db)
+	authorID := seedUser(t, db, "ada@example.com")
+	memberID := seedUser(t, db, "mike@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	ticketID := seedTicket(t, db, organizationID, clientID, authorID, "Login button broken")
+
+	comment, err := service.Create(
+		context.Background(),
+		organizationID,
+		ticketID,
+		authorID,
+		uuid.Nil,
+		ticketcommentdomain.CreateCommentRequest{Body: "Can you try another browser?"},
+	)
+	require.NoError(t, err)
+
+	_, err = service.Update(
+		context.Background(),
+		organizationID,
+		comment.ID,
+		memberID,
+		uuid.Nil,
+		orgdomain.RoleMember,
+		ticketcommentdomain.UpdateCommentRequest{Body: "Nope"},
+	)
+	require.ErrorIs(t, err, ticketcommentdomain.ErrForbidden)
+}
+
+func TestTicketCommentService_Update_PortalOtherClient(t *testing.T) {
+	db, cleanup := setupTicketCommentTestDatabase(t)
+	defer cleanup()
+
+	service := setupTicketCommentService(db)
+	userID := seedUser(t, db, "pat@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	otherClientID := seedClient(t, db, organizationID, "Contoso")
+	ticketID := seedTicket(t, db, organizationID, clientID, userID, "Login button broken")
+
+	comment, err := service.Create(
+		context.Background(),
+		organizationID,
+		ticketID,
+		userID,
+		clientID,
+		ticketcommentdomain.CreateCommentRequest{Body: "Still broken on Safari"},
+	)
+	require.NoError(t, err)
+
+	_, err = service.Update(
+		context.Background(),
+		organizationID,
+		comment.ID,
+		userID,
+		otherClientID,
+		orgdomain.Role("client"),
+		ticketcommentdomain.UpdateCommentRequest{Body: "Nope"},
+	)
+	require.ErrorIs(t, err, ticketcommentdomain.ErrCommentNotFound)
+}
+
+func TestTicketCommentService_Delete(t *testing.T) {
+	db, cleanup := setupTicketCommentTestDatabase(t)
+	defer cleanup()
+
+	service := setupTicketCommentService(db)
+	userID := seedUser(t, db, "ada@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	ticketID := seedTicket(t, db, organizationID, clientID, userID, "Login button broken")
+
+	comment, err := service.Create(
+		context.Background(),
+		organizationID,
+		ticketID,
+		userID,
+		uuid.Nil,
+		ticketcommentdomain.CreateCommentRequest{Body: "Can you try another browser?"},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		organizationID,
+		comment.ID,
+		userID,
+		uuid.Nil,
+		orgdomain.RoleAdmin,
+	)
+	require.NoError(t, err)
+
+	listed, err := service.List(context.Background(), organizationID, ticketID, uuid.Nil)
+	require.NoError(t, err)
+	require.Empty(t, listed)
+}
+
+func TestTicketCommentService_Delete_MemberForbiddenOnOthers(t *testing.T) {
+	db, cleanup := setupTicketCommentTestDatabase(t)
+	defer cleanup()
+
+	service := setupTicketCommentService(db)
+	authorID := seedUser(t, db, "ada@example.com")
+	memberID := seedUser(t, db, "mike@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	ticketID := seedTicket(t, db, organizationID, clientID, authorID, "Login button broken")
+
+	comment, err := service.Create(
+		context.Background(),
+		organizationID,
+		ticketID,
+		authorID,
+		uuid.Nil,
+		ticketcommentdomain.CreateCommentRequest{Body: "Can you try another browser?"},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		organizationID,
+		comment.ID,
+		memberID,
+		uuid.Nil,
+		orgdomain.RoleMember,
+	)
+	require.ErrorIs(t, err, ticketcommentdomain.ErrForbidden)
+}
+
+func TestTicketCommentService_Delete_WrongOrg(t *testing.T) {
+	db, cleanup := setupTicketCommentTestDatabase(t)
+	defer cleanup()
+
+	service := setupTicketCommentService(db)
+	userID := seedUser(t, db, "ada@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	otherOrganizationID := seedOrganization(t, db, "Other")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	ticketID := seedTicket(t, db, organizationID, clientID, userID, "Login button broken")
+
+	comment, err := service.Create(
+		context.Background(),
+		organizationID,
+		ticketID,
+		userID,
+		uuid.Nil,
+		ticketcommentdomain.CreateCommentRequest{Body: "Can you try another browser?"},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		otherOrganizationID,
+		comment.ID,
+		userID,
+		uuid.Nil,
+		orgdomain.RoleOwner,
+	)
+	require.ErrorIs(t, err, ticketcommentdomain.ErrCommentNotFound)
 }
