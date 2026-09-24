@@ -762,3 +762,115 @@ func TestTaskService_Convert_TicketNotFound(t *testing.T) {
 	)
 	require.ErrorIs(t, err, ticketdomain.ErrTicketNotFound)
 }
+
+func TestTaskService_Delete(t *testing.T) {
+	db, cleanup := setupTaskTestDatabase(t)
+	defer cleanup()
+
+	service := setupTaskService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+
+	task, err := service.Create(
+		context.Background(),
+		organizationID,
+		projectID,
+		orgdomain.RoleOwner,
+		taskdomain.CreateTaskRequest{
+			Title:  "Fix login",
+			Notes:  "OAuth",
+			Status: "todo",
+		},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		organizationID,
+		task.ID,
+		orgdomain.RoleAdmin,
+	)
+	require.NoError(t, err)
+
+	listed, err := service.List(context.Background(), organizationID, projectID)
+	require.NoError(t, err)
+	require.Empty(t, listed)
+}
+
+func TestTaskService_Delete_MemberForbidden(t *testing.T) {
+	db, cleanup := setupTaskTestDatabase(t)
+	defer cleanup()
+
+	service := setupTaskService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+
+	task, err := service.Create(
+		context.Background(),
+		organizationID,
+		projectID,
+		orgdomain.RoleOwner,
+		taskdomain.CreateTaskRequest{
+			Title:  "Fix login",
+			Status: "todo",
+		},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		organizationID,
+		task.ID,
+		orgdomain.RoleMember,
+	)
+	require.ErrorIs(t, err, taskdomain.ErrForbidden)
+}
+
+func TestTaskService_Delete_WrongOrg(t *testing.T) {
+	db, cleanup := setupTaskTestDatabase(t)
+	defer cleanup()
+
+	service := setupTaskService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+	otherOrganizationID := seedOrganization(t, db, "Other")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+
+	task, err := service.Create(
+		context.Background(),
+		organizationID,
+		projectID,
+		orgdomain.RoleOwner,
+		taskdomain.CreateTaskRequest{
+			Title:  "Fix login",
+			Status: "todo",
+		},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		otherOrganizationID,
+		task.ID,
+		orgdomain.RoleOwner,
+	)
+	require.ErrorIs(t, err, taskdomain.ErrTaskNotFound)
+}
+
+func TestTaskService_Delete_NotFound(t *testing.T) {
+	db, cleanup := setupTaskTestDatabase(t)
+	defer cleanup()
+
+	service := setupTaskService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+
+	err := service.Delete(
+		context.Background(),
+		organizationID,
+		uuid.New(),
+		orgdomain.RoleOwner,
+	)
+	require.ErrorIs(t, err, taskdomain.ErrTaskNotFound)
+}

@@ -30,6 +30,11 @@ type Service interface {
 		organizationID, taskID uuid.UUID,
 		req taskdomain.UpdateTaskRequest,
 	) (*taskdomain.Task, error)
+	Delete(
+		ctx context.Context,
+		organizationID, taskID uuid.UUID,
+		actorRole orgdomain.Role,
+	) error
 	Convert(
 		ctx context.Context,
 		organizationID, ticketID uuid.UUID,
@@ -132,6 +137,22 @@ func (s *service) Update(
 	}
 
 	return task, nil
+}
+
+func (s *service) Delete(
+	ctx context.Context,
+	organizationID, taskID uuid.UUID,
+	actorRole orgdomain.Role,
+) error {
+	if !actorRole.CanManageMembers() {
+		return taskdomain.ErrForbidden
+	}
+
+	if _, err := s.tasks.GetByID(ctx, taskID, organizationID); err != nil {
+		return err
+	}
+
+	return s.tasks.Delete(ctx, taskID, organizationID)
 }
 
 func (s *service) Convert(
