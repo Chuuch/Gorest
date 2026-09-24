@@ -10,6 +10,7 @@ import (
 	"time"
 
 	clientdomain "github.com/chuuch/gorest/internal/client/domain"
+	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	"github.com/chuuch/gorest/internal/requestcontext"
 	ticketdomain "github.com/chuuch/gorest/internal/tickets/domain"
 	tickethandler "github.com/chuuch/gorest/internal/tickets/handler"
@@ -67,6 +68,7 @@ type mockService struct {
 	listFunc   func(uuid.UUID, uuid.UUID) ([]*ticketdomain.Ticket, error)
 	createFunc func(uuid.UUID, uuid.UUID, uuid.UUID, ticketdomain.CreateTicketRequest) (*ticketdomain.Ticket, error)
 	updateFunc func(uuid.UUID, uuid.UUID, ticketdomain.UpdateTicketRequest) (*ticketdomain.Ticket, error)
+	deleteFunc func(uuid.UUID, uuid.UUID, orgdomain.Role) error
 }
 
 func (m *mockService) List(
@@ -90,6 +92,14 @@ func (m *mockService) Update(
 	req ticketdomain.UpdateTicketRequest,
 ) (*ticketdomain.Ticket, error) {
 	return m.updateFunc(organizationID, ticketID, req)
+}
+
+func (m *mockService) Delete(
+	_ context.Context,
+	organizationID, ticketID uuid.UUID,
+	actorRole orgdomain.Role,
+) error {
+	return m.deleteFunc(organizationID, ticketID, actorRole)
 }
 
 func TestHandler_List(t *testing.T) {
@@ -348,4 +358,86 @@ func TestHandler_Update_MissingVersion(t *testing.T) {
 	handler.Update(rec, req)
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandler_Delete(t *testing.T) {
+	organizationID := testOrganizationID()
+	ticket := testTicket()
+
+	service := &mockService{
+		deleteFunc: func(
+			gotOrganizationID, gotTicketID uuid.UUID,
+			actorRole orgdomain.Role,
+		) error {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, ticket.ID, gotTicketID)
+			require.Equal(t, orgdomain.RoleAdmin, actorRole)
+			return nil
+		},
+	}
+
+	handler := tickethandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/tickets/"+ticket.ID.String(),
+		nil,
+	)
+	req.SetPathValue("id", ticket.ID.String())
+	req = withStaffSession(req, organizationID, "admin")
+
+	rec := httptest.NewRecorder()
+	handler.Delete(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestHandler_Delete_Forbidden(t *testing.T) {
+	ticket := testTicket()
+
+	service := &mockService{
+		deleteFunc: func(uuid.UUID, uuid.UUID, orgdomain.Role) error {
+			return ticketdomain.ErrForbidden
+		},
+	}
+
+	handler := tickethandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/tickets/"+ticket.ID.String(),
+		nil,
+	)
+	req.SetPathValue("id", ticket.ID.String())
+	req = withStaffSession(req, testOrganizationID(), "member")
+
+	rec := httptest.NewRecorder()
+	handler.Delete(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestHandler_Delete_NotFound(t *testing.T) {
+	ticketID := uuid.New()
+
+	service := &mockService{
+		deleteFunc: func(uuid.UUID, uuid.UUID, orgdomain.Role) error {
+			return ticketdomain.ErrTicketNotFound
+		},
+	}
+
+	handler := tickethandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/tickets/"+ticketID.String(),
+		nil,
+	)
+	req.SetPathValue("id", ticketID.String())
+	req = withStaffSession(req, testOrganizationID(), "owner")
+
+	rec := httptest.NewRecorder()
+	handler.Delete(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
 }

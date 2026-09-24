@@ -7,6 +7,7 @@ import (
 
 	"github.com/chuuch/gorest/internal/api"
 	clientdomain "github.com/chuuch/gorest/internal/client/domain"
+	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	"github.com/chuuch/gorest/internal/requestcontext"
 	ticketdomain "github.com/chuuch/gorest/internal/tickets/domain"
 	"github.com/chuuch/gorest/internal/tickets/usecase"
@@ -23,7 +24,7 @@ func NewHandler(service usecase.Service) *Handler {
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	organizationID, ok := h.staffSession(w, r)
+	organizationID, _, ok := h.staffSession(w, r)
 	if !ok {
 		return
 	}
@@ -84,7 +85,7 @@ func (h *Handler) CreatePortal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
-	organizationID, ok := h.staffSession(w, r)
+	organizationID, _, ok := h.staffSession(w, r)
 	if !ok {
 		return
 	}
@@ -123,6 +124,28 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.WriteJSON(w, http.StatusOK, toResponse(ticket))
+}
+
+func (h *Handler) Delete(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	organizationID, actorRole, ok := h.staffSession(w, r)
+	if !ok {
+		return
+	}
+
+	ticketID, ok := h.ticketID(w, r)
+	if !ok {
+		return
+	}
+
+	if err := h.service.Delete(r.Context(), organizationID, ticketID, actorRole); err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) writeList(
@@ -180,7 +203,7 @@ func (h *Handler) ticketID(
 func (h *Handler) staffSession(
 	w http.ResponseWriter,
 	r *http.Request,
-) (uuid.UUID, bool) {
+) (uuid.UUID, orgdomain.Role, bool) {
 	organizationID, ok := requestcontext.OrganizationID(r.Context())
 	if !ok {
 		api.WriteError(
@@ -189,9 +212,20 @@ func (h *Handler) staffSession(
 			"unauthorized",
 			"unauthorized",
 		)
-		return uuid.Nil, false
+		return uuid.Nil, "", false
 	}
-	return organizationID, true
+
+	role, ok := requestcontext.Role(r.Context())
+	if !ok {
+		api.WriteError(
+			w,
+			http.StatusUnauthorized,
+			"unauthorized",
+			"unauthorized",
+		)
+		return uuid.Nil, "", false
+	}
+	return organizationID, orgdomain.Role(role), true
 }
 
 func (h *Handler) portalSession(

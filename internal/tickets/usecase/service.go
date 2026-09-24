@@ -6,6 +6,7 @@ import (
 	"time"
 
 	clientrepository "github.com/chuuch/gorest/internal/client/repository"
+	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	ticketdomain "github.com/chuuch/gorest/internal/tickets/domain"
 	ticketrepository "github.com/chuuch/gorest/internal/tickets/repository"
 	"github.com/google/uuid"
@@ -26,6 +27,11 @@ type Service interface {
 		organizationID, ticketID uuid.UUID,
 		req ticketdomain.UpdateTicketRequest,
 	) (*ticketdomain.Ticket, error)
+	Delete(
+		ctx context.Context,
+		organizationID, ticketID uuid.UUID,
+		actorRole orgdomain.Role,
+	) error
 }
 
 type service struct {
@@ -109,4 +115,20 @@ func (s *service) Update(
 	}
 
 	return ticket, nil
+}
+
+func (s *service) Delete(
+	ctx context.Context,
+	organizationID, ticketID uuid.UUID,
+	actorRole orgdomain.Role,
+) error {
+	if !actorRole.CanManageMembers() {
+		return ticketdomain.ErrForbidden
+	}
+
+	if _, err := s.tickets.GetByID(ctx, ticketID, organizationID); err != nil {
+		return err
+	}
+
+	return s.tickets.Delete(ctx, ticketID, organizationID)
 }
