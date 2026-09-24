@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	ticketfiledomain "github.com/chuuch/gorest/internal/ticketfiles/domain"
 	ticketfilepostgres "github.com/chuuch/gorest/internal/ticketfiles/postgres"
 	ticketfileusecase "github.com/chuuch/gorest/internal/ticketfiles/usecase"
@@ -17,8 +18,9 @@ import (
 )
 
 type mockStore struct {
-	putURL string
-	getURL string
+	putURL  string
+	getURL  string
+	deleted []string
 }
 
 func (m *mockStore) PresignPut(context.Context, string, string) (string, error) {
@@ -29,7 +31,8 @@ func (m *mockStore) PresignGet(context.Context, string, string) (string, error) 
 	return m.getURL, nil
 }
 
-func (m *mockStore) Delete(context.Context, string) error {
+func (m *mockStore) Delete(_ context.Context, key string) error {
+	m.deleted = append(m.deleted, key)
 	return nil
 }
 
@@ -240,19 +243,20 @@ func seedTicket(
 	return ticketID
 }
 
-func setupTicketFileService(db *pgxpool.Pool) ticketfileusecase.Service {
+func setupTicketFileService(db *pgxpool.Pool) (ticketfileusecase.Service, *mockStore) {
+	store := &mockStore{putURL: "http://minio/put", getURL: "http://minio/get"}
 	return ticketfileusecase.NewService(
 		ticketfilepostgres.NewRepository(db),
 		ticketpostgres.NewRepository(db),
-		&mockStore{putURL: "http://minio/put", getURL: "http://minio/get"},
-	)
+		store,
+	), store
 }
 
 func TestTicketFileService_CreateAndList(t *testing.T) {
 	db, cleanup := setupTicketFileTestDatabase(t)
 	defer cleanup()
 
-	service := setupTicketFileService(db)
+	service, _ := setupTicketFileService(db)
 	userID := seedUser(t, db, "pat@example.com")
 	organizationID := seedOrganization(t, db, "Acme")
 	clientID := seedClient(t, db, organizationID, "Northwind")
@@ -299,7 +303,7 @@ func TestTicketFileService_Create_OtherClientNotFound(t *testing.T) {
 	db, cleanup := setupTicketFileTestDatabase(t)
 	defer cleanup()
 
-	service := setupTicketFileService(db)
+	service, _ := setupTicketFileService(db)
 	userID := seedUser(t, db, "pat@example.com")
 	organizationID := seedOrganization(t, db, "Acme")
 	clientID := seedClient(t, db, organizationID, "Northwind")
@@ -325,7 +329,7 @@ func TestTicketFileService_Create_InvalidFilename(t *testing.T) {
 	db, cleanup := setupTicketFileTestDatabase(t)
 	defer cleanup()
 
-	service := setupTicketFileService(db)
+	service, _ := setupTicketFileService(db)
 	userID := seedUser(t, db, "pat@example.com")
 	organizationID := seedOrganization(t, db, "Acme")
 	clientID := seedClient(t, db, organizationID, "Northwind")
@@ -350,7 +354,7 @@ func TestTicketFileService_Create_UnsupportedType(t *testing.T) {
 	db, cleanup := setupTicketFileTestDatabase(t)
 	defer cleanup()
 
-	service := setupTicketFileService(db)
+	service, _ := setupTicketFileService(db)
 	userID := seedUser(t, db, "pat@example.com")
 	organizationID := seedOrganization(t, db, "Acme")
 	clientID := seedClient(t, db, organizationID, "Northwind")
@@ -375,7 +379,7 @@ func TestTicketFileService_Create_TicketNotFound(t *testing.T) {
 	db, cleanup := setupTicketFileTestDatabase(t)
 	defer cleanup()
 
-	service := setupTicketFileService(db)
+	service, _ := setupTicketFileService(db)
 	userID := seedUser(t, db, "pat@example.com")
 	organizationID := seedOrganization(t, db, "Acme")
 
@@ -392,4 +396,191 @@ func TestTicketFileService_Create_TicketNotFound(t *testing.T) {
 		},
 	)
 	require.ErrorIs(t, err, ticketdomain.ErrTicketNotFound)
+}
+
+func TestTicketFileService_Delete(t *testing.T) {
+	db, cleanup := setupTicketFileTestDatabase(t)
+	defer cleanup()
+
+	service, store := setupTicketFileService(db)
+	userID := seedUser(t, db, "ada@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	ticketID := seedTicket(t, db, organizationID, clientID, userID, "Login button broken")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		ticketID,
+		userID,
+		uuid.Nil,
+		ticketfiledomain.CreateFileRequest{
+			Filename:    "bug.png",
+			ContentType: "image/png",
+			Size:        2048,
+		},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		organizationID,
+		created.File.ID,
+		userID,
+		uuid.Nil,
+		orgdomain.RoleAdmin,
+	)
+	require.NoError(t, err)
+	require.Equal(t, []string{created.File.ObjectKey}, store.deleted)
+
+	listed, err := service.List(context.Background(), organizationID, ticketID, uuid.Nil)
+	require.NoError(t, err)
+	require.Empty(t, listed)
+}
+
+func TestTicketFileService_Delete_PortalOwn(t *testing.T) {
+	db, cleanup := setupTicketFileTestDatabase(t)
+	defer cleanup()
+
+	service, store := setupTicketFileService(db)
+	userID := seedUser(t, db, "pat@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	ticketID := seedTicket(t, db, organizationID, clientID, userID, "Login button broken")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		ticketID,
+		userID,
+		clientID,
+		ticketfiledomain.CreateFileRequest{
+			Filename:    "bug.png",
+			ContentType: "image/png",
+			Size:        2048,
+		},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		organizationID,
+		created.File.ID,
+		userID,
+		clientID,
+		orgdomain.Role("client"),
+	)
+	require.NoError(t, err)
+	require.Equal(t, []string{created.File.ObjectKey}, store.deleted)
+}
+
+func TestTicketFileService_Delete_MemberForbiddenOnOthers(t *testing.T) {
+	db, cleanup := setupTicketFileTestDatabase(t)
+	defer cleanup()
+
+	service, store := setupTicketFileService(db)
+	ownerID := seedUser(t, db, "ada@example.com")
+	memberID := seedUser(t, db, "mike@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	ticketID := seedTicket(t, db, organizationID, clientID, ownerID, "Login button broken")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		ticketID,
+		ownerID,
+		uuid.Nil,
+		ticketfiledomain.CreateFileRequest{
+			Filename:    "bug.png",
+			ContentType: "image/png",
+			Size:        2048,
+		},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		organizationID,
+		created.File.ID,
+		memberID,
+		uuid.Nil,
+		orgdomain.RoleMember,
+	)
+	require.ErrorIs(t, err, ticketfiledomain.ErrForbidden)
+	require.Empty(t, store.deleted)
+}
+
+func TestTicketFileService_Delete_PortalOtherClient(t *testing.T) {
+	db, cleanup := setupTicketFileTestDatabase(t)
+	defer cleanup()
+
+	service, store := setupTicketFileService(db)
+	userID := seedUser(t, db, "pat@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	otherClientID := seedClient(t, db, organizationID, "Contoso")
+	ticketID := seedTicket(t, db, organizationID, clientID, userID, "Login button broken")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		ticketID,
+		userID,
+		clientID,
+		ticketfiledomain.CreateFileRequest{
+			Filename:    "bug.png",
+			ContentType: "image/png",
+			Size:        2048,
+		},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		organizationID,
+		created.File.ID,
+		userID,
+		otherClientID,
+		orgdomain.Role("client"),
+	)
+	require.ErrorIs(t, err, ticketfiledomain.ErrFileNotFound)
+	require.Empty(t, store.deleted)
+}
+
+func TestTicketFileService_Delete_WrongOrg(t *testing.T) {
+	db, cleanup := setupTicketFileTestDatabase(t)
+	defer cleanup()
+
+	service, store := setupTicketFileService(db)
+	userID := seedUser(t, db, "ada@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	otherOrganizationID := seedOrganization(t, db, "Other")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	ticketID := seedTicket(t, db, organizationID, clientID, userID, "Login button broken")
+
+	created, err := service.Create(
+		context.Background(),
+		organizationID,
+		ticketID,
+		userID,
+		uuid.Nil,
+		ticketfiledomain.CreateFileRequest{
+			Filename:    "bug.png",
+			ContentType: "image/png",
+			Size:        2048,
+		},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		otherOrganizationID,
+		created.File.ID,
+		userID,
+		uuid.Nil,
+		orgdomain.RoleOwner,
+	)
+	require.ErrorIs(t, err, ticketfiledomain.ErrFileNotFound)
+	require.Empty(t, store.deleted)
 }
