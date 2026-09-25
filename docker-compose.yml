@@ -39,6 +39,14 @@ services:
       - "9001:9001"
     volumes:
       - minio_data:/data
+
+  mailpit:
+    image: axllent/mailpit:v1.26.1
+    container_name: gorest-mailpit
+    restart: unless-stopped
+    ports:
+      - "8025:8025"
+      - "1025:1025"
   
   api:
     build:
@@ -64,12 +72,19 @@ services:
       GOREST_LOGGER_FORMAT: json
       GOREST_LOGGER_ADD_SOURCE: "true"
 
+      GOREST_MAILER_DRIVER: mailpit
+      GOREST_MAILER_FROM: Flourish <noreply@localhost>
+      GOREST_MAILER_SMTP_HOST: mailpit
+      GOREST_MAILER_SMTP_PORT: "1025"
+
     ports:
       - "${GOREST_SERVER_PORT}:8080"
 
     depends_on:
       postgres:
         condition: service_healthy
+      mailpit:
+        condition: service_started
 
   prometheus:
     image: prom/prometheus:v3.4.1

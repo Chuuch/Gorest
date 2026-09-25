@@ -28,6 +28,7 @@ import (
 	filehandler "github.com/chuuch/gorest/internal/files/handler"
 	filepostgres "github.com/chuuch/gorest/internal/files/postgres"
 	fileusecase "github.com/chuuch/gorest/internal/files/usecase"
+	"github.com/chuuch/gorest/internal/mailer"
 	"github.com/chuuch/gorest/internal/middleware"
 	orghandler "github.com/chuuch/gorest/internal/organization/handler"
 	orgpostgres "github.com/chuuch/gorest/internal/organization/postgres"
@@ -61,14 +62,21 @@ import (
 type Server struct {
 	httpServer *http.Server
 	db         *pgxpool.Pool
+	mailer mailer.Mailer
 }
 
 func New(cfg *config.Config) (*Server, error) {
+	// -----------------------------
+	// Open DB connection pool
+	// -----------------------------
 	db, err := database.NewPostgresPool(context.Background(), cfg.Database)
 	if err != nil {
 		return nil, fmt.Errorf("initialize database: %w", err)
 	}
 
+	// -------------------------------- 
+	// Initialize S3 storage & bucket
+	// ---------------------------------
 	objectStore, err := storage.NewS3Store(cfg.Storage)
 	if err != nil {
 		return nil, fmt.Errorf("initialize object storage: %w", err)
@@ -77,6 +85,15 @@ func New(cfg *config.Config) (*Server, error) {
 	if err := objectStore.EnsureBucket(context.Background(), cfg.CORS.AllowedOrigins); err != nil {
 		return nil, fmt.Errorf("ensure storage bucket: %w", err)
 	}
+
+	//-------------------------------------
+	// Initialize mailer client
+	// ------------------------------------
+	mailSender, err := mailer.New(cfg.Mailer)
+	if err != nil {
+		return nil, fmt.Errorf("initialize mailer: %w", err)
+	}
+	slog.Info("mailer ready", "driver", cfg.Mailer.Driver)
 
 	// -------------------------------------------------------------
 	// User domain
@@ -253,6 +270,7 @@ func New(cfg *config.Config) (*Server, error) {
 	return &Server{
 		httpServer: httpServer,
 		db:         db,
+		mailer: mailSender,
 	}, nil
 }
 
