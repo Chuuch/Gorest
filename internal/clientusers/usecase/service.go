@@ -14,6 +14,7 @@ import (
 	clientuserdomain "github.com/chuuch/gorest/internal/clientusers/domain"
 	clientuserrepository "github.com/chuuch/gorest/internal/clientusers/repository"
 	"github.com/chuuch/gorest/internal/database"
+	"github.com/chuuch/gorest/internal/invites"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	orgrepository "github.com/chuuch/gorest/internal/organization/repository"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
@@ -68,6 +69,7 @@ type service struct {
 	refreshTokens authrepository.RefreshTokenRepository
 	tokens        security.TokenManager
 	passwords     userusecase.PasswordHasher
+	inviter       invites.Service
 	db            *pgxpool.Pool
 	refreshTTL    time.Duration
 }
@@ -81,6 +83,7 @@ func NewService(
 	refreshTokens authrepository.RefreshTokenRepository,
 	tokens security.TokenManager,
 	passwords userusecase.PasswordHasher,
+	inviter invites.Service,
 	db *pgxpool.Pool,
 	refreshTTL time.Duration,
 ) Service {
@@ -93,6 +96,7 @@ func NewService(
 		refreshTokens: refreshTokens,
 		tokens:        tokens,
 		passwords:     passwords,
+		inviter:       inviter,
 		db:            db,
 		refreshTTL:    refreshTTL,
 	}
@@ -141,13 +145,14 @@ func (s *service) Create(
 		return nil, clientuserdomain.ErrForbidden
 	}
 
-	if _, err := s.clients.GetByID(ctx, clientID, organizationID); err != nil {
+	client, err := s.clients.GetByID(ctx, clientID, organizationID)
+	if err != nil {
 		return nil, err
 	}
 
 	var member *Member
 
-	err := database.WithTransaction(ctx, s.db, func(ctx context.Context) error {
+	err = database.WithTransaction(ctx, s.db, func(ctx context.Context) error {
 		existing, getErr := s.users.GetByEmail(ctx, req.Email)
 		if getErr != nil && !errors.Is(getErr, userdomain.ErrUserNotFound) {
 			return fmt.Errorf("get user by email: %w", getErr)
@@ -174,9 +179,14 @@ func (s *service) Create(
 
 			user = existing
 		} else {
+			discarded, createErr := invites.DiscardedPassword()
+			if createErr != nil {
+				return fmt.Errorf("generate discarded password: %w", createErr)
+			}
+
 			created, createErr := s.users.Create(ctx, userdomain.CreateUserRequest{
 				Email:    req.Email,
-				Password: req.Password,
+				Password: discarded,
 			})
 			if createErr != nil {
 				return fmt.Errorf("create user: %w", createErr)
@@ -211,6 +221,21 @@ func (s *service) Create(
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	org, err := s.organizations.GetByID(ctx, organizationID)
+	if err != nil {
+		return nil, fmt.Errorf("get organization: %w", err)
+	}
+
+	if err := s.inviter.Issue(ctx, invites.IssueInput{
+		UserID:           member.UserID,
+		Email:            member.Email,
+		OrganizationName: org.Name,
+		ClientName:       client.Name,
+		Kind:             invites.KindPortal,
+	}); err != nil {
+		return nil, fmt.Errorf("issue invite: %w", err)
 	}
 
 	return member, nil

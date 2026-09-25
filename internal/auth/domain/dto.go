@@ -26,3 +26,8 @@ type AuthResponse struct {
 type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
+
+type AcceptInviteRequest struct {
+	Token    string `json:"token" validate:"required"`
+	Password string `json:"password" validate:"required,min=8"`
+}

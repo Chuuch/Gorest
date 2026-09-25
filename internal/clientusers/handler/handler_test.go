@@ -141,7 +141,7 @@ func TestHandler_Create(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/clients/"+clientID.String()+"/users",
-		bytes.NewBufferString(`{"email":"pat@northwind.test","password":"password123"}`),
+		bytes.NewBufferString(`{"email":"pat@northwind.test"}`),
 	)
 	req.SetPathValue("id", clientID.String())
 	req = withStaffSession(req, organizationID, "owner")
@@ -171,7 +171,7 @@ func TestHandler_Create_InvalidBody(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/clients/"+clientID.String()+"/users",
-		bytes.NewBufferString(`{"email":"pat","password":"short"}`),
+		bytes.NewBufferString(`{"email":"pat"}`),
 	)
 	req.SetPathValue("id", clientID.String())
 	req = withStaffSession(req, testOrganizationID(), "owner")
