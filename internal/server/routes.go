@@ -118,7 +118,7 @@ func registerRoutes(
 	// CLIENT USERS
 	mux.Handle("GET /api/v1/clients/{id}/users", staff(tokenManager, clientUserHandler.List))
 	mux.Handle("POST /api/v1/clients/{id}/users", staff(tokenManager, clientUserHandler.Create))
-	mux.Handle("DELETE /api/v1/clients/{id}/users/{id}", staff(tokenManager, clientUserHandler.Delete))
+	mux.Handle("DELETE /api/v1/clients/{id}/users/{userId}", staff(tokenManager, clientUserHandler.Delete))
 
 	// TASKS
 	mux.Handle("GET /api/v1/projects/{id}/tasks", staff(tokenManager, taskHandler.List))
