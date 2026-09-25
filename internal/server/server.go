@@ -28,6 +28,7 @@ import (
 	filehandler "github.com/chuuch/gorest/internal/files/handler"
 	filepostgres "github.com/chuuch/gorest/internal/files/postgres"
 	fileusecase "github.com/chuuch/gorest/internal/files/usecase"
+	"github.com/chuuch/gorest/internal/invites"
 	"github.com/chuuch/gorest/internal/mailer"
 	"github.com/chuuch/gorest/internal/middleware"
 	orghandler "github.com/chuuch/gorest/internal/organization/handler"
@@ -121,6 +122,16 @@ func New(cfg *config.Config) (*Server, error) {
 		cfg.Auth.AccessTokenTTL,
 	)
 
+	inviteService := invites.NewService(
+		invites.NewRepository(db),
+		userService,
+		tokenManager,
+		mailSender,
+		db,
+		cfg.Auth.InviteTTL,
+		cfg.App.PublicURL,
+	)
+
 	authService := authusecase.NewService(
 		userService,
 		organizationRepository,
@@ -137,6 +148,7 @@ func New(cfg *config.Config) (*Server, error) {
 		authService,
 		cfg.Auth.RefreshTokenTTL,
 		cfg.Auth.CookieSecure,
+		inviteService,
 	)
 
 	// ------------------------------------------------------------
@@ -145,6 +157,8 @@ func New(cfg *config.Config) (*Server, error) {
 	orgService := orgusecase.NewService(
 		userService,
 		membershipRepository,
+		organizationRepository,
+		inviteService,
 		db,
 	)
 
@@ -212,6 +226,7 @@ func New(cfg *config.Config) (*Server, error) {
 		refreshTokenRepository,
 		tokenManager,
 		passwordHasher,
+		inviteService,
 		db,
 		cfg.Auth.RefreshTokenTTL,
 	)

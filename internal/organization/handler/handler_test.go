@@ -198,7 +198,6 @@ func TestHandler_CreateMember(t *testing.T) {
 			require.Equal(t, organizationID, gotOrganizationID)
 			require.Equal(t, orgdomain.RoleOwner, actorRole)
 			require.Equal(t, "ada@example.com", req.Email)
-			require.Equal(t, "password123", req.Password)
 			require.Equal(t, "member", req.Role)
 
 			return member, nil
@@ -209,7 +208,6 @@ func TestHandler_CreateMember(t *testing.T) {
 
 	body := `{
         "email": "ada@example.com",
-        "password": "password123",
         "role": "member"
     }`
 
@@ -250,7 +248,6 @@ func TestHandler_CreateMember_Forbidden(t *testing.T) {
 
 	body := `{
         "email": "ada@example.com",
-        "password": "password123",
         "role": "member"
     }`
 
@@ -283,7 +280,6 @@ func TestHandler_CreateMember_AlreadyExists(t *testing.T) {
 
 	body := `{
         "email": "ada@example.com",
-        "password": "password123",
         "role": "admin"
     }`
 
@@ -317,7 +313,6 @@ func TestHandler_CreateMember_CannotCreateOwner(t *testing.T) {
 
 	body := `{
         "email": "ada@example.com",
-        "password": "password123",
         "role": "owner"
     }`
 

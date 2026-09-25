@@ -12,6 +12,7 @@ import (
 	clientuserdomain "github.com/chuuch/gorest/internal/clientusers/domain"
 	clientuserpostgres "github.com/chuuch/gorest/internal/clientusers/postgres"
 	clientuserusecase "github.com/chuuch/gorest/internal/clientusers/usecase"
+	"github.com/chuuch/gorest/internal/invites"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	orgpostgres "github.com/chuuch/gorest/internal/organization/postgres"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
@@ -32,6 +33,19 @@ const (
 	testAccessSecret    = "test-access-token-secret"
 	testIssuer          = "gorest-test"
 )
+
+type recordingInviter struct {
+	calls []invites.IssueInput
+}
+
+func (r *recordingInviter) Issue(_ context.Context, in invites.IssueInput) error {
+	r.calls = append(r.calls, in)
+	return nil
+}
+
+func (r *recordingInviter) Accept(context.Context, string, string) error {
+	return nil
+}
 
 func setupClientUserTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 	t.Helper()
@@ -139,6 +153,7 @@ type clientUserTestDependencies struct {
 	service clientuserusecase.Service
 	users   userusecase.Service
 	tokens  security.TokenManager
+	inviter *recordingInviter
 }
 
 func setupClientUserService(t *testing.T, db *pgxpool.Pool) clientUserTestDependencies {
@@ -147,6 +162,7 @@ func setupClientUserService(t *testing.T, db *pgxpool.Pool) clientUserTestDepend
 	passwordHasher := password.NewBcryptHasher(testBcryptCost)
 	userService := userusecase.NewService(userpostgres.NewRepository(db), passwordHasher)
 	tokenManager := security.NewJwtManager(testAccessSecret, testIssuer, testAccessTokenTTL)
+	inviter := &recordingInviter{}
 
 	return clientUserTestDependencies{
 		service: clientuserusecase.NewService(
@@ -158,11 +174,13 @@ func setupClientUserService(t *testing.T, db *pgxpool.Pool) clientUserTestDepend
 			authpostgres.NewRepository(db),
 			tokenManager,
 			passwordHasher,
+			inviter,
 			db,
 			testRefreshTokenTTL,
 		),
-		users:  userService,
-		tokens: tokenManager,
+		users:   userService,
+		tokens:  tokenManager,
+		inviter: inviter,
 	}
 }
 
@@ -188,12 +206,7 @@ func seedOrganization(t *testing.T, db *pgxpool.Pool, name string) uuid.UUID {
 	return organizationID
 }
 
-func seedClient(
-	t *testing.T,
-	db *pgxpool.Pool,
-	organizationID uuid.UUID,
-	name string,
-) uuid.UUID {
+func seedClient(t *testing.T, db *pgxpool.Pool, organizationID uuid.UUID, name string) uuid.UUID {
 	t.Helper()
 
 	clientID := uuid.New()
@@ -252,6 +265,33 @@ func seedStaff(
 	return user
 }
 
+func seedPortalUser(
+	t *testing.T,
+	users userusecase.Service,
+	db *pgxpool.Pool,
+	organizationID, clientID uuid.UUID,
+	email, pass string,
+) *userdomain.User {
+	t.Helper()
+
+	user, err := users.Create(context.Background(), userdomain.CreateUserRequest{
+		Email:    email,
+		Password: pass,
+	})
+	require.NoError(t, err)
+
+	err = clientuserpostgres.NewRepository(db).Create(context.Background(), &clientuserdomain.ClientUser{
+		ID:             uuid.New(),
+		OrganizationID: organizationID,
+		ClientID:       clientID,
+		UserID:         user.ID,
+		CreatedAt:      time.Now().UTC(),
+	})
+	require.NoError(t, err)
+
+	return user
+}
+
 func TestClientUserService_CreateAndList(t *testing.T) {
 	db, cleanup := setupClientUserTestDatabase(t)
 	defer cleanup()
@@ -268,14 +308,19 @@ func TestClientUserService_CreateAndList(t *testing.T) {
 		clientID,
 		orgdomain.RoleOwner,
 		clientuserdomain.CreateClientUserRequest{
-			Email:    "pat@northwind.test",
-			Password: testPassword,
+			Email: "pat@northwind.test",
 		},
 	)
 
 	require.NoError(t, err)
 	require.Equal(t, "pat@northwind.test", member.Email)
 	require.Equal(t, clientID, member.ClientID)
+	require.Len(t, deps.inviter.calls, 1)
+	require.Equal(t, member.UserID, deps.inviter.calls[0].UserID)
+	require.Equal(t, "pat@northwind.test", deps.inviter.calls[0].Email)
+	require.Equal(t, "Acme", deps.inviter.calls[0].OrganizationName)
+	require.Equal(t, "Northwind", deps.inviter.calls[0].ClientName)
+	require.Equal(t, invites.KindPortal, deps.inviter.calls[0].Kind)
 
 	own, err := deps.service.List(context.Background(), organizationID, clientID)
 	require.NoError(t, err)
@@ -300,12 +345,12 @@ func TestClientUserService_Create_MemberForbidden(t *testing.T) {
 		clientID,
 		orgdomain.RoleMember,
 		clientuserdomain.CreateClientUserRequest{
-			Email:    "pat@northwind.test",
-			Password: testPassword,
+			Email: "pat@northwind.test",
 		},
 	)
 
 	require.ErrorIs(t, err, clientuserdomain.ErrForbidden)
+	require.Empty(t, deps.inviter.calls)
 }
 
 func TestClientUserService_Create_UserIsStaff(t *testing.T) {
@@ -323,12 +368,12 @@ func TestClientUserService_Create_UserIsStaff(t *testing.T) {
 		clientID,
 		orgdomain.RoleOwner,
 		clientuserdomain.CreateClientUserRequest{
-			Email:    "ada@example.com",
-			Password: testPassword,
+			Email: "ada@example.com",
 		},
 	)
 
 	require.ErrorIs(t, err, clientuserdomain.ErrUserIsStaff)
+	require.Empty(t, deps.inviter.calls)
 }
 
 func TestClientUserService_Login(t *testing.T) {
@@ -338,18 +383,15 @@ func TestClientUserService_Login(t *testing.T) {
 	deps := setupClientUserService(t, db)
 	organizationID := seedOrganization(t, db, "Acme")
 	clientID := seedClient(t, db, organizationID, "Northwind")
-
-	_, err := deps.service.Create(
-		context.Background(),
+	_ = seedPortalUser(
+		t,
+		deps.users,
+		db,
 		organizationID,
 		clientID,
-		orgdomain.RoleOwner,
-		clientuserdomain.CreateClientUserRequest{
-			Email:    "pat@northwind.test",
-			Password: testPassword,
-		},
+		"pat@northwind.test",
+		testPassword,
 	)
-	require.NoError(t, err)
 
 	result, err := deps.service.Login(
 		context.Background(),
@@ -403,8 +445,7 @@ func TestClientUserService_Delete(t *testing.T) {
 		clientID,
 		orgdomain.RoleOwner,
 		clientuserdomain.CreateClientUserRequest{
-			Email:    "pat@northwind.test",
-			Password: testPassword,
+			Email: "pat@northwind.test",
 		},
 	)
 	require.NoError(t, err)
@@ -440,8 +481,7 @@ func TestClientUserService_Delete_LastAllowed(t *testing.T) {
 		clientID,
 		orgdomain.RoleOwner,
 		clientuserdomain.CreateClientUserRequest{
-			Email:    "pat@northwind.test",
-			Password: testPassword,
+			Email: "pat@northwind.test",
 		},
 	)
 	require.NoError(t, err)
@@ -470,8 +510,7 @@ func TestClientUserService_Delete_MemberForbidden(t *testing.T) {
 		clientID,
 		orgdomain.RoleOwner,
 		clientuserdomain.CreateClientUserRequest{
-			Email:    "pat@northwind.test",
-			Password: testPassword,
+			Email: "pat@northwind.test",
 		},
 	)
 	require.NoError(t, err)
@@ -501,8 +540,7 @@ func TestClientUserService_Delete_WrongClient(t *testing.T) {
 		clientID,
 		orgdomain.RoleOwner,
 		clientuserdomain.CreateClientUserRequest{
-			Email:    "pat@northwind.test",
-			Password: testPassword,
+			Email: "pat@northwind.test",
 		},
 	)
 	require.NoError(t, err)

@@ -77,6 +77,9 @@ services:
       GOREST_MAILER_SMTP_HOST: mailpit
       GOREST_MAILER_SMTP_PORT: "1025"
 
+      GOREST_APP_PUBLIC_URL: http://localhost:5173
+      GOREST_AUTH_INVITE_TTL: 168h
+
     ports:
       - "${GOREST_SERVER_PORT}:8080"
 

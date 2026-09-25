@@ -9,6 +9,7 @@ import (
 	"github.com/chuuch/gorest/internal/api"
 	"github.com/chuuch/gorest/internal/auth/domain"
 	"github.com/chuuch/gorest/internal/auth/usecase"
+	"github.com/chuuch/gorest/internal/invites"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	"github.com/chuuch/gorest/internal/requestcontext"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
@@ -19,6 +20,7 @@ const refreshTokenCookieName = "refresh_token"
 
 type Handler struct {
 	service         usecase.Service
+	invites         invites.Service
 	refreshTokenTTL time.Duration
 	cookieSecure    bool
 }
@@ -27,9 +29,11 @@ func NewHandler(
 	service usecase.Service,
 	refreshTokenTTL time.Duration,
 	cookieSecure bool,
+	invites invites.Service,
 ) *Handler {
 	return &Handler{
 		service:         service,
+		invites:         invites,
 		refreshTokenTTL: refreshTokenTTL,
 		cookieSecure:    cookieSecure,
 	}
@@ -150,6 +154,32 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
+	var req domain.AcceptInviteRequest
+
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_request",
+			"invalid request body",
+		)
+		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
+		return
+	}
+
+	if err := h.invites.Accept(r.Context(), req.Token, req.Password); err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) writeAuthResponse(
 	w http.ResponseWriter,
 	status int,
@@ -248,6 +278,30 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 			http.StatusForbidden,
 			"no_organization",
 			"user has no organization",
+		)
+
+	case errors.Is(err, invites.ErrInviteNotFound):
+		api.WriteError(
+			w,
+			http.StatusNotFound,
+			"invite_not_found",
+			"invite not found",
+		)
+
+	case errors.Is(err, invites.ErrInviteExpired):
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invite_expired",
+			"invite expired",
+		)
+
+	case errors.Is(err, invites.ErrInviteUsed):
+		api.WriteError(
+			w,
+			http.StatusConflict,
+			"invite_used",
+			"invite already used",
 		)
 
 	default:
