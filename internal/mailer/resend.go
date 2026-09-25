@@ -12,18 +12,18 @@ import (
 )
 
 type ResendMailer struct {
-	from string
+	from   string
 	apiKey string
 	apiURL string
 	client *http.Client
 }
 
 type resendRequest struct {
-	From string `json:"from"`
-	To []string `json:"to"`
-	Subject string `json:"subject"`
-	Text string `json:"text,omitempty"`
-	HTML string `json:"html,omitempty"`
+	From    string   `json:"from"`
+	To      []string `json:"to"`
+	Subject string   `json:"subject"`
+	Text    string   `json:"text,omitempty"`
+	HTML    string   `json:"html,omitempty"`
 }
 
 func NewResendMailer(from, apiKey, apiURL string) *ResendMailer {
@@ -32,7 +32,7 @@ func NewResendMailer(from, apiKey, apiURL string) *ResendMailer {
 	}
 
 	return &ResendMailer{
-		from: from,
+		from:   from,
 		apiKey: apiKey,
 		apiURL: apiURL,
 		client: &http.Client{Timeout: 10 * time.Second},
@@ -45,11 +45,11 @@ func (m *ResendMailer) Send(ctx context.Context, msg Message) error {
 	}
 
 	payload, err := json.Marshal(resendRequest{
-		From: m.from,
-		To: []string{msg.To},
+		From:    m.from,
+		To:      []string{msg.To},
 		Subject: msg.Subject,
-		Text: msg.Text,
-		HTML: msg.HTML,
+		Text:    msg.Text,
+		HTML:    msg.HTML,
 	})
 	if err != nil {
 		return fmt.Errorf("marshal resend pauload: %w", err)

@@ -62,7 +62,7 @@ import (
 type Server struct {
 	httpServer *http.Server
 	db         *pgxpool.Pool
-	mailer mailer.Mailer
+	mailer     mailer.Mailer
 }
 
 func New(cfg *config.Config) (*Server, error) {
@@ -74,7 +74,7 @@ func New(cfg *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("initialize database: %w", err)
 	}
 
-	// -------------------------------- 
+	// --------------------------------
 	// Initialize S3 storage & bucket
 	// ---------------------------------
 	objectStore, err := storage.NewS3Store(cfg.Storage)
@@ -270,7 +270,7 @@ func New(cfg *config.Config) (*Server, error) {
 	return &Server{
 		httpServer: httpServer,
 		db:         db,
-		mailer: mailSender,
+		mailer:     mailSender,
 	}, nil
 }
 

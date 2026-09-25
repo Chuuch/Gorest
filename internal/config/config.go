@@ -17,7 +17,7 @@ type Config struct {
 	CORS     CORSConfig     `envPrefix:"GOREST_CORS_"`
 	Storage  StorageConfig  `envPrefix:"GOREST_STORAGE_"`
 	Logger   LoggerConfig   `envPrefix:"GOREST_LOGGER_"`
-	Mailer   MailerConfig		`envPrefix:"GOREST_MAILER_"`
+	Mailer   MailerConfig   `envPrefix:"GOREST_MAILER_"`
 }
 
 type AppConfig struct {
@@ -80,12 +80,12 @@ type LoggerConfig struct {
 }
 
 type MailerConfig struct {
-	Driver string `env:"DRIVER" envDefault:"log"`
-	From string `env:"FROM" envDefault:"Flourish <noreply@localhost>"`
+	Driver   string `env:"DRIVER" envDefault:"log"`
+	From     string `env:"FROM" envDefault:"Flourish <noreply@localhost>"`
 	SMTPHost string `env:"SMTP_HOST" envDefault:"localhost"`
-	SMTPPort int `env:"SMTP_PORT" envDefault:"1025"`
-	APIKey string `env:"API_KEY"`
-	APIURL string `env:"API_URL" envDefault:"https://api.resend.com/emails"`
+	SMTPPort int    `env:"SMTP_PORT" envDefault:"1025"`
+	APIKey   string `env:"API_KEY"`
+	APIURL   string `env:"API_URL" envDefault:"https://api.resend.com/emails"`
 }
 
 func Load() (*Config, error) {

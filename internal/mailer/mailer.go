@@ -9,10 +9,10 @@ import (
 )
 
 type Message struct {
-	To string
+	To      string
 	Subject string
-	Text string
-	HTML string
+	Text    string
+	HTML    string
 }
 
 type Mailer interface {
