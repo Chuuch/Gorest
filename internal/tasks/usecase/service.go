@@ -80,13 +80,9 @@ func (s *service) List(
 func (s *service) Create(
 	ctx context.Context,
 	organizationID, projectID uuid.UUID,
-	actorRole orgdomain.Role,
+	_ orgdomain.Role,
 	req taskdomain.CreateTaskRequest,
 ) (*taskdomain.Task, error) {
-	if !actorRole.CanManageMembers() {
-		return nil, taskdomain.ErrForbidden
-	}
-
 	if _, err := s.projects.GetByID(ctx, projectID, organizationID); err != nil {
 		return nil, err
 	}
@@ -158,13 +154,9 @@ func (s *service) Delete(
 func (s *service) Convert(
 	ctx context.Context,
 	organizationID, ticketID uuid.UUID,
-	actorRole orgdomain.Role,
+	_ orgdomain.Role,
 	req taskdomain.ConvertTicketRequest,
 ) (*taskdomain.Task, error) {
-	if !actorRole.CanManageMembers() {
-		return nil, taskdomain.ErrForbidden
-	}
-
 	ticket, err := s.tickets.GetByID(ctx, ticketID, organizationID)
 	if err != nil {
 		return nil, err
