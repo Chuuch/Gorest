@@ -371,7 +371,7 @@ func TestTaskService_Create_AdminCanAdd(t *testing.T) {
 	require.Equal(t, 1, task.Version)
 }
 
-func TestTaskService_Create_Forbidden(t *testing.T) {
+func TestTaskService_Create_MemberCanAdd(t *testing.T) {
 	db, cleanup := setupTaskTestDatabase(t)
 	defer cleanup()
 
@@ -380,7 +380,7 @@ func TestTaskService_Create_Forbidden(t *testing.T) {
 	clientID := seedClient(t, db, organizationID, "Northwind")
 	projectID := seedProject(t, db, organizationID, clientID, "Website")
 
-	_, err := service.Create(
+	task, err := service.Create(
 		context.Background(),
 		organizationID,
 		projectID,
@@ -391,7 +391,10 @@ func TestTaskService_Create_Forbidden(t *testing.T) {
 		},
 	)
 
-	require.ErrorIs(t, err, taskdomain.ErrForbidden)
+	require.NoError(t, err)
+	require.Equal(t, "Fix login", task.Title)
+	require.Equal(t, taskdomain.StatusTodo, task.Status)
+	require.Equal(t, 1, task.Version)
 }
 
 func TestTaskService_Create_TitleExists(t *testing.T) {
@@ -723,7 +726,7 @@ func TestTaskService_Convert(t *testing.T) {
 	require.ErrorIs(t, err, projectdomain.ErrProjectNotFound)
 }
 
-func TestTaskService_Convert_Forbidden(t *testing.T) {
+func TestTaskService_Convert_MemberCanConvert(t *testing.T) {
 	db, cleanup := setupTaskTestDatabase(t)
 	defer cleanup()
 
@@ -734,14 +737,19 @@ func TestTaskService_Convert_Forbidden(t *testing.T) {
 	projectID := seedProject(t, db, organizationID, clientID, "Website")
 	ticketID := seedTicket(t, db, organizationID, clientID, userID, "Login button broken")
 
-	_, err := service.Convert(
+	task, err := service.Convert(
 		context.Background(),
 		organizationID,
 		ticketID,
 		orgdomain.RoleMember,
 		taskdomain.ConvertTicketRequest{ProjectID: projectID},
 	)
-	require.ErrorIs(t, err, taskdomain.ErrForbidden)
+	require.NoError(t, err)
+	require.Equal(t, "Login button broken", task.Title)
+	require.Equal(t, projectID, task.ProjectID)
+	require.NotNil(t, task.TicketID)
+	require.Equal(t, ticketID, *task.TicketID)
+	require.Equal(t, 1, task.Version)
 }
 
 func TestTaskService_Convert_TicketNotFound(t *testing.T) {
