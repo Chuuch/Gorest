@@ -35,8 +35,8 @@ services:
       MINIO_ROOT_USER: ${GOREST_STORAGE_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${GOREST_STORAGE_SECRET_KEY}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - minio_data:/data
 
@@ -45,8 +45,8 @@ services:
     container_name: gorest-mailpit
     restart: unless-stopped
     ports:
-      - "8025:8025"
-      - "1025:1025"
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
   
   api:
     build:
@@ -83,6 +83,10 @@ services:
 
     ports:
       - "${GOREST_SERVER_PORT}:8080"
+
+    networks:
+      - default
+      - edge
 
     depends_on:
       postgres:
@@ -139,7 +143,7 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./deployments/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -147,6 +151,10 @@ services:
     depends_on:
       - prometheus
       - loki
+
+networks:
+  edge:
+    name: flourish-edge
 
 volumes:
   postgres_data:
