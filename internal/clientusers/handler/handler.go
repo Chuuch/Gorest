@@ -205,6 +205,35 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	h.writeAuthResponse(w, http.StatusOK, result)
 }
 
+func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requestcontext.UserID(r.Context())
+	if !ok {
+		api.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		return
+	}
+
+	var req authdomain.ChangePasswordRequest
+
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		api.WriteError(w, http.StatusBadRequest, "invalid_request", "invalid request body")
+		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
+		return
+	}
+
+	result, err := h.service.ChangePassword(r.Context(), userID, req)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	h.setRefreshTokenCookie(w, result.RefreshToken)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) clientID(
 	w http.ResponseWriter,
 	r *http.Request,
