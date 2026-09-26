@@ -32,6 +32,7 @@ type Service interface {
 	Refresh(ctx context.Context, refreshToken string) (*AuthResult, error)
 	Logout(ctx context.Context, refreshToken string) error
 	Me(ctx context.Context, userID uuid.UUID) (*AuthResult, error)
+	ChangePassword(ctx context.Context, userID uuid.UUID, req authdomain.ChangePasswordRequest) (*AuthResult, error)
 }
 
 type PasswordVerifier interface {
@@ -213,6 +214,39 @@ func (s *service) Logout(
 	}
 
 	return nil
+}
+
+func (s *service) ChangePassword(
+	ctx context.Context,
+	userID uuid.UUID,
+	req authdomain.ChangePasswordRequest,
+) (*AuthResult, error) {
+	u, err := s.users.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+
+	if err := s.passwords.Compare(req.CurrentPassword, u.PasswordHash); err != nil {
+		return nil, authdomain.ErrInvalidCredentials
+	}
+
+	if _, err := s.users.Update(ctx, userID, userdomain.UpdateUserRequest{
+		Email:    u.Email,
+		Password: &req.Password,
+	}); err != nil {
+		return nil, fmt.Errorf("update password %w", err)
+	}
+
+	if err := s.refreshTokens.RevokeAllForUser(ctx, userID); err != nil {
+		return nil, fmt.Errorf("revoke refresh tokens: %w", err)
+	}
+
+	org, err := s.organizationForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.issueTokens(ctx, userID, org)
 }
 
 func (s *service) issueTokens(

@@ -170,6 +170,7 @@ func registerRoutes(
 	mux.Handle("POST /api/v1/client-auth/refresh", refreshLimiter.Refresh(http.HandlerFunc(clientUserHandler.Refresh)))
 	mux.HandleFunc("POST /api/v1/client-auth/logout", clientUserHandler.Logout)
 	mux.Handle("GET /api/v1/client-auth/me", portal(tokenManager, clientUserHandler.Me))
+	mux.Handle("POST /api/v1/client-auth/change-password", portal(tokenManager, clientUserHandler.ChangePassword))
 
 	// AUTH
 	mux.HandleFunc("POST /api/v1/auth/register", authHandler.Register)
@@ -179,6 +180,7 @@ func registerRoutes(
 	mux.HandleFunc("POST /api/v1/auth/accept-invite", authHandler.AcceptInvite)
 	mux.Handle("POST /api/v1/auth/forgot-password", loginLimiter.Forgot(http.HandlerFunc(authHandler.ForgotPassword)))
 	mux.HandleFunc("POST /api/v1/auth/reset-password", authHandler.ResetPassword)
+	mux.Handle("POST /api/v1/auth-change-password", staff(tokenManager, authHandler.ChangePassword))
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
