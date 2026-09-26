@@ -13,4 +13,5 @@ type TaskRepository interface {
 	Update(ctx context.Context, task *domain.Task) error
 	Delete(ctx context.Context, id, organizationID uuid.UUID) error
 	ListByProjectID(ctx context.Context, organizationID, projectID uuid.UUID) ([]*domain.Task, error)
+	ListInbox(ctx context.Context, organizationID, userID uuid.UUID) ([]*domain.Task, error)
 }

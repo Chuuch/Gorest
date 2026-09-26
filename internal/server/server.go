@@ -191,7 +191,7 @@ func New(cfg *config.Config) (*Server, error) {
 	// Task domain
 	// -------------------------------------------------------------
 	taskRepository := taskpostgres.NewRepository(db)
-	taskService := taskusecase.NewService(taskRepository, projectRepository, ticketRepository)
+	taskService := taskusecase.NewService(taskRepository, projectRepository, ticketRepository, membershipRepository)
 	taskHandler := taskhandler.NewHandler(taskService)
 
 	// -------------------------------------------------------------

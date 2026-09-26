@@ -2,12 +2,15 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	orgrepository "github.com/chuuch/gorest/internal/organization/repository"
 	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
 	projectrepository "github.com/chuuch/gorest/internal/projects/repository"
+	"github.com/chuuch/gorest/internal/requestcontext"
 	taskdomain "github.com/chuuch/gorest/internal/tasks/domain"
 	taskrepository "github.com/chuuch/gorest/internal/tasks/repository"
 	ticketrepository "github.com/chuuch/gorest/internal/tickets/repository"
@@ -18,6 +21,10 @@ type Service interface {
 	List(
 		ctx context.Context,
 		organizationID, projectID uuid.UUID,
+	) ([]*taskdomain.Task, error)
+	Inbox(
+		ctx context.Context,
+		organizationID, userID uuid.UUID,
 	) ([]*taskdomain.Task, error)
 	Create(
 		ctx context.Context,
@@ -44,20 +51,23 @@ type Service interface {
 }
 
 type service struct {
-	tasks    taskrepository.TaskRepository
-	projects projectrepository.ProjectRepository
-	tickets  ticketrepository.TicketRepository
+	tasks       taskrepository.TaskRepository
+	projects    projectrepository.ProjectRepository
+	tickets     ticketrepository.TicketRepository
+	memberships orgrepository.MembershipRepository
 }
 
 func NewService(
 	tasks taskrepository.TaskRepository,
 	projects projectrepository.ProjectRepository,
 	tickets ticketrepository.TicketRepository,
+	memberships orgrepository.MembershipRepository,
 ) Service {
 	return &service{
-		tasks:    tasks,
-		projects: projects,
-		tickets:  tickets,
+		tasks:       tasks,
+		projects:    projects,
+		tickets:     tickets,
+		memberships: memberships,
 	}
 }
 
@@ -77,6 +87,17 @@ func (s *service) List(
 	return tasks, nil
 }
 
+func (s *service) Inbox(
+	ctx context.Context,
+	organizationID, userID uuid.UUID,
+) ([]*taskdomain.Task, error) {
+	tasks, err := s.tasks.ListInbox(ctx, organizationID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list inbox: %w", err)
+	}
+	return tasks, nil
+}
+
 func (s *service) Create(
 	ctx context.Context,
 	organizationID, projectID uuid.UUID,
@@ -87,8 +108,14 @@ func (s *service) Create(
 		return nil, err
 	}
 
+	assigneeID, err := s.resolveAssignee(ctx, organizationID, req.AssigneeID)
+	if err != nil {
+		return nil, err
+	}
+
 	now := time.Now().UTC()
 	status := taskdomain.Status(req.Status)
+	createdBy := actorUserID(ctx)
 
 	task := &taskdomain.Task{
 		ID:             uuid.New(),
@@ -98,6 +125,8 @@ func (s *service) Create(
 		Notes:          req.Notes,
 		Status:         status,
 		CompletedAt:    completedAtFor(status, nil, now),
+		CreatedBy:      createdBy,
+		AssigneeID:     assigneeID,
 		Version:        1,
 		CreatedAt:      now,
 		UpdatedAt:      now,
@@ -122,6 +151,22 @@ func (s *service) Update(
 
 	now := time.Now().UTC()
 	status := taskdomain.Status(req.Status)
+
+	if req.Title != "" {
+		task.Title = req.Title
+	}
+
+	if req.Notes != nil {
+		task.Notes = *req.Notes
+	}
+
+	if req.AssigneeID.Set {
+		assigneeID, err := s.resolveAssignee(ctx, organizationID, req.AssigneeID.Value)
+		if err != nil {
+			return nil, err
+		}
+		task.AssigneeID = assigneeID
+	}
 
 	task.Status = status
 	task.CompletedAt = completedAtFor(status, task.CompletedAt, now)
@@ -184,6 +229,7 @@ func (s *service) Convert(
 
 	now := time.Now().UTC()
 	ticketIDCopy := ticket.ID
+	createdBy := actorUserID(ctx)
 
 	task := &taskdomain.Task{
 		ID:             uuid.New(),
@@ -193,6 +239,7 @@ func (s *service) Convert(
 		Title:          ticket.Title,
 		Notes:          ticket.Body,
 		Status:         taskdomain.StatusTodo,
+		CreatedBy:      createdBy,
 		Version:        1,
 		CreatedAt:      now,
 		UpdatedAt:      now,
@@ -203,6 +250,38 @@ func (s *service) Convert(
 	}
 
 	return task, nil
+}
+
+func (s *service) resolveAssignee(
+	ctx context.Context,
+	organizationID uuid.UUID,
+	assigneeID *uuid.UUID,
+) (*uuid.UUID, error) {
+	if assigneeID == nil {
+		return nil, nil
+	}
+
+	membership, err := s.memberships.GetByUserID(ctx, *assigneeID)
+	if err != nil {
+		if errors.Is(err, orgdomain.ErrMembershipNotFound) {
+			return nil, taskdomain.ErrAssigneeNotMember
+		}
+		return nil, fmt.Errorf("get assignee membership: %w", err)
+	}
+
+	if membership.OrganizationID != organizationID {
+		return nil, taskdomain.ErrAssigneeNotMember
+	}
+
+	return assigneeID, nil
+}
+
+func actorUserID(ctx context.Context) *uuid.UUID {
+	userID, ok := requestcontext.UserID(ctx)
+	if !ok {
+		return nil
+	}
+	return &userID
 }
 
 func completedAtFor(status taskdomain.Status, current *time.Time, now time.Time) *time.Time {

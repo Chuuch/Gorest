@@ -21,6 +21,40 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
+const taskColumns = `
+		id,
+		organization_id,
+		project_id,
+		ticket_id,
+		title,
+		notes,
+		status,
+		completed_at,
+		created_by,
+		assignee_id,
+		"version",
+		created_at,
+		updated_at
+	`
+
+func scanTask(scanner interface{ Scan(dest ...any) error }, task *domain.Task) error {
+	return scanner.Scan(
+		&task.ID,
+		&task.OrganizationID,
+		&task.ProjectID,
+		&task.TicketID,
+		&task.Title,
+		&task.Notes,
+		&task.Status,
+		&task.CompletedAt,
+		&task.CreatedBy,
+		&task.AssigneeID,
+		&task.Version,
+		&task.CreatedAt,
+		&task.UpdatedAt,
+	)
+}
+
 func (r *Repository) Create(
 	ctx context.Context,
 	task *domain.Task,
@@ -35,11 +69,13 @@ func (r *Repository) Create(
 				notes,
 				status,
 				completed_at,
+				created_by,
+				assignee_id,
 				"version",
 				created_at,
 				updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		`
 
 	_, err := database.QuerierFrom(ctx, r.db).Exec(
@@ -53,6 +89,8 @@ func (r *Repository) Create(
 		task.Notes,
 		task.Status,
 		task.CompletedAt,
+		task.CreatedBy,
+		task.AssigneeID,
 		task.Version,
 		task.CreatedAt,
 		task.UpdatedAt,
@@ -76,42 +114,19 @@ func (r *Repository) GetByID(
 	id, organizationID uuid.UUID,
 ) (*domain.Task, error) {
 	const query = `
-			SELECT
-				id,
-				organization_id,
-				project_id,
-				ticket_id,
-				title,
-				notes,
-				status,
-				completed_at,
-				"version",
-				created_at,
-				updated_at
+			SELECT ` + taskColumns + `
 			FROM tasks
 			WHERE id = $1 AND organization_id = $2
 		`
 
 	var task domain.Task
 
-	err := database.QuerierFrom(ctx, r.db).QueryRow(
+	err := scanTask(database.QuerierFrom(ctx, r.db).QueryRow(
 		ctx,
 		query,
 		id,
 		organizationID,
-	).Scan(
-		&task.ID,
-		&task.OrganizationID,
-		&task.ProjectID,
-		&task.TicketID,
-		&task.Title,
-		&task.Notes,
-		&task.Status,
-		&task.CompletedAt,
-		&task.Version,
-		&task.CreatedAt,
-		&task.UpdatedAt,
-	)
+	), &task)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrTaskNotFound
@@ -130,19 +145,25 @@ func (r *Repository) Update(
 	const query = `
 			UPDATE tasks
 			SET
-					status = $1,
-					completed_at = $2,
-					updated_at = $3,
+					title = $1,
+					notes = $2,
+					status = $3,
+					completed_at = $4,
+					assignee_id = $5,
+					updated_at = $6,
 					"version" = tasks."version" + 1
-			WHERE id = $4 AND organization_id = $5 AND "version" = $6
+			WHERE id = $7 AND organization_id = $8 AND "version" = $9
 			RETURNING "version"
 		`
 
 	err := database.QuerierFrom(ctx, r.db).QueryRow(
 		ctx,
 		query,
+		task.Title,
+		task.Notes,
 		task.Status,
 		task.CompletedAt,
+		task.AssigneeID,
 		task.UpdatedAt,
 		task.ID,
 		task.OrganizationID,
@@ -190,50 +211,51 @@ func (r *Repository) ListByProjectID(
 	organizationID, projectID uuid.UUID,
 ) ([]*domain.Task, error) {
 	const query = `
-			SELECT
-				id,
-				organization_id,
-				project_id,
-				ticket_id,
-				title,
-				notes,
-				status,
-				completed_at,
-				"version",
-				created_at,
-				updated_at
+			SELECT ` + taskColumns + `
 			FROM tasks
 			WHERE organization_id = $1 AND project_id = $2
 			ORDER BY created_at ASC, title ASC
 		`
 
-	rows, err := r.db.Query(ctx, query, organizationID, projectID)
+	return r.list(ctx, query, organizationID, projectID)
+}
+
+func (r *Repository) ListInbox(
+	ctx context.Context,
+	organizationID, userID uuid.UUID,
+) ([]*domain.Task, error) {
+	query := `
+		SELECT ` + taskColumns + `
+		FROM tasks
+		WHERE organization_id = $1
+			AND (assignee_id = $2 OR assignee_id IS NULL)
+		ORDER BY
+			CASE WHEN assignee_id = $2 THEN 0 ELSE 1 END,
+			created_at ASC,
+			title ASC
+	`
+
+	return r.list(ctx, query, organizationID, userID)
+}
+
+func (r *Repository) list(
+	ctx context.Context,
+	query string,
+	args ...any,
+) ([]*domain.Task, error) {
+	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list tasks: %w", err)
 	}
 	defer rows.Close()
 
 	tasks := make([]*domain.Task, 0)
-
 	for rows.Next() {
 		var task domain.Task
 
-		if err := rows.Scan(
-			&task.ID,
-			&task.OrganizationID,
-			&task.ProjectID,
-			&task.TicketID,
-			&task.Title,
-			&task.Notes,
-			&task.Status,
-			&task.CompletedAt,
-			&task.Version,
-			&task.CreatedAt,
-			&task.UpdatedAt,
-		); err != nil {
+		if err := scanTask(rows, &task); err != nil {
 			return nil, fmt.Errorf("scan task: %w", err)
 		}
-
 		tasks = append(tasks, &task)
 	}
 
