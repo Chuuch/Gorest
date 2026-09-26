@@ -122,6 +122,7 @@ func registerRoutes(
 
 	// TASKS
 	mux.Handle("GET /api/v1/projects/{id}/tasks", staff(tokenManager, taskHandler.List))
+	mux.Handle("GET /api/v1/inbox/tasks", staff(tokenManager, taskHandler.Inbox))
 	mux.Handle("POST /api/v1/projects/{id}/tasks", staff(tokenManager, taskHandler.Create))
 	mux.Handle("PATCH /api/v1/tasks/{id}", staff(tokenManager, taskHandler.Update))
 	mux.Handle("POST /api/v1/tickets/{id}/convert", staff(tokenManager, taskHandler.Convert))

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	orgpostgres "github.com/chuuch/gorest/internal/organization/postgres"
 	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
 	projectpostgres "github.com/chuuch/gorest/internal/projects/postgres"
 	taskdomain "github.com/chuuch/gorest/internal/tasks/domain"
@@ -107,6 +108,17 @@ func setupTaskTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 	require.NoError(t, err)
 
 	_, err = db.Exec(ctx, `
+			CREATE TABLE memberships (
+				id UUID PRIMARY KEY,
+				organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				role TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'member')),
+				created_at TIMESTAMPTZ NOT NULL,
+				CONSTRAINT memberships_user_id_unique UNIQUE (user_id)
+			)
+		`)
+
+	_, err = db.Exec(ctx, `
 		CREATE TABLE tasks (
 			id UUID PRIMARY KEY,
 			organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -116,6 +128,8 @@ func setupTaskTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 			notes TEXT NOT NULL DEFAULT '',
 			status TEXT NOT NULL,
 			completed_at TIMESTAMPTZ NULL,
+			created_by UUID REFERENCES users(id) ON DELETE RESTRICT,
+			assignee_id UUID REFERENCES users(id) ON DELETE SET NULL,
 			version INTEGER NOT NULL DEFAULT 1,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL,
@@ -299,6 +313,7 @@ func setupTaskService(db *pgxpool.Pool) taskusecase.Service {
 		taskpostgres.NewRepository(db),
 		projectpostgres.NewRepository(db),
 		ticketpostgres.NewRepository(db),
+		orgpostgres.NewMembershipRepository(db),
 	)
 }
 

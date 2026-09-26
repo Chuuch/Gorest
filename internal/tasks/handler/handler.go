@@ -24,6 +24,37 @@ func NewHandler(service usecase.Service) *Handler {
 	return &Handler{service: service}
 }
 
+func (h *Handler) Inbox(w http.ResponseWriter, r *http.Request) {
+	organizationID, _, ok := h.session(w, r)
+	if !ok {
+		return
+	}
+
+	userID, ok := requestcontext.UserID(r.Context())
+	if !ok {
+		api.WriteError(
+			w,
+			http.StatusUnauthorized,
+			"unauthorized",
+			"unauthorized",
+		)
+		return
+	}
+
+	tasks, err := h.service.Inbox(r.Context(), organizationID, userID)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	responses := make([]taskdomain.TaskResponse, 0, len(tasks))
+	for _, task := range tasks {
+		responses = append(responses, toResponse(task))
+	}
+
+	api.WriteJSON(w, http.StatusOK, responses)
+}
+
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	organizationID, _, ok := h.session(w, r)
 	if !ok {
@@ -288,6 +319,14 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 			"task title already exists",
 		)
 
+	case errors.Is(err, taskdomain.ErrAssigneeNotMember):
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"assignee_not_member",
+			"assignee is not a member",
+		)
+
 	case errors.Is(err, taskdomain.ErrTaskVersionMismatch):
 		api.WriteError(
 			w,
@@ -348,6 +387,8 @@ func toResponse(task *taskdomain.Task) taskdomain.TaskResponse {
 		Notes:          task.Notes,
 		Status:         task.Status,
 		CompletedAt:    task.CompletedAt,
+		CreatedBy:      task.CreatedBy,
+		AssigneeID:     task.AssigneeID,
 		Version:        task.Version,
 		CreatedAt:      task.CreatedAt,
 		UpdatedAt:      task.UpdatedAt,

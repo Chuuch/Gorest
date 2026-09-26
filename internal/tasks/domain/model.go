@@ -23,6 +23,8 @@ type Task struct {
 	Notes          string
 	Status         Status
 	CompletedAt    *time.Time
+	CreatedBy      *uuid.UUID
+	AssigneeID     *uuid.UUID
 	Version        int
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
