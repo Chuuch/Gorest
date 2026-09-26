@@ -20,7 +20,7 @@ const refreshTokenCookieName = "refresh_token"
 
 type Handler struct {
 	service         usecase.Service
-	invites         invites.Service
+	invites         invites.MailTokens
 	refreshTokenTTL time.Duration
 	cookieSecure    bool
 }
@@ -29,7 +29,7 @@ func NewHandler(
 	service usecase.Service,
 	refreshTokenTTL time.Duration,
 	cookieSecure bool,
-	invites invites.Service,
+	invites invites.MailTokens,
 ) *Handler {
 	return &Handler{
 		service:         service,
@@ -180,6 +180,57 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var req domain.ForgotPasswordRequest
+
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_request",
+			"invalid request body",
+		)
+		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
+		return
+	}
+
+	if err := h.invites.RequestReset(r.Context(), req.Email); err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req domain.ResetPasswordRequest
+
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_request",
+			"invalid body request",
+		)
+		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
+		return
+	}
+
+	if err := h.invites.Reset(r.Context(), req.Token, req.Password); err != nil {
+		h.handleError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) writeAuthResponse(
 	w http.ResponseWriter,
 	status int,
@@ -302,6 +353,30 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 			http.StatusConflict,
 			"invite_used",
 			"invite already used",
+		)
+
+	case errors.Is(err, invites.ErrResetNotFound):
+		api.WriteError(
+			w,
+			http.StatusNotFound,
+			"reset_not_found",
+			"reset not found",
+		)
+
+	case errors.Is(err, invites.ErrResetExpired):
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"reset_expired",
+			"reset expired",
+		)
+
+	case errors.Is(err, invites.ErrResetUsed):
+		api.WriteError(
+			w,
+			http.StatusConflict,
+			"reset_used",
+			"reset already used",
 		)
 
 	default:

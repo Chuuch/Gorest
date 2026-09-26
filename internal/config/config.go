@@ -55,6 +55,7 @@ type AuthConfig struct {
 	AccessTokenTTL     time.Duration `env:"ACCESS_TOKEN_TTL,required"`
 	RefreshTokenTTL    time.Duration `env:"REFRESH_TOKEN_TTL,required"`
 	InviteTTL          time.Duration `env:"INVITE_TTL" envDefault:"168h"`
+	ResetTTL           time.Duration `env:"RESET_TTL" envDefault:"1h"`
 	Issuer             string        `env:"ISSUER,required"`
 	BcryptCost         int           `env:"BCRYPT_COST,required"`
 	CookieSecure       bool          `env:"COOKIE_SECURE,required"`

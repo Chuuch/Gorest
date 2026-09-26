@@ -23,6 +23,7 @@ const (
 	testIssuer         = "gorest-test"
 	testAccessTokenTTL = 15 * time.Minute
 	testInviteTTL      = 7 * 24 * time.Hour
+	testResetTTL       = time.Hour
 	testPublicURL      = "http://localhost:5173"
 	testPassword       = "password123"
 )
@@ -74,7 +75,7 @@ func setupInviteTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 			id UUID PRIMARY KEY,
 			user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 			token_hash TEXT NOT NULL UNIQUE,
-			purpose TEXT NOT NULL CHECK (purpose IN ('invite')),
+			purpose TEXT NOT NULL CHECK (purpose IN ('invite', 'reset')),
 			expires_at TIMESTAMPTZ NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL,
 			used_at TIMESTAMPTZ
@@ -91,14 +92,14 @@ func setupInviteTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 }
 
 type inviteTestDependencies struct {
-	service   invites.Service
+	service   invites.MailTokens
 	users     userusecase.Service
 	mailer    *recordingMailer
 	tokens    security.TokenManager
 	passwords *password.BcryptHasher
 }
 
-func setupInviteService(t *testing.T, db *pgxpool.Pool, ttl time.Duration) inviteTestDependencies {
+func setupInviteService(t *testing.T, db *pgxpool.Pool, ttl, resetTTL time.Duration) inviteTestDependencies {
 	t.Helper()
 
 	hasher := password.NewBcryptHasher(testBcryptCost)
@@ -112,8 +113,10 @@ func setupInviteService(t *testing.T, db *pgxpool.Pool, ttl time.Duration) invit
 			users,
 			tokens,
 			mail,
+			nil,
 			db,
 			ttl,
+			resetTTL,
 			testPublicURL,
 		),
 		users:     users,
@@ -127,7 +130,7 @@ func TestInviteService_IssueAndAccept(t *testing.T) {
 	db, cleanup := setupInviteTestDatabase(t)
 	defer cleanup()
 
-	deps := setupInviteService(t, db, testInviteTTL)
+	deps := setupInviteService(t, db, testInviteTTL, testResetTTL)
 	ctx := context.Background()
 
 	user, err := deps.users.Create(ctx, userdomain.CreateUserRequest{
@@ -150,7 +153,7 @@ func TestInviteService_IssueAndAccept(t *testing.T) {
 	require.Contains(t, deps.mailer.messages[0].Subject, "Acme")
 	require.Contains(t, deps.mailer.messages[0].Text, testPublicURL+"/accept-invite?token=")
 
-	raw := inviteTokenFromMail(t, deps.mailer.messages[0].Text)
+	raw := tokenFromMail(t, deps.mailer.messages[0].Text, "/accept-invite?token=")
 
 	err = deps.service.Accept(ctx, raw, testPassword)
 	require.NoError(t, err)
@@ -167,7 +170,7 @@ func TestInviteService_Accept_InvalidToken(t *testing.T) {
 	db, cleanup := setupInviteTestDatabase(t)
 	defer cleanup()
 
-	deps := setupInviteService(t, db, testInviteTTL)
+	deps := setupInviteService(t, db, testInviteTTL, testResetTTL)
 
 	err := deps.service.Accept(context.Background(), "not-a-token", testPassword)
 	require.ErrorIs(t, err, invites.ErrInviteNotFound)
@@ -177,7 +180,7 @@ func TestInviteService_Accept_Expired(t *testing.T) {
 	db, cleanup := setupInviteTestDatabase(t)
 	defer cleanup()
 
-	deps := setupInviteService(t, db, time.Millisecond)
+	deps := setupInviteService(t, db, time.Millisecond, testResetTTL)
 	ctx := context.Background()
 
 	user, err := deps.users.Create(ctx, userdomain.CreateUserRequest{
@@ -198,15 +201,117 @@ func TestInviteService_Accept_Expired(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-	raw := inviteTokenFromMail(t, deps.mailer.messages[0].Text)
+	raw := tokenFromMail(t, deps.mailer.messages[0].Text, "/accept-invite?token=")
 	err = deps.service.Accept(ctx, raw, testPassword)
 	require.ErrorIs(t, err, invites.ErrInviteExpired)
 }
 
-func inviteTokenFromMail(t *testing.T, text string) string {
+func TestInviteService_RequestResetAndReset(t *testing.T) {
+	db, cleanup := setupInviteTestDatabase(t)
+	defer cleanup()
+
+	deps := setupInviteService(t, db, testInviteTTL, testResetTTL)
+	ctx := context.Background()
+
+	user, err := deps.users.Create(ctx, userdomain.CreateUserRequest{
+		Email:    "ada@example.com",
+		Password: "old-password",
+	})
+	require.NoError(t, err)
+
+	err = deps.service.RequestReset(ctx, "ada@example.com")
+	require.NoError(t, err)
+	require.Len(t, deps.mailer.messages, 1)
+	require.Equal(t, "ada@example.com", deps.mailer.messages[0].To)
+	require.Contains(t, deps.mailer.messages[0].Subject, "Reset")
+	require.Contains(t, deps.mailer.messages[0].Text, testPublicURL+"/reset-password?token=")
+
+	raw := tokenFromMail(t, deps.mailer.messages[0].Text, "/reset-password?token=")
+
+	err = deps.service.Reset(ctx, raw, testPassword)
+	require.NoError(t, err)
+
+	updated, err := deps.users.GetByID(ctx, user.ID)
+	require.NoError(t, err)
+	require.NoError(t, deps.passwords.Compare(testPassword, updated.PasswordHash))
+
+	err = deps.service.Reset(ctx, raw, "another-password")
+	require.ErrorIs(t, err, invites.ErrResetUsed)
+}
+
+func TestInviteService_RequestReset_UnknownEmail(t *testing.T) {
+	db, cleanup := setupInviteTestDatabase(t)
+	defer cleanup()
+
+	deps := setupInviteService(t, db, testInviteTTL, testResetTTL)
+
+	err := deps.service.RequestReset(context.Background(), "missing@example.com")
+	require.NoError(t, err)
+	require.Empty(t, deps.mailer.messages)
+}
+
+func TestInviteService_Reset_InvalidToken(t *testing.T) {
+	db, cleanup := setupInviteTestDatabase(t)
+	defer cleanup()
+
+	deps := setupInviteService(t, db, testInviteTTL, testResetTTL)
+
+	err := deps.service.Reset(context.Background(), "not-a-token", testPassword)
+	require.ErrorIs(t, err, invites.ErrResetNotFound)
+}
+
+func TestInviteService_Reset_InviteTokenRejected(t *testing.T) {
+	db, cleanup := setupInviteTestDatabase(t)
+	defer cleanup()
+
+	deps := setupInviteService(t, db, testInviteTTL, testResetTTL)
+	ctx := context.Background()
+
+	user, err := deps.users.Create(ctx, userdomain.CreateUserRequest{
+		Email:    "ada@example.com",
+		Password: "discarded-password",
+	})
+	require.NoError(t, err)
+
+	err = deps.service.Issue(ctx, invites.IssueInput{
+		UserID:           user.ID,
+		Email:            user.Email,
+		OrganizationName: "Acme",
+		Kind:             invites.KindStaff,
+	})
+	require.NoError(t, err)
+
+	raw := tokenFromMail(t, deps.mailer.messages[0].Text, "/accept-invite?token=")
+	err = deps.service.Reset(ctx, raw, testPassword)
+	require.ErrorIs(t, err, invites.ErrResetNotFound)
+}
+
+func TestInviteService_Reset_Expired(t *testing.T) {
+	db, cleanup := setupInviteTestDatabase(t)
+	defer cleanup()
+
+	deps := setupInviteService(t, db, testInviteTTL, time.Millisecond)
+	ctx := context.Background()
+
+	_, err := deps.users.Create(ctx, userdomain.CreateUserRequest{
+		Email:    "ada@example.com",
+		Password: "old-password",
+	})
+	require.NoError(t, err)
+
+	err = deps.service.RequestReset(ctx, "ada@example.com")
+	require.NoError(t, err)
+
+	time.Sleep(5 * time.Millisecond)
+
+	raw := tokenFromMail(t, deps.mailer.messages[0].Text, "/reset-password?token=")
+	err = deps.service.Reset(ctx, raw, testPassword)
+	require.ErrorIs(t, err, invites.ErrResetExpired)
+}
+
+func tokenFromMail(t *testing.T, text, prefix string) string {
 	t.Helper()
 
-	const prefix = "/accept-invite?token="
 	idx := -1
 	for i := 0; i+len(prefix) <= len(text); i++ {
 		if text[i:i+len(prefix)] == prefix {
