@@ -69,6 +69,22 @@ func (l *Limiter) Login(next http.Handler) http.Handler {
 	})
 }
 
+func (l *Limiter) Forgot(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := "forgot:" + clientIP(r) + ":" + peekEmail(r)
+		if !l.Allow(key) {
+			api.WriteError(
+				w,
+				http.StatusTooManyRequests,
+				"rate_limited",
+				"too many reset attempts",
+			)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (l *Limiter) Refresh(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := "refresh:" + clientIP(r)

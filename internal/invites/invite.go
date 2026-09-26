@@ -11,6 +11,7 @@ import (
 
 const (
 	PurposeInvite = "invite"
+	PurposeReset  = "reset"
 	KindStaff     = "staff"
 	KindPortal    = "portal"
 )
@@ -19,6 +20,9 @@ var (
 	ErrInviteNotFound = errors.New("invite not found")
 	ErrInviteExpired  = errors.New("invite expired")
 	ErrInviteUsed     = errors.New("invite used")
+	ErrResetNotFound  = errors.New("reset not found")
+	ErrResetExpired   = errors.New("reset expired")
+	ErrResetUsed      = errors.New("reset used")
 )
 
 type Token struct {

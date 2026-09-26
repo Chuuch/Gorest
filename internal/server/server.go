@@ -127,8 +127,10 @@ func New(cfg *config.Config) (*Server, error) {
 		userService,
 		tokenManager,
 		mailSender,
+		refreshTokenRepository,
 		db,
 		cfg.Auth.InviteTTL,
+		cfg.Auth.ResetTTL,
 		cfg.App.PublicURL,
 	)
 
