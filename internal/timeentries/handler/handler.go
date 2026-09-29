@@ -4,6 +4,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/chuuch/gorest/internal/api"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
@@ -35,6 +36,38 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	entries, err := h.service.List(r.Context(), organizationID, taskID)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	responses := make([]timeentrydomain.TimeEntryResponse, 0, len(entries))
+	for _, entry := range entries {
+		responses = append(responses, toResponse(entry))
+	}
+
+	api.WriteJSON(w, http.StatusOK, responses)
+}
+
+func (h *Handler) ListRange(w http.ResponseWriter, r *http.Request) {
+	organizationID, userID, actorRole, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+
+	from, to, ok := h.rangeBounds(w, r)
+	if !ok {
+		return
+	}
+
+	entries, err := h.service.ListRange(
+		r.Context(),
+		organizationID,
+		userID,
+		actorRole,
+		from,
+		to,
+	)
 	if err != nil {
 		h.handleError(w, err)
 		return
@@ -161,6 +194,25 @@ func (h *Handler) Delete(
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) rangeBounds(
+	w http.ResponseWriter,
+	r *http.Request,
+) (time.Time, time.Time, bool) {
+	from, fromErr := time.Parse(time.RFC3339Nano, r.URL.Query().Get("from"))
+	to, toErr := time.Parse(time.RFC3339Nano, r.URL.Query().Get("to"))
+	if fromErr != nil || toErr != nil || !to.After(from) {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_time_range",
+			"from and to must be RFC3339 and to must be after from",
+		)
+		return time.Time{}, time.Time{}, false
+	}
+
+	return from, to, true
 }
 
 func (h *Handler) taskID(

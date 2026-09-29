@@ -632,3 +632,84 @@ func TestTimeEntryService_Delete_WrongOrg(t *testing.T) {
 	)
 	require.ErrorIs(t, err, timeentrydomain.ErrTimeEntryNotFound)
 }
+
+func TestTimeEntryService_ListRange(t *testing.T) {
+	db, cleanup := setupTimeEntryTestDatabase(t)
+	defer cleanup()
+
+	service := setupTimeEntryService(db)
+	ownerID := seedUser(t, db, "ada@example.com")
+	memberID := seedUser(t, db, "mike@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	otherOrganizationID := seedOrganization(t, db, "Other")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+	taskID := seedTask(t, db, organizationID, projectID, "Fix login")
+
+	_, err := service.Create(
+		context.Background(),
+		organizationID,
+		taskID,
+		ownerID,
+		timeentrydomain.CreateTimeEntryRequest{Minutes: 90, Notes: "OAuth"},
+	)
+	require.NoError(t, err)
+
+	_, err = service.Create(
+		context.Background(),
+		organizationID,
+		taskID,
+		memberID,
+		timeentrydomain.CreateTimeEntryRequest{Minutes: 30},
+	)
+	require.NoError(t, err)
+
+	now := time.Now().UTC()
+	from := now.Add(-time.Hour)
+	to := now.Add(time.Hour)
+
+	owned, err := service.ListRange(
+		context.Background(),
+		organizationID,
+		ownerID,
+		orgdomain.RoleOwner,
+		from,
+		to,
+	)
+	require.NoError(t, err)
+	require.Len(t, owned, 2)
+
+	mine, err := service.ListRange(
+		context.Background(),
+		organizationID,
+		memberID,
+		orgdomain.RoleMember,
+		from,
+		to,
+	)
+	require.NoError(t, err)
+	require.Len(t, mine, 1)
+	require.Equal(t, memberID, mine[0].UserID)
+
+	outside, err := service.ListRange(
+		context.Background(),
+		organizationID,
+		ownerID,
+		orgdomain.RoleOwner,
+		now.Add(time.Hour),
+		now.Add(2*time.Hour),
+	)
+	require.NoError(t, err)
+	require.Empty(t, outside)
+
+	other, err := service.ListRange(
+		context.Background(),
+		otherOrganizationID,
+		ownerID,
+		orgdomain.RoleOwner,
+		from,
+		to,
+	)
+	require.NoError(t, err)
+	require.Empty(t, other)
+}

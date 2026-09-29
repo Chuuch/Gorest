@@ -14,6 +14,12 @@ import (
 
 type Service interface {
 	List(ctx context.Context, organizationID, taskID uuid.UUID) ([]*timeentrydomain.TimeEntry, error)
+	ListRange(
+		ctx context.Context,
+		organizationID, actorUserID uuid.UUID,
+		actorRole orgdomain.Role,
+		from, to time.Time,
+	) ([]*timeentrydomain.TimeEntry, error)
 	Create(
 		ctx context.Context,
 		organizationID, taskID, userID uuid.UUID,
@@ -56,6 +62,24 @@ func (s *service) List(
 	}
 
 	entries, err := s.entries.ListByTaskID(ctx, organizationID, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("list time entries: %w", err)
+	}
+	return entries, nil
+}
+
+func (s *service) ListRange(
+	ctx context.Context,
+	organizationID, actorUserID uuid.UUID,
+	actorRole orgdomain.Role,
+	from, to time.Time,
+) ([]*timeentrydomain.TimeEntry, error) {
+	var userID *uuid.UUID
+	if !actorRole.CanManageMembers() {
+		userID = &actorUserID
+	}
+
+	entries, err := s.entries.ListByRange(ctx, organizationID, userID, from, to)
 	if err != nil {
 		return nil, fmt.Errorf("list time entries: %w", err)
 	}
