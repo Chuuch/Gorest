@@ -64,6 +64,7 @@ func setupOrganizationTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 		CREATE TABLE users (
 			id UUID PRIMARY KEY,
 			email TEXT NOT NULL UNIQUE,
+			display_name TEXT NOT NULL DEFAULT '',
 			password_hash TEXT NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL
@@ -633,4 +634,40 @@ func TestOrganizationService_DeleteMember_NotFound(t *testing.T) {
 	)
 
 	require.ErrorIs(t, err, orgdomain.ErrMembershipNotFound)
+}
+
+func TestOrganizationService_Update(t *testing.T) {
+	db, cleanup := setupOrganizationTestDatabase(t)
+	defer cleanup()
+
+	deps := setupOrganizationService(t, db)
+	organizationID := seedOrganization(t, db)
+	_ = seedMembership(t, deps, organizationID, "owner@example.com", orgdomain.RoleOwner)
+
+	updated, err := deps.service.Update(
+		context.Background(),
+		organizationID,
+		orgdomain.RoleOwner,
+		orgdomain.UpdateOrganizationRequest{Name: "Northwind"},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, "Northwind", updated.Name)
+}
+
+func TestOrganizationService_Update_Forbidden(t *testing.T) {
+	db, cleanup := setupOrganizationTestDatabase(t)
+	defer cleanup()
+
+	deps := setupOrganizationService(t, db)
+	organizationID := seedOrganization(t, db)
+
+	_, err := deps.service.Update(
+		context.Background(),
+		organizationID,
+		orgdomain.RoleMember,
+		orgdomain.UpdateOrganizationRequest{Name: "Northwind"},
+	)
+
+	require.ErrorIs(t, err, orgdomain.ErrForbidden)
 }

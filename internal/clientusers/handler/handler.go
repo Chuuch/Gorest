@@ -303,10 +303,11 @@ func (h *Handler) writeAuthResponse(
 	api.WriteJSON(w, status, clientuserdomain.AuthResponse{
 		AccessToken: result.AccessToken,
 		User: userdomain.UserResponse{
-			ID:        result.User.ID,
-			Email:     result.User.Email,
-			CreatedAt: result.User.CreatedAt,
-			UpdatedAt: result.User.UpdatedAt,
+			ID:          result.User.ID,
+			Email:       result.User.Email,
+			DisplayName: result.User.DisplayName,
+			CreatedAt:   result.User.CreatedAt,
+			UpdatedAt:   result.User.UpdatedAt,
 		},
 		Organization: orgdomain.OrganizationResponse{
 			ID:        result.Organization.ID,

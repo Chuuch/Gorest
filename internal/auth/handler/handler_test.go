@@ -77,11 +77,12 @@ func (s *stubInviter) Reset(_ context.Context, token, password string) error {
 }
 
 type mockService struct {
-	registerFunc func(domain.RegisterRequest) (*authusecase.AuthResult, error)
-	loginFunc    func(domain.LoginRequest) (*authusecase.AuthResult, error)
-	refreshFunc  func(string) (*authusecase.AuthResult, error)
-	logoutFunc   func(string) error
-	meFunc       func(uuid.UUID) (*authusecase.AuthResult, error)
+	registerFunc          func(domain.RegisterRequest) (*authusecase.AuthResult, error)
+	loginFunc             func(domain.LoginRequest) (*authusecase.AuthResult, error)
+	refreshFunc           func(string) (*authusecase.AuthResult, error)
+	logoutFunc            func(string) error
+	meFunc                func(uuid.UUID) (*authusecase.AuthResult, error)
+	updateDisplayNameFunc func(uuid.UUID, userdomain.UpdateDisplayNameRequest) (*userdomain.User, error)
 }
 
 func (m *mockService) Register(
@@ -117,6 +118,17 @@ func (m *mockService) Me(
 	userID uuid.UUID,
 ) (*authusecase.AuthResult, error) {
 	return m.meFunc(userID)
+}
+
+func (m *mockService) UpdateDisplayName(
+	_ context.Context,
+	userID uuid.UUID,
+	req userdomain.UpdateDisplayNameRequest,
+) (*userdomain.User, error) {
+	if m.updateDisplayNameFunc == nil {
+		return nil, nil
+	}
+	return m.updateDisplayNameFunc(userID, req)
 }
 
 func TestHandler_Register(t *testing.T) {
@@ -1095,4 +1107,51 @@ func TestHandler_ResetPassword_InvalidBody(t *testing.T) {
 	handler.ResetPassword(rec, req)
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandler_UpdateDisplayName(t *testing.T) {
+	user := testAuthUser()
+	user.DisplayName = "Ada"
+
+	service := &mockService{
+		updateDisplayNameFunc: func(userID uuid.UUID, req userdomain.UpdateDisplayNameRequest) (*userdomain.User, error) {
+			require.Equal(t, user.ID, userID)
+			require.Equal(t, "Ada", req.DisplayName)
+			return user, nil
+		},
+	}
+
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/auth/display-name",
+		bytes.NewBufferString(`{"display_name":"Ada"}`),
+	)
+	req = req.WithContext(requestcontext.WithUserID(req.Context(), user.ID))
+
+	rec := httptest.NewRecorder()
+	handler.UpdateDisplayName(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response userdomain.UserResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Equal(t, user.ID, response.ID)
+	require.Equal(t, "Ada", response.DisplayName)
+}
+
+func TestHandler_UpdateDisplayName_Unauthorized(t *testing.T) {
+	handler := authhandler.NewHandler(&mockService{}, 30*24*time.Hour, true, &stubInviter{})
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/auth/display-name",
+		bytes.NewBufferString(`{"display_name":"Ada"}`),
+	)
+
+	rec := httptest.NewRecorder()
+	handler.UpdateDisplayName(rec, req)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
 }

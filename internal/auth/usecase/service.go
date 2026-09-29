@@ -33,6 +33,7 @@ type Service interface {
 	Logout(ctx context.Context, refreshToken string) error
 	Me(ctx context.Context, userID uuid.UUID) (*AuthResult, error)
 	ChangePassword(ctx context.Context, userID uuid.UUID, req authdomain.ChangePasswordRequest) (*AuthResult, error)
+	UpdateDisplayName(ctx context.Context, userID uuid.UUID, req userdomain.UpdateDisplayNameRequest) (*userdomain.User, error)
 }
 
 type PasswordVerifier interface {
@@ -247,6 +248,14 @@ func (s *service) ChangePassword(
 	}
 
 	return s.issueTokens(ctx, userID, org)
+}
+
+func (s *service) UpdateDisplayName(
+	ctx context.Context,
+	userID uuid.UUID,
+	req userdomain.UpdateDisplayNameRequest,
+) (*userdomain.User, error) {
+	return s.users.UpdateDisplayName(ctx, userID, req)
 }
 
 func (s *service) issueTokens(

@@ -38,10 +38,11 @@ func withSession(req *http.Request, organizationID uuid.UUID, role string) *http
 }
 
 type mockService struct {
-	listFunc   func(uuid.UUID) ([]orgusecase.Member, error)
-	createFunc func(uuid.UUID, orgdomain.Role, orgdomain.CreateMemberRequest) (*orgusecase.Member, error)
-	updateFunc func(uuid.UUID, uuid.UUID, orgdomain.Role, orgdomain.UpdateMemberRequest) (*orgusecase.Member, error)
-	deleteFunc func(uuid.UUID, uuid.UUID, orgdomain.Role) error
+	listFunc      func(uuid.UUID) ([]orgusecase.Member, error)
+	createFunc    func(uuid.UUID, orgdomain.Role, orgdomain.CreateMemberRequest) (*orgusecase.Member, error)
+	updateFunc    func(uuid.UUID, uuid.UUID, orgdomain.Role, orgdomain.UpdateMemberRequest) (*orgusecase.Member, error)
+	deleteFunc    func(uuid.UUID, uuid.UUID, orgdomain.Role) error
+	updateOrgFunc func(uuid.UUID, orgdomain.Role, orgdomain.UpdateOrganizationRequest) (*orgdomain.Organization, error)
 }
 
 func (m *mockService) ListMembers(
@@ -75,6 +76,15 @@ func (m *mockService) DeleteMember(
 	actorRole orgdomain.Role,
 ) error {
 	return m.deleteFunc(organizationID, memberUserID, actorRole)
+}
+
+func (m *mockService) Update(
+	_ context.Context,
+	organizationID uuid.UUID,
+	actorRole orgdomain.Role,
+	req orgdomain.UpdateOrganizationRequest,
+) (*orgdomain.Organization, error) {
+	return m.updateOrgFunc(organizationID, actorRole, req)
 }
 
 func TestHandler_ListMembers(t *testing.T) {
@@ -594,4 +604,100 @@ func TestHandler_DeleteMember_LastOwner(t *testing.T) {
 	handler.DeleteMember(rec, req)
 
 	require.Equal(t, http.StatusConflict, rec.Code)
+}
+
+func TestHandler_Update(t *testing.T) {
+	organizationID := testOrganizationID()
+	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	org := &orgdomain.Organization{
+		ID:        organizationID,
+		Name:      "Northwind",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	service := &mockService{
+		updateOrgFunc: func(
+			gotOrganizationID uuid.UUID,
+			actorRole orgdomain.Role,
+			req orgdomain.UpdateOrganizationRequest,
+		) (*orgdomain.Organization, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, orgdomain.RoleOwner, actorRole)
+			require.Equal(t, "Northwind", req.Name)
+			return org, nil
+		},
+	}
+
+	handler := orghandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/organization",
+		bytes.NewBufferString(`{"name":"Northwind"}`),
+	)
+	req = withSession(req, organizationID, "owner")
+
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response orgdomain.OrganizationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Equal(t, org.ID, response.ID)
+	require.Equal(t, "Northwind", response.Name)
+}
+
+func TestHandler_Update_Forbidden(t *testing.T) {
+	service := &mockService{
+		updateOrgFunc: func(
+			uuid.UUID,
+			orgdomain.Role,
+			orgdomain.UpdateOrganizationRequest,
+		) (*orgdomain.Organization, error) {
+			return nil, orgdomain.ErrForbidden
+		},
+	}
+
+	handler := orghandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/organization",
+		bytes.NewBufferString(`{"name":"Northwind"}`),
+	)
+	req = withSession(req, testOrganizationID(), "member")
+
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestHandler_Update_NameTooShort(t *testing.T) {
+	service := &mockService{
+		updateOrgFunc: func(
+			uuid.UUID,
+			orgdomain.Role,
+			orgdomain.UpdateOrganizationRequest,
+		) (*orgdomain.Organization, error) {
+			t.Fatal("service should not be called")
+			return nil, nil
+		},
+	}
+
+	handler := orghandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/organization",
+		bytes.NewBufferString(`{"name":"abc"}`),
+	)
+	req = withSession(req, testOrganizationID(), "owner")
+
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
 }

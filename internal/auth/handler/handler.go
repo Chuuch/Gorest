@@ -273,6 +273,40 @@ func (h *Handler) ChangePassword(
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *Handler) UpdateDisplayName(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requestcontext.UserID(r.Context())
+	if !ok {
+		api.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		return
+	}
+
+	var req userdomain.UpdateDisplayNameRequest
+
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		api.WriteError(w, http.StatusBadRequest, "invalid_request", "invalid request body")
+		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
+		return
+	}
+
+	user, err := h.service.UpdateDisplayName(r.Context(), userID, req)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	api.WriteJSON(w, http.StatusOK, userdomain.UserResponse{
+		ID:          user.ID,
+		Email:       user.Email,
+		DisplayName: user.DisplayName,
+		CreatedAt:   user.CreatedAt,
+		UpdatedAt:   user.UpdatedAt,
+	})
+}
+
 func (h *Handler) writeAuthResponse(
 	w http.ResponseWriter,
 	status int,
@@ -281,10 +315,11 @@ func (h *Handler) writeAuthResponse(
 	api.WriteJSON(w, status, domain.AuthResponse{
 		AccessToken: result.AccessToken,
 		User: userdomain.UserResponse{
-			ID:        result.User.ID,
-			Email:     result.User.Email,
-			CreatedAt: result.User.CreatedAt,
-			UpdatedAt: result.User.UpdatedAt,
+			ID:          result.User.ID,
+			Email:       result.User.Email,
+			DisplayName: result.User.DisplayName,
+			CreatedAt:   result.User.CreatedAt,
+			UpdatedAt:   result.User.UpdatedAt,
 		},
 		Organization: orgdomain.OrganizationResponse{
 			ID:        result.Organization.ID,

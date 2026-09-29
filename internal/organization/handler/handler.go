@@ -36,10 +36,11 @@ func (h *Handler) ListMembers(w http.ResponseWriter, r *http.Request) {
 	responses := make([]orgdomain.MemberResponse, 0, len(members))
 	for _, member := range members {
 		responses = append(responses, orgdomain.MemberResponse{
-			UserID:    member.UserID,
-			Email:     member.Email,
-			Role:      member.Role,
-			CreatedAt: member.CreatedAt,
+			UserID:      member.UserID,
+			Email:       member.Email,
+			DisplayName: member.DisplayName,
+			Role:        member.Role,
+			CreatedAt:   member.CreatedAt,
 		})
 	}
 
@@ -71,10 +72,11 @@ func (h *Handler) CreateMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.WriteJSON(w, http.StatusCreated, orgdomain.MemberResponse{
-		UserID:    member.UserID,
-		Email:     member.Email,
-		Role:      member.Role,
-		CreatedAt: member.CreatedAt,
+		UserID:      member.UserID,
+		Email:       member.Email,
+		DisplayName: member.DisplayName,
+		Role:        member.Role,
+		CreatedAt:   member.CreatedAt,
 	})
 }
 
@@ -122,10 +124,11 @@ func (h *Handler) UpdateMember(
 	}
 
 	api.WriteJSON(w, http.StatusOK, orgdomain.MemberResponse{
-		UserID:    member.UserID,
-		Email:     member.Email,
-		Role:      member.Role,
-		CreatedAt: member.CreatedAt,
+		UserID:      member.UserID,
+		Email:       member.Email,
+		DisplayName: member.DisplayName,
+		Role:        member.Role,
+		CreatedAt:   member.CreatedAt,
 	})
 }
 
@@ -153,6 +156,38 @@ func (h *Handler) DeleteMember(
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
+	organizationID, actorRole, ok := h.session(w, r)
+	if !ok {
+		return
+	}
+
+	var req orgdomain.UpdateOrganizationRequest
+
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		api.WriteError(w, http.StatusBadRequest, "invalid_request", "invalid request body")
+		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
+		return
+	}
+
+	org, err := h.service.Update(r.Context(), organizationID, actorRole, req)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	api.WriteJSON(w, http.StatusOK, orgdomain.OrganizationResponse{
+		ID:        org.ID,
+		Name:      org.Name,
+		CreatedAt: org.CreatedAt,
+		UpdatedAt: org.UpdatedAt,
+	})
 }
 
 func (h *Handler) memberUserID(
@@ -210,6 +245,9 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 
 	case errors.Is(err, orgdomain.ErrMembershipNotFound):
 		api.WriteError(w, http.StatusNotFound, "member_not_found", "member not found")
+
+	case errors.Is(err, orgdomain.ErrOrganizationNotFound):
+		api.WriteError(w, http.StatusNotFound, "organization_not_found", "organization not found")
 
 	default:
 		api.WriteError(w, http.StatusInternalServerError, "internal_error", "internal server error")

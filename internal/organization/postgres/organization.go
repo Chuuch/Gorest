@@ -80,3 +80,32 @@ func (r *OrganizationRepository) GetByID(
 
 	return &org, nil
 }
+
+func (r *OrganizationRepository) Update(
+	ctx context.Context,
+	org *domain.Organization,
+) error {
+	const query = `
+			UPDATE organizations
+			SET name = $2, updated_at = $3
+			WHERE id = $1
+		`
+
+	q := database.QuerierFrom(ctx, r.db)
+	tag, err := q.Exec(
+		ctx,
+		query,
+		org.ID,
+		org.Name,
+		org.UpdatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("update organization: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return domain.ErrOrganizationNotFound
+	}
+
+	return nil
+}

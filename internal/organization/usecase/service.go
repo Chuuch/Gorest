@@ -17,13 +17,20 @@ import (
 )
 
 type Member struct {
-	UserID    uuid.UUID
-	Email     string
-	Role      orgdomain.Role
-	CreatedAt time.Time
+	UserID      uuid.UUID
+	Email       string
+	DisplayName string
+	Role        orgdomain.Role
+	CreatedAt   time.Time
 }
 
 type Service interface {
+	Update(
+		ctx context.Context,
+		organizationID uuid.UUID,
+		actorRole orgdomain.Role,
+		req orgdomain.UpdateOrganizationRequest,
+	) (*orgdomain.Organization, error)
 	ListMembers(
 		ctx context.Context,
 		organizationID uuid.UUID,
@@ -71,6 +78,31 @@ func NewService(
 	}
 }
 
+func (s *service) Update(
+	ctx context.Context,
+	organizationID uuid.UUID,
+	actorRole orgdomain.Role,
+	req orgdomain.UpdateOrganizationRequest,
+) (*orgdomain.Organization, error) {
+	if !actorRole.CanManageMembers() {
+		return nil, orgdomain.ErrForbidden
+	}
+
+	org, err := s.organizations.GetByID(ctx, organizationID)
+	if err != nil {
+		return nil, err
+	}
+
+	org.Name = req.Name
+	org.UpdatedAt = time.Now().UTC()
+
+	if err := s.organizations.Update(ctx, org); err != nil {
+		return nil, err
+	}
+
+	return org, nil
+}
+
 func (s *service) ListMembers(
 	ctx context.Context,
 	organizationID uuid.UUID,
@@ -89,10 +121,11 @@ func (s *service) ListMembers(
 		}
 
 		members = append(members, Member{
-			UserID:    user.ID,
-			Email:     user.Email,
-			Role:      membership.Role,
-			CreatedAt: membership.CreatedAt,
+			UserID:      user.ID,
+			Email:       user.Email,
+			DisplayName: user.DisplayName,
+			Role:        membership.Role,
+			CreatedAt:   membership.CreatedAt,
 		})
 	}
 
@@ -163,10 +196,11 @@ func (s *service) CreateMember(
 		}
 
 		member = &Member{
-			UserID:    user.ID,
-			Email:     user.Email,
-			Role:      membership.Role,
-			CreatedAt: membership.CreatedAt,
+			UserID:      user.ID,
+			Email:       user.Email,
+			DisplayName: user.DisplayName,
+			Role:        membership.Role,
+			CreatedAt:   membership.CreatedAt,
 		}
 
 		return nil
@@ -271,10 +305,11 @@ func (s *service) UpdateMember(
 		}
 
 		member = &Member{
-			UserID:    user.ID,
-			Email:     user.Email,
-			Role:      orgdomain.Role(req.Role),
-			CreatedAt: membership.CreatedAt,
+			UserID:      user.ID,
+			Email:       user.Email,
+			DisplayName: user.DisplayName,
+			Role:        orgdomain.Role(req.Role),
+			CreatedAt:   membership.CreatedAt,
 		}
 
 		return nil

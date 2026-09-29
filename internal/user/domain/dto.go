@@ -16,14 +16,19 @@ type UpdateUserRequest struct {
 	Password *string `json:"password,omitempty" validate:"omitempty,min=8"`
 }
 
+type UpdateDisplayNameRequest struct {
+	DisplayName string `json:"display_name" validate:"max=100"`
+}
+
 type LoginResponse struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required"`
 }
 
 type UserResponse struct {
-	ID        uuid.UUID `json:"id"`
-	Email     string    `json:"email"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID          uuid.UUID `json:"id"`
+	Email       string    `json:"email"`
+	DisplayName string    `json:"display_name"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }

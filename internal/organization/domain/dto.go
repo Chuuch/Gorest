@@ -13,11 +13,16 @@ type OrganizationResponse struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type UpdateOrganizationRequest struct {
+	Name string `json:"name" validate:"required,min=4,max=100"`
+}
+
 type MemberResponse struct {
-	UserID    uuid.UUID `json:"user_id"`
-	Email     string    `json:"email"`
-	Role      Role      `json:"role"`
-	CreatedAt time.Time `json:"created_at"`
+	UserID      uuid.UUID `json:"user_id"`
+	Email       string    `json:"email"`
+	DisplayName string    `json:"display_name"`
+	Role        Role      `json:"role"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type CreateMemberRequest struct {

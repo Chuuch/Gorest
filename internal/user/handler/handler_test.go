@@ -60,6 +60,14 @@ func (m *mockService) Update(
 	return m.updateFn(ctx, id, dto)
 }
 
+func (m *mockService) UpdateDisplayName(
+	ctx context.Context,
+	id uuid.UUID,
+	req userdomain.UpdateDisplayNameRequest,
+) (*userdomain.User, error) {
+	return nil, nil
+}
+
 func (m *mockService) Delete(
 	ctx context.Context,
 	id uuid.UUID,
