@@ -10,6 +10,9 @@ import (
 	"os/signal"
 	"syscall"
 
+	activityhandler "github.com/chuuch/gorest/internal/activity/handler"
+	activitypostgres "github.com/chuuch/gorest/internal/activity/postgres"
+	activityusecase "github.com/chuuch/gorest/internal/activity/usecase"
 	authhandler "github.com/chuuch/gorest/internal/auth/handler"
 	authpostgres "github.com/chuuch/gorest/internal/auth/postgres"
 	"github.com/chuuch/gorest/internal/auth/security"
@@ -167,6 +170,13 @@ func New(cfg *config.Config) (*Server, error) {
 	orgHandler := orghandler.NewHandler(orgService)
 
 	// -------------------------------------------------------------
+	// Activity domain
+	// -------------------------------------------------------------
+	activityRepository := activitypostgres.NewRepository(db)
+	activityService := activityusecase.NewService(activityRepository)
+	activityHandler := activityhandler.NewHandler(activityService)
+
+	// -------------------------------------------------------------
 	// Client domain
 	// -------------------------------------------------------------
 	clientRepository := clientpostgres.NewRepository(db)
@@ -185,14 +195,14 @@ func New(cfg *config.Config) (*Server, error) {
 	// -------------------------------------------------------------
 	ticketRepository := ticketpostgres.NewRepository(db)
 	ticketService := ticketusecase.NewService(ticketRepository, clientRepository)
-	ticketHandler := tickethandler.NewHandler(ticketService)
+	ticketHandler := tickethandler.NewHandler(ticketService).WithActivity(activityService)
 
 	// -------------------------------------------------------------
 	// Task domain
 	// -------------------------------------------------------------
 	taskRepository := taskpostgres.NewRepository(db)
 	taskService := taskusecase.NewService(taskRepository, projectRepository, ticketRepository, membershipRepository)
-	taskHandler := taskhandler.NewHandler(taskService)
+	taskHandler := taskhandler.NewHandler(taskService).WithActivity(activityService)
 
 	// -------------------------------------------------------------
 	// Time entry domain
@@ -206,14 +216,14 @@ func New(cfg *config.Config) (*Server, error) {
 	// -------------------------------------------------------------
 	fileRepository := filepostgres.NewRepository(db)
 	fileSerivce := fileusecase.NewService(fileRepository, projectRepository, objectStore)
-	fileHandler := filehandler.NewHandler(fileSerivce)
+	fileHandler := filehandler.NewHandler(fileSerivce).WithActivity(activityService)
 
 	// -------------------------------------------------------------
 	// Comment  domain
 	// -------------------------------------------------------------
 	commentRepository := commentpostgres.NewRepository(db)
 	commentService := commentusecase.NewService(commentRepository, taskRepository)
-	commentHandler := commenthandler.NewHandler(commentService)
+	commentHandler := commenthandler.NewHandler(commentService).WithActivity(activityService)
 
 	// -------------------------------------------------------------
 	// Client User domain
@@ -243,14 +253,14 @@ func New(cfg *config.Config) (*Server, error) {
 	// -------------------------------------------------------------
 	ticketFileRepository := ticketfilepostgres.NewRepository(db)
 	ticketFileService := ticketfileusecase.NewService(ticketFileRepository, ticketRepository, objectStore)
-	ticketFileHandler := ticketfilehandler.NewHandler(ticketFileService)
+	ticketFileHandler := ticketfilehandler.NewHandler(ticketFileService).WithActivity(activityService)
 
 	// -------------------------------------------------------------
 	// Ticket comment domain
 	// -------------------------------------------------------------
 	ticketCommentRepository := ticketcommentpostgres.NewRepository(db)
 	ticketCommentService := ticketcommentusecase.NewService(ticketCommentRepository, ticketRepository)
-	ticketCommentHandler := ticketcommenthandler.NewHandler(ticketCommentService)
+	ticketCommentHandler := ticketcommenthandler.NewHandler(ticketCommentService).WithActivity(activityService)
 
 	// -------------------------------------------------------------
 	// HTTP Server
@@ -269,6 +279,7 @@ func New(cfg *config.Config) (*Server, error) {
 		ticketHandler,
 		ticketFileHandler,
 		ticketCommentHandler,
+		activityHandler,
 		tokenManager,
 	)
 

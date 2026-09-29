@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/chuuch/gorest/internal/activity"
+	activitydomain "github.com/chuuch/gorest/internal/activity/domain"
 	"github.com/chuuch/gorest/internal/api"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
@@ -17,11 +19,15 @@ import (
 )
 
 type Handler struct {
-	service usecase.Service
+	service  usecase.Service
+	activity activity.Recorder
 }
 
 func NewHandler(service usecase.Service) *Handler {
-	return &Handler{service: service}
+	return &Handler{
+		service:  service,
+		activity: activity.Nop{},
+	}
 }
 
 func (h *Handler) Inbox(w http.ResponseWriter, r *http.Request) {
@@ -120,6 +126,16 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	activity.Capture(
+		r.Context(),
+		h.activity,
+		organizationID,
+		activitydomain.ActionCreated,
+		activitydomain.EntityTask,
+		task.Title,
+		task.ID,
+	)
+
 	api.WriteJSON(w, http.StatusCreated, toResponse(task))
 }
 
@@ -157,6 +173,16 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	activity.Capture(
+		r.Context(),
+		h.activity,
+		organizationID,
+		activitydomain.ActionUpdated,
+		activitydomain.EntityTask,
+		task.Title,
+		task.ID,
+	)
+
 	api.WriteJSON(w, http.StatusOK, toResponse(task))
 }
 
@@ -175,6 +201,16 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		h.handleError(w, err)
 		return
 	}
+
+	activity.Capture(
+		r.Context(),
+		h.activity,
+		organizationID,
+		activitydomain.ActionDeleted,
+		activitydomain.EntityTask,
+		"",
+		taskID,
+	)
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -218,6 +254,16 @@ func (h *Handler) Convert(w http.ResponseWriter, r *http.Request) {
 		h.handleError(w, err)
 		return
 	}
+
+	activity.Capture(
+		r.Context(),
+		h.activity,
+		organizationID,
+		activitydomain.ActionCreated,
+		activitydomain.EntityTask,
+		task.Title,
+		task.ID,
+	)
 
 	api.WriteJSON(w, http.StatusCreated, toResponse(task))
 }
@@ -299,6 +345,13 @@ func (h *Handler) session(
 		return uuid.Nil, "", false
 	}
 	return organizationID, orgdomain.Role(role), true
+}
+
+func (h *Handler) WithActivity(rec activity.Recorder) *Handler {
+	if rec != nil {
+		h.activity = rec
+	}
+	return h
 }
 
 func (h *Handler) handleError(w http.ResponseWriter, err error) {

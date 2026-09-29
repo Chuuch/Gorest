@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	activityhandler "github.com/chuuch/gorest/internal/activity/handler"
 	authhandler "github.com/chuuch/gorest/internal/auth/handler"
 	"github.com/chuuch/gorest/internal/auth/security"
 	clienthandler "github.com/chuuch/gorest/internal/client/handler"
@@ -43,6 +44,7 @@ func newRouter(
 	ticketHandler *tickethandler.Handler,
 	ticketFileHandler *ticketfilehandler.Handler,
 	ticketCommentHandler *ticketcommenthandler.Handler,
+	activityHandler *activityhandler.Handler,
 	tokenManager security.TokenManager,
 ) *http.ServeMux {
 	mux := http.NewServeMux()
@@ -62,6 +64,7 @@ func newRouter(
 		ticketHandler,
 		ticketFileHandler,
 		ticketCommentHandler,
+		activityHandler,
 		tokenManager,
 	)
 
@@ -83,6 +86,7 @@ func registerRoutes(
 	ticketHandler *tickethandler.Handler,
 	ticketFileHandler *ticketfilehandler.Handler,
 	ticketCommentHandler *ticketcommenthandler.Handler,
+	activityHandler *activityhandler.Handler,
 	tokenManager security.TokenManager,
 ) {
 	loginLimiter := middleware.NewLimiter(10, 15*time.Minute)
@@ -103,6 +107,9 @@ func registerRoutes(
 	mux.Handle("PATCH /api/v1/members/{id}", staff(tokenManager, orgHandler.UpdateMember))
 	mux.Handle("DELETE /api/v1/members/{id}", staff(tokenManager, orgHandler.DeleteMember))
 	mux.Handle("PATCH /api/v1/organization", staff(tokenManager, orgHandler.Update))
+
+	// ACTIVITY
+	mux.Handle("GET /api/v1/activity", staff(tokenManager, activityHandler.List))
 
 	// CLIENTS
 	mux.Handle("GET /api/v1/clients", staff(tokenManager, clientHandler.List))

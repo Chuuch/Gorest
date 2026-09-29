@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/chuuch/gorest/internal/activity"
+	activitydomain "github.com/chuuch/gorest/internal/activity/domain"
 	"github.com/chuuch/gorest/internal/api"
 	clientdomain "github.com/chuuch/gorest/internal/client/domain"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
@@ -16,11 +18,15 @@ import (
 )
 
 type Handler struct {
-	service usecase.Service
+	service  usecase.Service
+	activity activity.Recorder
 }
 
 func NewHandler(service usecase.Service) *Handler {
-	return &Handler{service: service}
+	return &Handler{
+		service:  service,
+		activity: activity.Nop{},
+	}
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
@@ -81,6 +87,16 @@ func (h *Handler) CreatePortal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	activity.Capture(
+		r.Context(),
+		h.activity,
+		organizationID,
+		activitydomain.ActionCreated,
+		activitydomain.EntityTicket,
+		ticket.Title,
+		ticket.ID,
+	)
+
 	api.WriteJSON(w, http.StatusCreated, toResponse(ticket))
 }
 
@@ -123,6 +139,16 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	activity.Capture(
+		r.Context(),
+		h.activity,
+		organizationID,
+		activitydomain.ActionUpdated,
+		activitydomain.EntityTicket,
+		ticket.Title,
+		ticket.ID,
+	)
+
 	api.WriteJSON(w, http.StatusOK, toResponse(ticket))
 }
 
@@ -144,6 +170,16 @@ func (h *Handler) Delete(
 		h.handleError(w, err)
 		return
 	}
+
+	activity.Capture(
+		r.Context(),
+		h.activity,
+		organizationID,
+		activitydomain.ActionCreated,
+		activitydomain.EntityTicket,
+		"",
+		ticketID,
+	)
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -265,6 +301,13 @@ func (h *Handler) portalSession(
 		return uuid.Nil, uuid.Nil, uuid.Nil, false
 	}
 	return organizationID, userID, clientID, true
+}
+
+func (h *Handler) WithActivity(rec activity.Recorder) *Handler {
+	if rec != nil {
+		h.activity = rec
+	}
+	return h
 }
 
 func (h *Handler) handleError(w http.ResponseWriter, err error) {
