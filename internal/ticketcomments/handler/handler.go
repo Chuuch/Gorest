@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/chuuch/gorest/internal/activity"
+	activitydomain "github.com/chuuch/gorest/internal/activity/domain"
 	"github.com/chuuch/gorest/internal/api"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	"github.com/chuuch/gorest/internal/requestcontext"
@@ -16,11 +18,19 @@ import (
 )
 
 type Handler struct {
-	service usecase.Service
+	service  usecase.Service
+	activity activity.Recorder
 }
 
 func NewHandler(service usecase.Service) *Handler {
-	return &Handler{service: service}
+	return &Handler{service: service, activity: activity.Nop{}}
+}
+
+func (h *Handler) WithActivity(rec activity.Recorder) *Handler {
+	if rec != nil {
+		h.activity = rec
+	}
+	return h
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
@@ -179,6 +189,16 @@ func (h *Handler) writeCreate(
 		return
 	}
 
+	activity.Capture(
+		r.Context(),
+		h.activity,
+		organizationID,
+		activitydomain.ActionCreated,
+		activitydomain.EntityTicketComment,
+		comment.Body,
+		comment.ID,
+	)
+
 	api.WriteJSON(w, http.StatusCreated, toResponse(comment))
 }
 
@@ -224,6 +244,16 @@ func (h *Handler) writeUpdate(
 		return
 	}
 
+	activity.Capture(
+		r.Context(),
+		h.activity,
+		organizationID,
+		activitydomain.ActionUpdated,
+		activitydomain.EntityTicketComment,
+		comment.Body,
+		comment.ID,
+	)
+
 	api.WriteJSON(w, http.StatusOK, toResponse(comment))
 }
 
@@ -249,6 +279,16 @@ func (h *Handler) writeDelete(
 		h.handleError(w, err)
 		return
 	}
+
+	activity.Capture(
+		r.Context(),
+		h.activity,
+		organizationID,
+		activitydomain.ActionUpdated,
+		activitydomain.EntityTicketComment,
+		"",
+		commentID,
+	)
 
 	w.WriteHeader(http.StatusNoContent)
 }
