@@ -11,6 +11,11 @@ type CreateTimeEntryRequest struct {
 	Notes   string `json:"notes" validate:"max=2000"`
 }
 
+type UpdateTimeEntryRequest struct {
+	Minutes int    `json:"minutes" validate:"required,min=1,max=1440"`
+	Notes   string `json:"notes" validate:"max=2000"`
+}
+
 type TimeEntryResponse struct {
 	ID             uuid.UUID `json:"id"`
 	OrganizationID uuid.UUID `json:"organization_id"`

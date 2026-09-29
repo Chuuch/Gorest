@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/chuuch/gorest/internal/api"
+	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	"github.com/chuuch/gorest/internal/requestcontext"
 	ticketcommentdomain "github.com/chuuch/gorest/internal/ticketcomments/domain"
 	"github.com/chuuch/gorest/internal/ticketcomments/usecase"
@@ -78,6 +79,52 @@ func (h *Handler) CreatePortal(w http.ResponseWriter, r *http.Request) {
 	h.writeCreate(w, r, organizationID, ticketID, userID, clientID)
 }
 
+func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
+	organizationID, userID, actorRole, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+
+	h.writeUpdate(w, r, organizationID, userID, uuid.Nil, actorRole)
+}
+
+func (h *Handler) UpdatePortal(w http.ResponseWriter, r *http.Request) {
+	organizationID, userID, clientID, ok := h.portalSession(w, r)
+	if !ok {
+		return
+	}
+
+	actorRole, ok := h.role(w, r)
+	if !ok {
+		return
+	}
+
+	h.writeUpdate(w, r, organizationID, userID, clientID, actorRole)
+}
+
+func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
+	organizationID, userID, actorRole, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+
+	h.writeDelete(w, r, organizationID, userID, uuid.Nil, actorRole)
+}
+
+func (h *Handler) DeletePortal(w http.ResponseWriter, r *http.Request) {
+	organizationID, userID, clientID, ok := h.portalSession(w, r)
+	if !ok {
+		return
+	}
+
+	actorRole, ok := h.role(w, r)
+	if !ok {
+		return
+	}
+
+	h.writeDelete(w, r, organizationID, userID, clientID, actorRole)
+}
+
 func (h *Handler) writeList(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -135,6 +182,77 @@ func (h *Handler) writeCreate(
 	api.WriteJSON(w, http.StatusCreated, toResponse(comment))
 }
 
+func (h *Handler) writeUpdate(
+	w http.ResponseWriter,
+	r *http.Request,
+	organizationID, userID, portalClientID uuid.UUID,
+	actorRole orgdomain.Role,
+) {
+	commentID, ok := h.commentID(w, r)
+	if !ok {
+		return
+	}
+
+	var req ticketcommentdomain.UpdateCommentRequest
+
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_request",
+			"invalid request body",
+		)
+		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
+		return
+	}
+
+	comment, err := h.service.Update(
+		r.Context(),
+		organizationID,
+		commentID,
+		userID,
+		portalClientID,
+		actorRole,
+		req,
+	)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	api.WriteJSON(w, http.StatusOK, toResponse(comment))
+}
+
+func (h *Handler) writeDelete(
+	w http.ResponseWriter,
+	r *http.Request,
+	organizationID, userID, portalClientID uuid.UUID,
+	actorRole orgdomain.Role,
+) {
+	commentID, ok := h.commentID(w, r)
+	if !ok {
+		return
+	}
+
+	if err := h.service.Delete(
+		r.Context(),
+		organizationID,
+		commentID,
+		userID,
+		portalClientID,
+		actorRole,
+	); err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) ticketID(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -150,6 +268,23 @@ func (h *Handler) ticketID(
 		return uuid.Nil, false
 	}
 	return ticketID, true
+}
+
+func (h *Handler) commentID(
+	w http.ResponseWriter,
+	r *http.Request,
+) (uuid.UUID, bool) {
+	commentID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_comment_id",
+			"invalid comment id",
+		)
+		return uuid.Nil, false
+	}
+	return commentID, true
 }
 
 func (h *Handler) staffSession(
@@ -203,8 +338,45 @@ func (h *Handler) portalSession(
 	return organizationID, userID, clientID, true
 }
 
+func (h *Handler) role(
+	w http.ResponseWriter,
+	r *http.Request,
+) (orgdomain.Role, bool) {
+	role, ok := requestcontext.Role(r.Context())
+	if !ok {
+		api.WriteError(
+			w,
+			http.StatusUnauthorized,
+			"unauthorized",
+			"unauthorized",
+		)
+		return "", false
+	}
+	return orgdomain.Role(role), true
+}
+
+func (h *Handler) actor(
+	w http.ResponseWriter,
+	r *http.Request,
+) (uuid.UUID, uuid.UUID, orgdomain.Role, bool) {
+	organizationID, userID, ok := h.staffSession(w, r)
+	if !ok {
+		return uuid.Nil, uuid.Nil, "", false
+	}
+
+	actorRole, ok := h.role(w, r)
+	if !ok {
+		return uuid.Nil, uuid.Nil, "", false
+	}
+
+	return organizationID, userID, actorRole, true
+}
+
 func (h *Handler) handleError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ticketcommentdomain.ErrForbidden):
+		api.WriteError(w, http.StatusForbidden, "forbidden", "forbidden")
+
 	case errors.Is(err, ticketdomain.ErrTicketNotFound):
 		api.WriteError(
 			w,

@@ -30,11 +30,12 @@ func (r *UserRepository) Create(
 			INSERT INTO users (
 				id,
 				email,
+				display_name,
 				password_hash,
 				created_at,
 				updated_at
 			)
-			VALUES ($1, $2, $3, $4, $5)
+			VALUES ($1, $2, $3, $4, $5, $6)
 		`
 
 	q := database.QuerierFrom(ctx, r.db)
@@ -43,6 +44,7 @@ func (r *UserRepository) Create(
 		query,
 		u.ID,
 		u.Email,
+		u.DisplayName,
 		u.PasswordHash,
 		u.CreatedAt,
 		u.UpdatedAt,
@@ -63,6 +65,7 @@ func (r *UserRepository) GetByID(
 			SELECT
 				id,
 				email,
+				display_name,
 				password_hash,
 				created_at,
 				updated_at
@@ -76,6 +79,7 @@ func (r *UserRepository) GetByID(
 	err := q.QueryRow(ctx, query, id).Scan(
 		&u.ID,
 		&u.Email,
+		&u.DisplayName,
 		&u.PasswordHash,
 		&u.CreatedAt,
 		&u.UpdatedAt,
@@ -100,6 +104,7 @@ func (r *UserRepository) GetByEmail(
 			SELECT
 				id,
 				email,
+				display_name,
 				password_hash,
 				created_at,
 				updated_at
@@ -113,6 +118,7 @@ func (r *UserRepository) GetByEmail(
 	err := q.QueryRow(ctx, query, email).Scan(
 		&u.ID,
 		&u.Email,
+		&u.DisplayName,
 		&u.PasswordHash,
 		&u.CreatedAt,
 		&u.UpdatedAt,
@@ -181,8 +187,9 @@ func (r *UserRepository) Update(
 			UPDATE users
 			SET
 				email = $2,
-				password_hash = $3,
-				updated_at = $4
+				display_name = $3,
+				password_hash = $4,
+				updated_at = $5
 			WHERE id = $1
 		`
 
@@ -192,6 +199,7 @@ func (r *UserRepository) Update(
 		query,
 		u.ID,
 		u.Email,
+		u.DisplayName,
 		u.PasswordHash,
 		u.UpdatedAt,
 	)

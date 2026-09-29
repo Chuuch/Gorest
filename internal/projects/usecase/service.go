@@ -25,6 +25,17 @@ type Service interface {
 		actorRole orgdomain.Role,
 		req projectdomain.CreateProjectRequest,
 	) (*projectdomain.Project, error)
+	Update(
+		ctx context.Context,
+		organizationID, projectID uuid.UUID,
+		actorRole orgdomain.Role,
+		req projectdomain.UpdateProjectRequest,
+	) (*projectdomain.Project, error)
+	Delete(
+		ctx context.Context,
+		organizationID, projectID uuid.UUID,
+		actorRole orgdomain.Role,
+	) error
 }
 
 type service struct {
@@ -89,4 +100,46 @@ func (s *service) Create(
 	}
 
 	return project, nil
+}
+
+func (s *service) Update(
+	ctx context.Context,
+	organizationID, projectID uuid.UUID,
+	actorRole orgdomain.Role,
+	req projectdomain.UpdateProjectRequest,
+) (*projectdomain.Project, error) {
+	if !actorRole.CanManageMembers() {
+		return nil, projectdomain.ErrForbidden
+	}
+
+	project, err := s.projects.GetByID(ctx, projectID, organizationID)
+	if err != nil {
+		return nil, err
+	}
+
+	project.Name = req.Name
+	project.Notes = req.Notes
+	project.UpdatedAt = time.Now().UTC()
+
+	if err := s.projects.Update(ctx, project); err != nil {
+		return nil, err
+	}
+
+	return project, nil
+}
+
+func (s *service) Delete(
+	ctx context.Context,
+	organizationID, projectID uuid.UUID,
+	actorRole orgdomain.Role,
+) error {
+	if !actorRole.CanManageMembers() {
+		return projectdomain.ErrForbidden
+	}
+
+	if _, err := s.projects.GetByID(ctx, projectID, organizationID); err != nil {
+		return err
+	}
+
+	return s.projects.Delete(ctx, projectID, organizationID)
 }

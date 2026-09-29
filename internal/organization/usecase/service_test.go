@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chuuch/gorest/internal/invites"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	orgpostgres "github.com/chuuch/gorest/internal/organization/postgres"
 	orgusecase "github.com/chuuch/gorest/internal/organization/usecase"
@@ -22,6 +23,19 @@ const (
 	testBcryptCost = 4
 	testPassword   = "password123"
 )
+
+type recordingInviter struct {
+	calls []invites.IssueInput
+}
+
+func (r *recordingInviter) Issue(_ context.Context, in invites.IssueInput) error {
+	r.calls = append(r.calls, in)
+	return nil
+}
+
+func (r *recordingInviter) Accept(context.Context, string, string) error {
+	return nil
+}
 
 func setupOrganizationTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 	t.Helper()
@@ -50,6 +64,7 @@ func setupOrganizationTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 		CREATE TABLE users (
 			id UUID PRIMARY KEY,
 			email TEXT NOT NULL UNIQUE,
+			display_name TEXT NOT NULL DEFAULT '',
 			password_hash TEXT NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL
@@ -92,6 +107,7 @@ type organizationTestDependencies struct {
 	service     orgusecase.Service
 	users       userusecase.Service
 	memberships *orgpostgres.MembershipRepository
+	inviter     *recordingInviter
 }
 
 func setupOrganizationService(
@@ -104,15 +120,19 @@ func setupOrganizationService(
 	passwordHasher := password.NewBcryptHasher(testBcryptCost)
 	userService := userusecase.NewService(userRepository, passwordHasher)
 	membershipRepository := orgpostgres.NewMembershipRepository(db)
+	inviter := &recordingInviter{}
 
 	return organizationTestDependencies{
 		service: orgusecase.NewService(
 			userService,
 			membershipRepository,
+			orgpostgres.NewOrganizationRepository(db),
+			inviter,
 			db,
 		),
 		users:       userService,
 		memberships: membershipRepository,
+		inviter:     inviter,
 	}
 }
 
@@ -230,15 +250,19 @@ func TestOrganizationService_CreateMember(t *testing.T) {
 		organizationID,
 		orgdomain.RoleOwner,
 		orgdomain.CreateMemberRequest{
-			Email:    "ada@example.com",
-			Password: testPassword,
-			Role:     "member",
+			Email: "ada@example.com",
+			Role:  "member",
 		},
 	)
 
 	require.NoError(t, err)
 	require.Equal(t, "ada@example.com", member.Email)
 	require.Equal(t, orgdomain.RoleMember, member.Role)
+	require.Len(t, deps.inviter.calls, 1)
+	require.Equal(t, member.UserID, deps.inviter.calls[0].UserID)
+	require.Equal(t, "ada@example.com", deps.inviter.calls[0].Email)
+	require.Equal(t, "Acme", deps.inviter.calls[0].OrganizationName)
+	require.Equal(t, invites.KindStaff, deps.inviter.calls[0].Kind)
 
 	members, err := deps.service.ListMembers(
 		context.Background(),
@@ -268,14 +292,14 @@ func TestOrganizationService_CreateMember_AdminCanAdd(t *testing.T) {
 		organizationID,
 		orgdomain.RoleAdmin,
 		orgdomain.CreateMemberRequest{
-			Email:    "ada@example.com",
-			Password: testPassword,
-			Role:     "member",
+			Email: "ada@example.com",
+			Role:  "member",
 		},
 	)
 
 	require.NoError(t, err)
 	require.Equal(t, orgdomain.RoleMember, member.Role)
+	require.Len(t, deps.inviter.calls, 1)
 }
 
 func TestOrganizationService_CreateMember_Forbidden(t *testing.T) {
@@ -290,13 +314,13 @@ func TestOrganizationService_CreateMember_Forbidden(t *testing.T) {
 		organizationID,
 		orgdomain.RoleMember,
 		orgdomain.CreateMemberRequest{
-			Email:    "ada@example.com",
-			Password: testPassword,
-			Role:     "member",
+			Email: "ada@example.com",
+			Role:  "member",
 		},
 	)
 
 	require.ErrorIs(t, err, orgdomain.ErrForbidden)
+	require.Empty(t, deps.inviter.calls)
 }
 
 func TestOrganizationService_CreateMember_CannotCreateOwner(t *testing.T) {
@@ -311,13 +335,13 @@ func TestOrganizationService_CreateMember_CannotCreateOwner(t *testing.T) {
 		organizationID,
 		orgdomain.RoleOwner,
 		orgdomain.CreateMemberRequest{
-			Email:    "ada@example.com",
-			Password: testPassword,
-			Role:     "owner",
+			Email: "ada@example.com",
+			Role:  "owner",
 		},
 	)
 
 	require.ErrorIs(t, err, orgdomain.ErrCannotCreateOwner)
+	require.Empty(t, deps.inviter.calls)
 }
 
 func TestOrganizationService_CreateMember_AlreadyExists(t *testing.T) {
@@ -346,13 +370,13 @@ func TestOrganizationService_CreateMember_AlreadyExists(t *testing.T) {
 		organizationID,
 		orgdomain.RoleOwner,
 		orgdomain.CreateMemberRequest{
-			Email:    "ada@example.com",
-			Password: testPassword,
-			Role:     "member",
+			Email: "ada@example.com",
+			Role:  "member",
 		},
 	)
 
 	require.ErrorIs(t, err, orgdomain.ErrMemberAlreadyExists)
+	require.Empty(t, deps.inviter.calls)
 }
 
 func TestOrganizationService_CreateMember_ExistingUserWithoutMembership(t *testing.T) {
@@ -383,9 +407,8 @@ func TestOrganizationService_CreateMember_ExistingUserWithoutMembership(t *testi
 		organizationID,
 		orgdomain.RoleOwner,
 		orgdomain.CreateMemberRequest{
-			Email:    "ada@example.com",
-			Password: "ignored-password",
-			Role:     "admin",
+			Email: "ada@example.com",
+			Role:  "admin",
 		},
 	)
 
@@ -393,6 +416,7 @@ func TestOrganizationService_CreateMember_ExistingUserWithoutMembership(t *testi
 	require.Equal(t, existing.ID, member.UserID)
 	require.Equal(t, "ada@example.com", member.Email)
 	require.Equal(t, orgdomain.RoleAdmin, member.Role)
+	require.Len(t, deps.inviter.calls, 1)
 }
 
 func TestOrganizationService_UpdateMember(t *testing.T) {
@@ -610,4 +634,40 @@ func TestOrganizationService_DeleteMember_NotFound(t *testing.T) {
 	)
 
 	require.ErrorIs(t, err, orgdomain.ErrMembershipNotFound)
+}
+
+func TestOrganizationService_Update(t *testing.T) {
+	db, cleanup := setupOrganizationTestDatabase(t)
+	defer cleanup()
+
+	deps := setupOrganizationService(t, db)
+	organizationID := seedOrganization(t, db)
+	_ = seedMembership(t, deps, organizationID, "owner@example.com", orgdomain.RoleOwner)
+
+	updated, err := deps.service.Update(
+		context.Background(),
+		organizationID,
+		orgdomain.RoleOwner,
+		orgdomain.UpdateOrganizationRequest{Name: "Northwind"},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, "Northwind", updated.Name)
+}
+
+func TestOrganizationService_Update_Forbidden(t *testing.T) {
+	db, cleanup := setupOrganizationTestDatabase(t)
+	defer cleanup()
+
+	deps := setupOrganizationService(t, db)
+	organizationID := seedOrganization(t, db)
+
+	_, err := deps.service.Update(
+		context.Background(),
+		organizationID,
+		orgdomain.RoleMember,
+		orgdomain.UpdateOrganizationRequest{Name: "Northwind"},
+	)
+
+	require.ErrorIs(t, err, orgdomain.ErrForbidden)
 }

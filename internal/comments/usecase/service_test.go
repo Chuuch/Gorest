@@ -44,6 +44,7 @@ func setupCommentTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 		CREATE TABLE users (
 			id UUID PRIMARY KEY,
 			email TEXT NOT NULL,
+			display_name TEXT NOT NULL DEFAULT '',
 			password_hash TEXT NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL
@@ -97,6 +98,8 @@ func setupCommentTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 			notes TEXT NOT NULL DEFAULT '',
 			status TEXT NOT NULL,
 			completed_at TIMESTAMPTZ NULL,
+			created_by UUID REFERENCES users(id) ON DELETE RESTRICT,
+			assignee_id UUID REFERENCES users(id) ON DELETE SET NULL,
 			version INTEGER NOT NULL DEFAULT 1,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL,

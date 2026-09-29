@@ -29,6 +29,10 @@ func (m *mockStore) PresignGet(context.Context, string, string) (string, error) 
 	return m.getURL, nil
 }
 
+func (m *mockStore) Delete(context.Context, string) error {
+	return nil
+}
+
 func setupTicketFileTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 	t.Helper()
 
@@ -56,6 +60,7 @@ func setupTicketFileTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 		CREATE TABLE users (
 			id UUID PRIMARY KEY,
 			email TEXT NOT NULL,
+			display_name TEXT NOT NULL DEFAULT '',
 			password_hash TEXT NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL

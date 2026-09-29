@@ -109,6 +109,42 @@ func TestLogin_TooManyRequests(t *testing.T) {
 	require.Equal(t, "too many login attempts", response.Error.Message)
 }
 
+func TestForgot_TooManyRequests(t *testing.T) {
+	limiter := middleware.NewLimiter(2, time.Minute)
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	handler := limiter.Forgot(next)
+
+	for range 2 {
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/api/v1/auth/forgot-password",
+			strings.NewReader(`{"email":"ada@example.com"}`),
+		)
+		req.RemoteAddr = "10.0.0.1:4444"
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusNoContent, rec.Code)
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/forgot-password",
+		strings.NewReader(`{"email":"ada@example.com"}`),
+	)
+	req.RemoteAddr = "10.0.0.1:4444"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusTooManyRequests, rec.Code)
+
+	var response api.ErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Equal(t, "rate_limited", response.Error.Code)
+	require.Equal(t, "too many reset attempts", response.Error.Message)
+}
+
 func TestRefresh_TooManyRequests(t *testing.T) {
 	limiter := middleware.NewLimiter(1, time.Minute)
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

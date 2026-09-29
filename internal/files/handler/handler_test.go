@@ -62,6 +62,7 @@ func withSession(
 type mockService struct {
 	listFunc   func(uuid.UUID, uuid.UUID) ([]*filedomain.FileView, error)
 	createFunc func(uuid.UUID, uuid.UUID, uuid.UUID, orgdomain.Role, filedomain.CreateFileRequest) (*filedomain.FileView, error)
+	deleteFunc func(uuid.UUID, uuid.UUID, uuid.UUID, orgdomain.Role) error
 }
 
 func (m *mockService) List(
@@ -78,6 +79,14 @@ func (m *mockService) Create(
 	req filedomain.CreateFileRequest,
 ) (*filedomain.FileView, error) {
 	return m.createFunc(organizationID, projectID, userID, actorRole, req)
+}
+
+func (m *mockService) Delete(
+	_ context.Context,
+	organizationID, fileID, actorUserID uuid.UUID,
+	actorRole orgdomain.Role,
+) error {
+	return m.deleteFunc(organizationID, fileID, actorUserID, actorRole)
 }
 
 func TestHandler_List(t *testing.T) {
@@ -244,4 +253,88 @@ func TestHandler_Create_InvalidProjectID(t *testing.T) {
 	handler.Create(rec, req)
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandler_Delete(t *testing.T) {
+	organizationID := testOrganizationID()
+	userID := testUserID()
+	view := testFileView()
+
+	service := &mockService{
+		deleteFunc: func(
+			gotOrganizationID, gotFileID, gotUserID uuid.UUID,
+			actorRole orgdomain.Role,
+		) error {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, view.File.ID, gotFileID)
+			require.Equal(t, userID, gotUserID)
+			require.Equal(t, orgdomain.RoleAdmin, actorRole)
+			return nil
+		},
+	}
+
+	handler := filehandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/files/"+view.File.ID.String(),
+		nil,
+	)
+	req.SetPathValue("id", view.File.ID.String())
+	req = withSession(req, organizationID, userID, "admin")
+
+	rec := httptest.NewRecorder()
+	handler.Delete(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestHandler_Delete_Forbidden(t *testing.T) {
+	view := testFileView()
+
+	service := &mockService{
+		deleteFunc: func(uuid.UUID, uuid.UUID, uuid.UUID, orgdomain.Role) error {
+			return filedomain.ErrForbidden
+		},
+	}
+
+	handler := filehandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/files/"+view.File.ID.String(),
+		nil,
+	)
+	req.SetPathValue("id", view.File.ID.String())
+	req = withSession(req, testOrganizationID(), uuid.New(), "member")
+
+	rec := httptest.NewRecorder()
+	handler.Delete(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestHandler_Delete_NotFound(t *testing.T) {
+	fileID := uuid.New()
+
+	service := &mockService{
+		deleteFunc: func(uuid.UUID, uuid.UUID, uuid.UUID, orgdomain.Role) error {
+			return filedomain.ErrFileNotFound
+		},
+	}
+
+	handler := filehandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/files/"+fileID.String(),
+		nil,
+	)
+	req.SetPathValue("id", fileID.String())
+	req = withSession(req, testOrganizationID(), testUserID(), "owner")
+
+	rec := httptest.NewRecorder()
+	handler.Delete(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
 }

@@ -2,10 +2,12 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	"github.com/chuuch/gorest/internal/storage"
 	ticketfiledomain "github.com/chuuch/gorest/internal/ticketfiles/domain"
 	ticketfilerepository "github.com/chuuch/gorest/internal/ticketfiles/repository"
@@ -24,6 +26,11 @@ type Service interface {
 		organizationID, ticketID, userID, portalClientID uuid.UUID,
 		req ticketfiledomain.CreateFileRequest,
 	) (*ticketfiledomain.FileView, error)
+	Delete(
+		ctx context.Context,
+		organizationID, fileID, actorUserID, portalClientID uuid.UUID,
+		actorRole orgdomain.Role,
+	) error
 }
 
 type service struct {
@@ -138,4 +145,40 @@ func (s *service) Create(
 		File:      file,
 		UploadURL: uploadURL,
 	}, nil
+}
+
+func (s *service) Delete(
+	ctx context.Context,
+	organizationID, fileID, actorUserID, portalClientID uuid.UUID,
+	actorRole orgdomain.Role,
+) error {
+	file, err := s.files.GetByID(ctx, fileID, organizationID)
+	if err != nil {
+		return err
+	}
+
+	if _, err := s.visibleTicket(ctx, organizationID, file.TicketID, portalClientID); err != nil {
+		if errors.Is(err, ticketdomain.ErrTicketNotFound) {
+			return ticketfiledomain.ErrFileNotFound
+		}
+		return err
+	}
+
+	if !canMutateTicketFile(actorRole, actorUserID, file.UploadedBy) {
+		return ticketfiledomain.ErrForbidden
+	}
+
+	if err := s.store.Delete(ctx, file.ObjectKey); err != nil {
+		return err
+	}
+
+	return s.files.Delete(ctx, fileID, organizationID)
+}
+
+func canMutateTicketFile(actorRole orgdomain.Role, actorUserID, uploadedBy uuid.UUID) bool {
+	if actorRole.CanManageMembers() {
+		return true
+	}
+
+	return actorUserID == uploadedBy
 }

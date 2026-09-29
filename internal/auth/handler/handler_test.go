@@ -13,6 +13,7 @@ import (
 	"github.com/chuuch/gorest/internal/auth/domain"
 	authhandler "github.com/chuuch/gorest/internal/auth/handler"
 	authusecase "github.com/chuuch/gorest/internal/auth/usecase"
+	"github.com/chuuch/gorest/internal/invites"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	"github.com/chuuch/gorest/internal/requestcontext"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
@@ -44,12 +45,44 @@ func testAuthResult(accessToken, refreshToken string) *authusecase.AuthResult {
 	}
 }
 
+type stubInviter struct {
+	acceptFunc       func(string, string) error
+	requestResetFunc func(string) error
+	resetFunc        func(string, string) error
+}
+
+func (s *stubInviter) Issue(context.Context, invites.IssueInput) error {
+	return nil
+}
+
+func (s *stubInviter) Accept(_ context.Context, token, password string) error {
+	if s.acceptFunc != nil {
+		return s.acceptFunc(token, password)
+	}
+	return nil
+}
+
+func (s *stubInviter) RequestReset(_ context.Context, email string) error {
+	if s.requestResetFunc != nil {
+		return s.requestResetFunc(email)
+	}
+	return nil
+}
+
+func (s *stubInviter) Reset(_ context.Context, token, password string) error {
+	if s.resetFunc != nil {
+		return s.resetFunc(token, password)
+	}
+	return nil
+}
+
 type mockService struct {
-	registerFunc func(domain.RegisterRequest) (*authusecase.AuthResult, error)
-	loginFunc    func(domain.LoginRequest) (*authusecase.AuthResult, error)
-	refreshFunc  func(string) (*authusecase.AuthResult, error)
-	logoutFunc   func(string) error
-	meFunc       func(uuid.UUID) (*authusecase.AuthResult, error)
+	registerFunc          func(domain.RegisterRequest) (*authusecase.AuthResult, error)
+	loginFunc             func(domain.LoginRequest) (*authusecase.AuthResult, error)
+	refreshFunc           func(string) (*authusecase.AuthResult, error)
+	logoutFunc            func(string) error
+	meFunc                func(uuid.UUID) (*authusecase.AuthResult, error)
+	updateDisplayNameFunc func(uuid.UUID, userdomain.UpdateDisplayNameRequest) (*userdomain.User, error)
 }
 
 func (m *mockService) Register(
@@ -87,6 +120,17 @@ func (m *mockService) Me(
 	return m.meFunc(userID)
 }
 
+func (m *mockService) UpdateDisplayName(
+	_ context.Context,
+	userID uuid.UUID,
+	req userdomain.UpdateDisplayNameRequest,
+) (*userdomain.User, error) {
+	if m.updateDisplayNameFunc == nil {
+		return nil, nil
+	}
+	return m.updateDisplayNameFunc(userID, req)
+}
+
 func TestHandler_Register(t *testing.T) {
 	service := &mockService{
 		registerFunc: func(req domain.RegisterRequest) (*authusecase.AuthResult, error) {
@@ -98,7 +142,7 @@ func TestHandler_Register(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	body := `{
         "email": "john@example.com",
@@ -144,7 +188,7 @@ func TestHandler_Register_InvalidBody(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -166,7 +210,7 @@ func TestHandler_Register_EmailAlreadyExists(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	body := `{
         "email": "john@example.com",
@@ -194,7 +238,7 @@ func TestHandler_Register_InternalError(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	body := `{
         "email": "john@example.com",
@@ -225,7 +269,7 @@ func TestHandler_Login(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	body := `{
         "email": "john@example.com",
@@ -269,7 +313,7 @@ func TestHandler_Login_InvalidCredentials(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	body := `{
         "email": "john@example.com",
@@ -296,7 +340,7 @@ func TestHandler_Login_NoOrganization(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	body := `{
         "email": "john@example.com",
@@ -324,7 +368,7 @@ func TestHandler_Login_InvalidBody(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -348,7 +392,7 @@ func TestHandler_Refresh(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -392,7 +436,7 @@ func TestHandler_Refresh_NoCookie(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -414,7 +458,7 @@ func TestHandler_Refresh_InvalidToken(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -441,7 +485,7 @@ func TestHandler_Refresh_ExpiredToken(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -468,7 +512,7 @@ func TestHandler_Refresh_RevokedToken(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -496,7 +540,7 @@ func TestHandler_Logout(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -531,7 +575,7 @@ func TestHandler_Logout_InvalidToken(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -558,7 +602,7 @@ func TestHandler_Logout_RevokedToken(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -586,7 +630,7 @@ func TestHandler_Logout_NoCookie(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -617,7 +661,7 @@ func TestHandler_Me(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -651,7 +695,7 @@ func TestHandler_Me_Unauthorized(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -676,7 +720,7 @@ func TestHandler_ErrorWrapping(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	body := `{
         "email": "john@example.com",
@@ -704,7 +748,7 @@ func TestHandler_Register_ValidationError(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	body := `{
         "email": "not-an-email",
@@ -748,7 +792,7 @@ func TestHandler_Login_ValidationError(t *testing.T) {
 		},
 	}
 
-	handler := authhandler.NewHandler(service, 30*24*time.Hour, true)
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
 
 	body := `{
         "email": "not-an-email",
@@ -781,4 +825,333 @@ func TestHandler_Login_ValidationError(t *testing.T) {
 	require.Equal(t, "request validation failed", response.Error.Message)
 	require.Equal(t, "must be a valid email address", response.Error.Details["Email"])
 	require.Equal(t, "is required", response.Error.Details["Password"])
+}
+
+func TestHandler_AcceptInvite(t *testing.T) {
+	inviter := &stubInviter{
+		acceptFunc: func(token, password string) error {
+			require.Equal(t, "invite-token", token)
+			require.Equal(t, "password123", password)
+			return nil
+		},
+	}
+
+	handler := authhandler.NewHandler(&mockService{}, 30*24*time.Hour, true, inviter)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/accept-invite",
+		bytes.NewBufferString(`{"token":"invite-token","password":"password123"}`),
+	)
+
+	rec := httptest.NewRecorder()
+	handler.AcceptInvite(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestHandler_AcceptInvite_NotFound(t *testing.T) {
+	inviter := &stubInviter{
+		acceptFunc: func(string, string) error {
+			return invites.ErrInviteNotFound
+		},
+	}
+
+	handler := authhandler.NewHandler(&mockService{}, 30*24*time.Hour, true, inviter)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/accept-invite",
+		bytes.NewBufferString(`{"token":"missing","password":"password123"}`),
+	)
+
+	rec := httptest.NewRecorder()
+	handler.AcceptInvite(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestHandler_AcceptInvite_Expired(t *testing.T) {
+	inviter := &stubInviter{
+		acceptFunc: func(string, string) error {
+			return invites.ErrInviteExpired
+		},
+	}
+
+	handler := authhandler.NewHandler(&mockService{}, 30*24*time.Hour, true, inviter)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/accept-invite",
+		bytes.NewBufferString(`{"token":"expired","password":"password123"}`),
+	)
+
+	rec := httptest.NewRecorder()
+	handler.AcceptInvite(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandler_AcceptInvite_Used(t *testing.T) {
+	inviter := &stubInviter{
+		acceptFunc: func(string, string) error {
+			return invites.ErrInviteUsed
+		},
+	}
+
+	handler := authhandler.NewHandler(&mockService{}, 30*24*time.Hour, true, inviter)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/accept-invite",
+		bytes.NewBufferString(`{"token":"used","password":"password123"}`),
+	)
+
+	rec := httptest.NewRecorder()
+	handler.AcceptInvite(rec, req)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+}
+
+func TestHandler_AcceptInvite_InvalidBody(t *testing.T) {
+	inviter := &stubInviter{
+		acceptFunc: func(string, string) error {
+			t.Fatal("inviter should not be called")
+			return nil
+		},
+	}
+
+	handler := authhandler.NewHandler(&mockService{}, 30*24*time.Hour, true, inviter)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/accept-invite",
+		bytes.NewBufferString(`{"token":"","password":"short"}`),
+	)
+
+	rec := httptest.NewRecorder()
+	handler.AcceptInvite(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandler_ForgotPassword(t *testing.T) {
+	inviter := &stubInviter{
+		requestResetFunc: func(email string) error {
+			require.Equal(t, "ada@example.com", email)
+			return nil
+		},
+	}
+
+	handler := authhandler.NewHandler(&mockService{}, 30*24*time.Hour, true, inviter)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/forgot-password",
+		bytes.NewBufferString(`{"email":"ada@example.com"}`),
+	)
+
+	rec := httptest.NewRecorder()
+	handler.ForgotPassword(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestHandler_ForgotPassword_UnknownEmailStillNoContent(t *testing.T) {
+	inviter := &stubInviter{
+		requestResetFunc: func(email string) error {
+			require.Equal(t, "missing@example.com", email)
+			return nil
+		},
+	}
+
+	handler := authhandler.NewHandler(&mockService{}, 30*24*time.Hour, true, inviter)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/forgot-password",
+		bytes.NewBufferString(`{"email":"missing@example.com"}`),
+	)
+
+	rec := httptest.NewRecorder()
+	handler.ForgotPassword(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestHandler_ForgotPassword_InvalidBody(t *testing.T) {
+	inviter := &stubInviter{
+		requestResetFunc: func(string) error {
+			t.Fatal("inviter should not be called")
+			return nil
+		},
+	}
+
+	handler := authhandler.NewHandler(&mockService{}, 30*24*time.Hour, true, inviter)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/forgot-password",
+		bytes.NewBufferString(`{"email":"not-an-email"}`),
+	)
+
+	rec := httptest.NewRecorder()
+	handler.ForgotPassword(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandler_ResetPassword(t *testing.T) {
+	inviter := &stubInviter{
+		resetFunc: func(token, password string) error {
+			require.Equal(t, "reset-token", token)
+			require.Equal(t, "password123", password)
+			return nil
+		},
+	}
+
+	handler := authhandler.NewHandler(&mockService{}, 30*24*time.Hour, true, inviter)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/reset-password",
+		bytes.NewBufferString(`{"token":"reset-token","password":"password123"}`),
+	)
+
+	rec := httptest.NewRecorder()
+	handler.ResetPassword(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestHandler_ResetPassword_NotFound(t *testing.T) {
+	inviter := &stubInviter{
+		resetFunc: func(string, string) error {
+			return invites.ErrResetNotFound
+		},
+	}
+
+	handler := authhandler.NewHandler(&mockService{}, 30*24*time.Hour, true, inviter)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/reset-password",
+		bytes.NewBufferString(`{"token":"missing","password":"password123"}`),
+	)
+
+	rec := httptest.NewRecorder()
+	handler.ResetPassword(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestHandler_ResetPassword_Expired(t *testing.T) {
+	inviter := &stubInviter{
+		resetFunc: func(string, string) error {
+			return invites.ErrResetExpired
+		},
+	}
+
+	handler := authhandler.NewHandler(&mockService{}, 30*24*time.Hour, true, inviter)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/reset-password",
+		bytes.NewBufferString(`{"token":"expired","password":"password123"}`),
+	)
+
+	rec := httptest.NewRecorder()
+	handler.ResetPassword(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandler_ResetPassword_Used(t *testing.T) {
+	inviter := &stubInviter{
+		resetFunc: func(string, string) error {
+			return invites.ErrResetUsed
+		},
+	}
+
+	handler := authhandler.NewHandler(&mockService{}, 30*24*time.Hour, true, inviter)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/reset-password",
+		bytes.NewBufferString(`{"token":"used","password":"password123"}`),
+	)
+
+	rec := httptest.NewRecorder()
+	handler.ResetPassword(rec, req)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+}
+
+func TestHandler_ResetPassword_InvalidBody(t *testing.T) {
+	inviter := &stubInviter{
+		resetFunc: func(string, string) error {
+			t.Fatal("inviter should not be called")
+			return nil
+		},
+	}
+
+	handler := authhandler.NewHandler(&mockService{}, 30*24*time.Hour, true, inviter)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/reset-password",
+		bytes.NewBufferString(`{"token":"","password":"short"}`),
+	)
+
+	rec := httptest.NewRecorder()
+	handler.ResetPassword(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandler_UpdateDisplayName(t *testing.T) {
+	user := testAuthUser()
+	user.DisplayName = "Ada"
+
+	service := &mockService{
+		updateDisplayNameFunc: func(userID uuid.UUID, req userdomain.UpdateDisplayNameRequest) (*userdomain.User, error) {
+			require.Equal(t, user.ID, userID)
+			require.Equal(t, "Ada", req.DisplayName)
+			return user, nil
+		},
+	}
+
+	handler := authhandler.NewHandler(service, 30*24*time.Hour, true, &stubInviter{})
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/auth/display-name",
+		bytes.NewBufferString(`{"display_name":"Ada"}`),
+	)
+	req = req.WithContext(requestcontext.WithUserID(req.Context(), user.ID))
+
+	rec := httptest.NewRecorder()
+	handler.UpdateDisplayName(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response userdomain.UserResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Equal(t, user.ID, response.ID)
+	require.Equal(t, "Ada", response.DisplayName)
+}
+
+func TestHandler_UpdateDisplayName_Unauthorized(t *testing.T) {
+	handler := authhandler.NewHandler(&mockService{}, 30*24*time.Hour, true, &stubInviter{})
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/auth/display-name",
+		bytes.NewBufferString(`{"display_name":"Ada"}`),
+	)
+
+	rec := httptest.NewRecorder()
+	handler.UpdateDisplayName(rec, req)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
 }

@@ -25,6 +25,11 @@ type Service interface {
 		actorRole orgdomain.Role,
 		req filedomain.CreateFileRequest,
 	) (*filedomain.FileView, error)
+	Delete(
+		ctx context.Context,
+		organizationID, fileID, actorUserID uuid.UUID,
+		actorRole orgdomain.Role,
+	) error
 }
 
 type service struct {
@@ -128,4 +133,33 @@ func (s *service) Create(
 		File:      file,
 		UploadURL: uploadURL,
 	}, nil
+}
+
+func (s *service) Delete(
+	ctx context.Context,
+	organizationID, fileID, actorUserID uuid.UUID,
+	actorRole orgdomain.Role,
+) error {
+	file, err := s.files.GetByID(ctx, fileID, organizationID)
+	if err != nil {
+		return err
+	}
+
+	if !canMutateFile(actorRole, actorUserID, file.UploadedBy) {
+		return filedomain.ErrForbidden
+	}
+
+	if err := s.store.Delete(ctx, file.ObjectKey); err != nil {
+		return err
+	}
+
+	return s.files.Delete(ctx, fileID, organizationID)
+}
+
+func canMutateFile(actorRole orgdomain.Role, actorUserID, uploadedBy uuid.UUID) bool {
+	if actorRole.CanManageMembers() {
+		return true
+	}
+
+	return actorUserID == uploadedBy
 }

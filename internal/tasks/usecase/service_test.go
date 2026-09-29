@@ -6,6 +6,7 @@ import (
 	"time"
 
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	orgpostgres "github.com/chuuch/gorest/internal/organization/postgres"
 	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
 	projectpostgres "github.com/chuuch/gorest/internal/projects/postgres"
 	taskdomain "github.com/chuuch/gorest/internal/tasks/domain"
@@ -46,6 +47,7 @@ func setupTaskTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 		CREATE TABLE users (
 			id UUID PRIMARY KEY,
 			email TEXT NOT NULL,
+			display_name TEXT NOT NULL DEFAULT '',
 			password_hash TEXT NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL
@@ -107,6 +109,17 @@ func setupTaskTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 	require.NoError(t, err)
 
 	_, err = db.Exec(ctx, `
+			CREATE TABLE memberships (
+				id UUID PRIMARY KEY,
+				organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				role TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'member')),
+				created_at TIMESTAMPTZ NOT NULL,
+				CONSTRAINT memberships_user_id_unique UNIQUE (user_id)
+			)
+		`)
+
+	_, err = db.Exec(ctx, `
 		CREATE TABLE tasks (
 			id UUID PRIMARY KEY,
 			organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -116,6 +129,8 @@ func setupTaskTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 			notes TEXT NOT NULL DEFAULT '',
 			status TEXT NOT NULL,
 			completed_at TIMESTAMPTZ NULL,
+			created_by UUID REFERENCES users(id) ON DELETE RESTRICT,
+			assignee_id UUID REFERENCES users(id) ON DELETE SET NULL,
 			version INTEGER NOT NULL DEFAULT 1,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL,
@@ -299,6 +314,7 @@ func setupTaskService(db *pgxpool.Pool) taskusecase.Service {
 		taskpostgres.NewRepository(db),
 		projectpostgres.NewRepository(db),
 		ticketpostgres.NewRepository(db),
+		orgpostgres.NewMembershipRepository(db),
 	)
 }
 
@@ -371,7 +387,7 @@ func TestTaskService_Create_AdminCanAdd(t *testing.T) {
 	require.Equal(t, 1, task.Version)
 }
 
-func TestTaskService_Create_Forbidden(t *testing.T) {
+func TestTaskService_Create_MemberCanAdd(t *testing.T) {
 	db, cleanup := setupTaskTestDatabase(t)
 	defer cleanup()
 
@@ -380,7 +396,7 @@ func TestTaskService_Create_Forbidden(t *testing.T) {
 	clientID := seedClient(t, db, organizationID, "Northwind")
 	projectID := seedProject(t, db, organizationID, clientID, "Website")
 
-	_, err := service.Create(
+	task, err := service.Create(
 		context.Background(),
 		organizationID,
 		projectID,
@@ -391,7 +407,10 @@ func TestTaskService_Create_Forbidden(t *testing.T) {
 		},
 	)
 
-	require.ErrorIs(t, err, taskdomain.ErrForbidden)
+	require.NoError(t, err)
+	require.Equal(t, "Fix login", task.Title)
+	require.Equal(t, taskdomain.StatusTodo, task.Status)
+	require.Equal(t, 1, task.Version)
 }
 
 func TestTaskService_Create_TitleExists(t *testing.T) {
@@ -723,7 +742,7 @@ func TestTaskService_Convert(t *testing.T) {
 	require.ErrorIs(t, err, projectdomain.ErrProjectNotFound)
 }
 
-func TestTaskService_Convert_Forbidden(t *testing.T) {
+func TestTaskService_Convert_MemberCanConvert(t *testing.T) {
 	db, cleanup := setupTaskTestDatabase(t)
 	defer cleanup()
 
@@ -734,14 +753,19 @@ func TestTaskService_Convert_Forbidden(t *testing.T) {
 	projectID := seedProject(t, db, organizationID, clientID, "Website")
 	ticketID := seedTicket(t, db, organizationID, clientID, userID, "Login button broken")
 
-	_, err := service.Convert(
+	task, err := service.Convert(
 		context.Background(),
 		organizationID,
 		ticketID,
 		orgdomain.RoleMember,
 		taskdomain.ConvertTicketRequest{ProjectID: projectID},
 	)
-	require.ErrorIs(t, err, taskdomain.ErrForbidden)
+	require.NoError(t, err)
+	require.Equal(t, "Login button broken", task.Title)
+	require.Equal(t, projectID, task.ProjectID)
+	require.NotNil(t, task.TicketID)
+	require.Equal(t, ticketID, *task.TicketID)
+	require.Equal(t, 1, task.Version)
 }
 
 func TestTaskService_Convert_TicketNotFound(t *testing.T) {
@@ -761,4 +785,116 @@ func TestTaskService_Convert_TicketNotFound(t *testing.T) {
 		taskdomain.ConvertTicketRequest{ProjectID: projectID},
 	)
 	require.ErrorIs(t, err, ticketdomain.ErrTicketNotFound)
+}
+
+func TestTaskService_Delete(t *testing.T) {
+	db, cleanup := setupTaskTestDatabase(t)
+	defer cleanup()
+
+	service := setupTaskService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+
+	task, err := service.Create(
+		context.Background(),
+		organizationID,
+		projectID,
+		orgdomain.RoleOwner,
+		taskdomain.CreateTaskRequest{
+			Title:  "Fix login",
+			Notes:  "OAuth",
+			Status: "todo",
+		},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		organizationID,
+		task.ID,
+		orgdomain.RoleAdmin,
+	)
+	require.NoError(t, err)
+
+	listed, err := service.List(context.Background(), organizationID, projectID)
+	require.NoError(t, err)
+	require.Empty(t, listed)
+}
+
+func TestTaskService_Delete_MemberForbidden(t *testing.T) {
+	db, cleanup := setupTaskTestDatabase(t)
+	defer cleanup()
+
+	service := setupTaskService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+
+	task, err := service.Create(
+		context.Background(),
+		organizationID,
+		projectID,
+		orgdomain.RoleOwner,
+		taskdomain.CreateTaskRequest{
+			Title:  "Fix login",
+			Status: "todo",
+		},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		organizationID,
+		task.ID,
+		orgdomain.RoleMember,
+	)
+	require.ErrorIs(t, err, taskdomain.ErrForbidden)
+}
+
+func TestTaskService_Delete_WrongOrg(t *testing.T) {
+	db, cleanup := setupTaskTestDatabase(t)
+	defer cleanup()
+
+	service := setupTaskService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+	otherOrganizationID := seedOrganization(t, db, "Other")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+
+	task, err := service.Create(
+		context.Background(),
+		organizationID,
+		projectID,
+		orgdomain.RoleOwner,
+		taskdomain.CreateTaskRequest{
+			Title:  "Fix login",
+			Status: "todo",
+		},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		otherOrganizationID,
+		task.ID,
+		orgdomain.RoleOwner,
+	)
+	require.ErrorIs(t, err, taskdomain.ErrTaskNotFound)
+}
+
+func TestTaskService_Delete_NotFound(t *testing.T) {
+	db, cleanup := setupTaskTestDatabase(t)
+	defer cleanup()
+
+	service := setupTaskService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+
+	err := service.Delete(
+		context.Background(),
+		organizationID,
+		uuid.New(),
+		orgdomain.RoleOwner,
+	)
+	require.ErrorIs(t, err, taskdomain.ErrTaskNotFound)
 }

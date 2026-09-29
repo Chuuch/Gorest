@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/chuuch/gorest/internal/database"
+	"github.com/chuuch/gorest/internal/invites"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	orgrepository "github.com/chuuch/gorest/internal/organization/repository"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
@@ -16,13 +17,20 @@ import (
 )
 
 type Member struct {
-	UserID    uuid.UUID
-	Email     string
-	Role      orgdomain.Role
-	CreatedAt time.Time
+	UserID      uuid.UUID
+	Email       string
+	DisplayName string
+	Role        orgdomain.Role
+	CreatedAt   time.Time
 }
 
 type Service interface {
+	Update(
+		ctx context.Context,
+		organizationID uuid.UUID,
+		actorRole orgdomain.Role,
+		req orgdomain.UpdateOrganizationRequest,
+	) (*orgdomain.Organization, error)
 	ListMembers(
 		ctx context.Context,
 		organizationID uuid.UUID,
@@ -47,21 +55,52 @@ type Service interface {
 }
 
 type service struct {
-	users       userusecase.Service
-	memberships orgrepository.MembershipRepository
-	db          *pgxpool.Pool
+	users         userusecase.Service
+	memberships   orgrepository.MembershipRepository
+	organizations orgrepository.OrganizationRepository
+	inviter       invites.Service
+	db            *pgxpool.Pool
 }
 
 func NewService(
 	users userusecase.Service,
 	memberships orgrepository.MembershipRepository,
+	organizations orgrepository.OrganizationRepository,
+	inviter invites.Service,
 	db *pgxpool.Pool,
 ) Service {
 	return &service{
-		users:       users,
-		memberships: memberships,
-		db:          db,
+		users:         users,
+		memberships:   memberships,
+		organizations: organizations,
+		inviter:       inviter,
+		db:            db,
 	}
+}
+
+func (s *service) Update(
+	ctx context.Context,
+	organizationID uuid.UUID,
+	actorRole orgdomain.Role,
+	req orgdomain.UpdateOrganizationRequest,
+) (*orgdomain.Organization, error) {
+	if !actorRole.CanManageMembers() {
+		return nil, orgdomain.ErrForbidden
+	}
+
+	org, err := s.organizations.GetByID(ctx, organizationID)
+	if err != nil {
+		return nil, err
+	}
+
+	org.Name = req.Name
+	org.UpdatedAt = time.Now().UTC()
+
+	if err := s.organizations.Update(ctx, org); err != nil {
+		return nil, err
+	}
+
+	return org, nil
 }
 
 func (s *service) ListMembers(
@@ -82,10 +121,11 @@ func (s *service) ListMembers(
 		}
 
 		members = append(members, Member{
-			UserID:    user.ID,
-			Email:     user.Email,
-			Role:      membership.Role,
-			CreatedAt: membership.CreatedAt,
+			UserID:      user.ID,
+			Email:       user.Email,
+			DisplayName: user.DisplayName,
+			Role:        membership.Role,
+			CreatedAt:   membership.CreatedAt,
 		})
 	}
 
@@ -127,9 +167,14 @@ func (s *service) CreateMember(
 			}
 			user = existing
 		} else {
+			discarded, err := invites.DiscardedPassword()
+			if err != nil {
+				return fmt.Errorf("generate discarded password: %w", err)
+			}
+
 			user, err = s.users.Create(ctx, userdomain.CreateUserRequest{
 				Email:    req.Email,
-				Password: req.Password,
+				Password: discarded,
 			})
 			if err != nil {
 				return fmt.Errorf("create user: %w", err)
@@ -151,10 +196,11 @@ func (s *service) CreateMember(
 		}
 
 		member = &Member{
-			UserID:    user.ID,
-			Email:     user.Email,
-			Role:      membership.Role,
-			CreatedAt: membership.CreatedAt,
+			UserID:      user.ID,
+			Email:       user.Email,
+			DisplayName: user.DisplayName,
+			Role:        membership.Role,
+			CreatedAt:   membership.CreatedAt,
 		}
 
 		return nil
@@ -162,6 +208,20 @@ func (s *service) CreateMember(
 
 	if err != nil {
 		return nil, err
+	}
+
+	org, err := s.organizations.GetByID(ctx, organizationID)
+	if err != nil {
+		return nil, fmt.Errorf("get organization: %w", err)
+	}
+
+	if err := s.inviter.Issue(ctx, invites.IssueInput{
+		UserID:           member.UserID,
+		Email:            member.Email,
+		OrganizationName: org.Name,
+		Kind:             invites.KindStaff,
+	}); err != nil {
+		return nil, fmt.Errorf("issue invite: %w", err)
 	}
 
 	return member, nil
@@ -245,10 +305,11 @@ func (s *service) UpdateMember(
 		}
 
 		member = &Member{
-			UserID:    user.ID,
-			Email:     user.Email,
-			Role:      orgdomain.Role(req.Role),
-			CreatedAt: membership.CreatedAt,
+			UserID:      user.ID,
+			Email:       user.Email,
+			DisplayName: user.DisplayName,
+			Role:        orgdomain.Role(req.Role),
+			CreatedAt:   membership.CreatedAt,
 		}
 
 		return nil

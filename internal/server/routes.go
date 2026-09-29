@@ -102,32 +102,44 @@ func registerRoutes(
 	mux.Handle("POST /api/v1/members", staff(tokenManager, orgHandler.CreateMember))
 	mux.Handle("PATCH /api/v1/members/{id}", staff(tokenManager, orgHandler.UpdateMember))
 	mux.Handle("DELETE /api/v1/members/{id}", staff(tokenManager, orgHandler.DeleteMember))
+	mux.Handle("PATCH /api/v1/organization", staff(tokenManager, orgHandler.Update))
 
 	// CLIENTS
 	mux.Handle("GET /api/v1/clients", staff(tokenManager, clientHandler.List))
 	mux.Handle("POST /api/v1/clients", staff(tokenManager, clientHandler.Create))
+	mux.Handle("PATCH /api/v1/clients/{id}", staff(tokenManager, clientHandler.Update))
+	mux.Handle("DELETE /api/v1/clients/{id}", staff(tokenManager, clientHandler.Delete))
 
 	// PROJECTS
 	mux.Handle("GET /api/v1/clients/{id}/projects", staff(tokenManager, projectHandler.List))
 	mux.Handle("POST /api/v1/clients/{id}/projects", staff(tokenManager, projectHandler.Create))
+	mux.Handle("PATCH /api/v1/projects/{id}", staff(tokenManager, projectHandler.Update))
+	mux.Handle("DELETE /api/v1/projects/{id}", staff(tokenManager, projectHandler.Delete))
 
 	// CLIENT USERS
 	mux.Handle("GET /api/v1/clients/{id}/users", staff(tokenManager, clientUserHandler.List))
 	mux.Handle("POST /api/v1/clients/{id}/users", staff(tokenManager, clientUserHandler.Create))
+	mux.Handle("DELETE /api/v1/clients/{id}/users/{userId}", staff(tokenManager, clientUserHandler.Delete))
 
 	// TASKS
 	mux.Handle("GET /api/v1/projects/{id}/tasks", staff(tokenManager, taskHandler.List))
+	mux.Handle("GET /api/v1/inbox/tasks", staff(tokenManager, taskHandler.Inbox))
 	mux.Handle("POST /api/v1/projects/{id}/tasks", staff(tokenManager, taskHandler.Create))
 	mux.Handle("PATCH /api/v1/tasks/{id}", staff(tokenManager, taskHandler.Update))
 	mux.Handle("POST /api/v1/tickets/{id}/convert", staff(tokenManager, taskHandler.Convert))
+	mux.Handle("DELETE /api/v1/tasks/{id}", staff(tokenManager, taskHandler.Delete))
 
 	// TIME ENTRIES
+	mux.Handle("GET /api/v1/time-entries", staff(tokenManager, timeEntryHandler.ListRange))
 	mux.Handle("GET /api/v1/tasks/{id}/time-entries", staff(tokenManager, timeEntryHandler.List))
 	mux.Handle("POST /api/v1/tasks/{id}/time-entries", staff(tokenManager, timeEntryHandler.Create))
+	mux.Handle("PATCH /api/v1/time-entries/{id}", staff(tokenManager, timeEntryHandler.Update))
+	mux.Handle("DELETE /api/v1/time-entries/{id}", staff(tokenManager, timeEntryHandler.Delete))
 
 	// FILES
 	mux.Handle("GET /api/v1/projects/{id}/files", staff(tokenManager, fileHandler.List))
 	mux.Handle("POST /api/v1/projects/{id}/files", staff(tokenManager, fileHandler.Create))
+	mux.Handle("DELETE /api/v1/files/{id}", staff(tokenManager, fileHandler.Delete))
 
 	// COMMENTS
 	mux.Handle("GET /api/v1/tasks/{id}/comments", staff(tokenManager, commentHandler.List))
@@ -138,8 +150,11 @@ func registerRoutes(
 	// TICKETS
 	mux.Handle("GET /api/v1/clients/{id}/tickets", staff(tokenManager, ticketHandler.List))
 	mux.Handle("PATCH /api/v1/tickets/{id}", staff(tokenManager, ticketHandler.Update))
+	mux.Handle("DELETE /api/v1/tickets/{id}", staff(tokenManager, ticketHandler.Delete))
 	mux.Handle("GET /api/v1/tickets/{id}/files", staff(tokenManager, ticketFileHandler.List))
 	mux.Handle("POST /api/v1/tickets/{id}/files", staff(tokenManager, ticketFileHandler.Create))
+	mux.Handle("DELETE /api/v1/ticket-files/{id}", staff(tokenManager, ticketFileHandler.Delete))
+	mux.Handle("DELETE /api/v1/client-auth/ticket-files/{id}", staff(tokenManager, ticketFileHandler.DeletePortal))
 	mux.Handle("GET /api/v1/tickets/{id}/comments", staff(tokenManager, ticketCommentHandler.List))
 	mux.Handle("POST /api/v1/tickets/{id}/comments", staff(tokenManager, ticketCommentHandler.Create))
 	mux.Handle("GET /api/v1/client-auth/tickets", portal(tokenManager, ticketHandler.ListPortal))
@@ -148,18 +163,28 @@ func registerRoutes(
 	mux.Handle("POST /api/v1/client-auth/tickets/{id}/files", portal(tokenManager, ticketFileHandler.CreatePortal))
 	mux.Handle("GET /api/v1/client-auth/tickets/{id}/comments", portal(tokenManager, ticketCommentHandler.ListPortal))
 	mux.Handle("POST /api/v1/client-auth/tickets/{id}/comments", portal(tokenManager, ticketCommentHandler.CreatePortal))
+	mux.Handle("PATCH /api/v1/ticket-comments/{id}", staff(tokenManager, ticketCommentHandler.Update))
+	mux.Handle("DELETE /api/v1/ticket-comments/{id}", staff(tokenManager, ticketCommentHandler.Delete))
+	mux.Handle("PATCH /api/v1/client-auth/ticket-comments/{id}", portal(tokenManager, ticketCommentHandler.UpdatePortal))
+	mux.Handle("DELETE /api/v1/client-auth/ticket-comments/{id}", portal(tokenManager, ticketCommentHandler.DeletePortal))
 
 	// CLIENT USERS AUTH
 	mux.Handle("POST /api/v1/client-auth/login", loginLimiter.Login(http.HandlerFunc(clientUserHandler.Login)))
 	mux.Handle("POST /api/v1/client-auth/refresh", refreshLimiter.Refresh(http.HandlerFunc(clientUserHandler.Refresh)))
 	mux.HandleFunc("POST /api/v1/client-auth/logout", clientUserHandler.Logout)
 	mux.Handle("GET /api/v1/client-auth/me", portal(tokenManager, clientUserHandler.Me))
+	mux.Handle("POST /api/v1/client-auth/change-password", portal(tokenManager, clientUserHandler.ChangePassword))
 
 	// AUTH
 	mux.HandleFunc("POST /api/v1/auth/register", authHandler.Register)
 	mux.Handle("POST /api/v1/auth/login", loginLimiter.Login(http.HandlerFunc(authHandler.Login)))
 	mux.Handle("POST /api/v1/auth/refresh", refreshLimiter.Refresh(http.HandlerFunc(authHandler.Refresh)))
 	mux.HandleFunc("POST /api/v1/auth/logout", authHandler.Logout)
+	mux.HandleFunc("POST /api/v1/auth/accept-invite", authHandler.AcceptInvite)
+	mux.Handle("POST /api/v1/auth/forgot-password", loginLimiter.Forgot(http.HandlerFunc(authHandler.ForgotPassword)))
+	mux.HandleFunc("POST /api/v1/auth/reset-password", authHandler.ResetPassword)
+	mux.Handle("POST /api/v1/auth-change-password", staff(tokenManager, authHandler.ChangePassword))
+	mux.Handle("PATCH /api/v1/auth/display-name", staff(tokenManager, authHandler.UpdateDisplayName))
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {

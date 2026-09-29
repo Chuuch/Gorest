@@ -91,6 +91,93 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusCreated, toResponse(project))
 }
 
+func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
+	organizationID, actorRole, ok := h.session(w, r)
+	if !ok {
+		return
+	}
+
+	projectID, ok := h.projectID(w, r)
+	if !ok {
+		return
+	}
+
+	var req projectdomain.UpdateProjectRequest
+
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_request",
+			"invalid request body",
+		)
+		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
+		return
+	}
+
+	project, err := h.service.Update(
+		r.Context(),
+		organizationID,
+		projectID,
+		actorRole,
+		req,
+	)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	api.WriteJSON(w, http.StatusOK, toResponse(project))
+}
+
+func (h *Handler) Delete(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	organizationID, actorRole, ok := h.session(w, r)
+	if !ok {
+		return
+	}
+
+	projectID, ok := h.projectID(w, r)
+	if !ok {
+		return
+	}
+
+	if err := h.service.Delete(
+		r.Context(),
+		organizationID,
+		projectID,
+		actorRole,
+	); err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) projectID(
+	w http.ResponseWriter,
+	r *http.Request,
+) (uuid.UUID, bool) {
+	projectID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_project_id",
+			"invalid project id",
+		)
+		return uuid.Nil, false
+	}
+	return projectID, true
+}
+
 func (h *Handler) clientID(
 	w http.ResponseWriter,
 	r *http.Request,

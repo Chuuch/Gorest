@@ -16,6 +16,7 @@ type Service interface {
 	GetByEmail(ctx context.Context, email string) (*domain.User, error)
 	ExistsByEmail(ctx context.Context, email string) (bool, error)
 	Update(ctx context.Context, id uuid.UUID, dto domain.UpdateUserRequest) (*domain.User, error)
+	UpdateDisplayName(ctx context.Context, id uuid.UUID, req domain.UpdateDisplayNameRequest) (*domain.User, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -117,6 +118,26 @@ func (s *service) Update(
 		u.PasswordHash = passwordHash
 	}
 
+	u.UpdatedAt = time.Now().UTC()
+
+	if err := s.repository.Update(ctx, u); err != nil {
+		return nil, fmt.Errorf("update user: %w", err)
+	}
+
+	return u, nil
+}
+
+func (s *service) UpdateDisplayName(
+	ctx context.Context,
+	id uuid.UUID,
+	req domain.UpdateDisplayNameRequest,
+) (*domain.User, error) {
+	u, err := s.repository.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("get user for update: %w", err)
+	}
+
+	u.DisplayName = req.DisplayName
 	u.UpdatedAt = time.Now().UTC()
 
 	if err := s.repository.Update(ctx, u); err != nil {

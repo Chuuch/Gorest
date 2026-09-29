@@ -55,6 +55,7 @@ type mockService struct {
 	listFunc    func(uuid.UUID, uuid.UUID) ([]*taskdomain.Task, error)
 	createFunc  func(uuid.UUID, uuid.UUID, orgdomain.Role, taskdomain.CreateTaskRequest) (*taskdomain.Task, error)
 	updateFunc  func(uuid.UUID, uuid.UUID, taskdomain.UpdateTaskRequest) (*taskdomain.Task, error)
+	deleteFunc  func(uuid.UUID, uuid.UUID, orgdomain.Role) error
 	convertFunc func(uuid.UUID, uuid.UUID, orgdomain.Role, taskdomain.ConvertTicketRequest) (*taskdomain.Task, error)
 }
 
@@ -83,6 +84,14 @@ func (m *mockService) Update(
 	req taskdomain.UpdateTaskRequest,
 ) (*taskdomain.Task, error) {
 	return m.updateFunc(organizationID, taskID, req)
+}
+
+func (m *mockService) Delete(
+	_ context.Context,
+	organizationID, taskID uuid.UUID,
+	actorRole orgdomain.Role,
+) error {
+	return m.deleteFunc(organizationID, taskID, actorRole)
 }
 
 func (m *mockService) Convert(
@@ -591,6 +600,88 @@ func TestHandler_Convert_TicketNotFound(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	handler.Convert(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestHandler_Delete(t *testing.T) {
+	organizationID := testOrganizationID()
+	task := testTask()
+
+	service := &mockService{
+		deleteFunc: func(
+			gotOrganizationID, gotTaskID uuid.UUID,
+			actorRole orgdomain.Role,
+		) error {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, task.ID, gotTaskID)
+			require.Equal(t, orgdomain.RoleAdmin, actorRole)
+			return nil
+		},
+	}
+
+	handler := taskhandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/tasks/"+task.ID.String(),
+		nil,
+	)
+	req.SetPathValue("id", task.ID.String())
+	req = withSession(req, organizationID, "admin")
+
+	rec := httptest.NewRecorder()
+	handler.Delete(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestHandler_Delete_Forbidden(t *testing.T) {
+	task := testTask()
+
+	service := &mockService{
+		deleteFunc: func(uuid.UUID, uuid.UUID, orgdomain.Role) error {
+			return taskdomain.ErrForbidden
+		},
+	}
+
+	handler := taskhandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/tasks/"+task.ID.String(),
+		nil,
+	)
+	req.SetPathValue("id", task.ID.String())
+	req = withSession(req, testOrganizationID(), "member")
+
+	rec := httptest.NewRecorder()
+	handler.Delete(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestHandler_Delete_NotFound(t *testing.T) {
+	taskID := uuid.New()
+
+	service := &mockService{
+		deleteFunc: func(uuid.UUID, uuid.UUID, orgdomain.Role) error {
+			return taskdomain.ErrTaskNotFound
+		},
+	}
+
+	handler := taskhandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/tasks/"+taskID.String(),
+		nil,
+	)
+	req.SetPathValue("id", taskID.String())
+	req = withSession(req, testOrganizationID(), "owner")
+
+	rec := httptest.NewRecorder()
+	handler.Delete(rec, req)
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
 }

@@ -17,11 +17,13 @@ type Config struct {
 	CORS     CORSConfig     `envPrefix:"GOREST_CORS_"`
 	Storage  StorageConfig  `envPrefix:"GOREST_STORAGE_"`
 	Logger   LoggerConfig   `envPrefix:"GOREST_LOGGER_"`
+	Mailer   MailerConfig   `envPrefix:"GOREST_MAILER_"`
 }
 
 type AppConfig struct {
 	Name        string `env:"NAME,required"`
 	Environment string `env:"ENVIRONMENT,required"`
+	PublicURL   string `env:"PUBLIC_URL" envDefault:"http://localhost:5173"`
 }
 
 type ServerConfig struct {
@@ -52,6 +54,8 @@ type AuthConfig struct {
 	RefreshTokenSecret string        `env:"REFRESH_TOKEN_SECRET,required"`
 	AccessTokenTTL     time.Duration `env:"ACCESS_TOKEN_TTL,required"`
 	RefreshTokenTTL    time.Duration `env:"REFRESH_TOKEN_TTL,required"`
+	InviteTTL          time.Duration `env:"INVITE_TTL" envDefault:"168h"`
+	ResetTTL           time.Duration `env:"RESET_TTL" envDefault:"1h"`
 	Issuer             string        `env:"ISSUER,required"`
 	BcryptCost         int           `env:"BCRYPT_COST,required"`
 	CookieSecure       bool          `env:"COOKIE_SECURE,required"`
@@ -76,6 +80,15 @@ type LoggerConfig struct {
 	Level     string `env:"LEVEL,required"`
 	Format    string `env:"FORMAT,required"`
 	AddSource bool   `env:"ADD_SOURCE,required"`
+}
+
+type MailerConfig struct {
+	Driver   string `env:"DRIVER" envDefault:"log"`
+	From     string `env:"FROM" envDefault:"Flourish <noreply@localhost>"`
+	SMTPHost string `env:"SMTP_HOST" envDefault:"localhost"`
+	SMTPPort int    `env:"SMTP_PORT" envDefault:"1025"`
+	APIKey   string `env:"API_KEY"`
+	APIURL   string `env:"API_URL" envDefault:"https://api.resend.com/emails"`
 }
 
 func Load() (*Config, error) {

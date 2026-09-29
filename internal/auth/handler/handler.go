@@ -9,6 +9,7 @@ import (
 	"github.com/chuuch/gorest/internal/api"
 	"github.com/chuuch/gorest/internal/auth/domain"
 	"github.com/chuuch/gorest/internal/auth/usecase"
+	"github.com/chuuch/gorest/internal/invites"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	"github.com/chuuch/gorest/internal/requestcontext"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
@@ -19,6 +20,7 @@ const refreshTokenCookieName = "refresh_token"
 
 type Handler struct {
 	service         usecase.Service
+	invites         invites.MailTokens
 	refreshTokenTTL time.Duration
 	cookieSecure    bool
 }
@@ -27,9 +29,11 @@ func NewHandler(
 	service usecase.Service,
 	refreshTokenTTL time.Duration,
 	cookieSecure bool,
+	invites invites.MailTokens,
 ) *Handler {
 	return &Handler{
 		service:         service,
+		invites:         invites,
 		refreshTokenTTL: refreshTokenTTL,
 		cookieSecure:    cookieSecure,
 	}
@@ -150,6 +154,159 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
+	var req domain.AcceptInviteRequest
+
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_request",
+			"invalid request body",
+		)
+		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
+		return
+	}
+
+	if err := h.invites.Accept(r.Context(), req.Token, req.Password); err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var req domain.ForgotPasswordRequest
+
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_request",
+			"invalid request body",
+		)
+		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
+		return
+	}
+
+	if err := h.invites.RequestReset(r.Context(), req.Email); err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req domain.ResetPasswordRequest
+
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_request",
+			"invalid body request",
+		)
+		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
+		return
+	}
+
+	if err := h.invites.Reset(r.Context(), req.Token, req.Password); err != nil {
+		h.handleError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) ChangePassword(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	userID, ok := requestcontext.UserID(r.Context())
+	if !ok {
+		api.WriteError(
+			w,
+			http.StatusUnauthorized,
+			"unauthorized",
+			"unauthorized",
+		)
+		return
+	}
+
+	var req domain.ChangePasswordRequest
+
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_request",
+			"invalid request body",
+		)
+		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
+		return
+	}
+
+	result, err := h.service.ChangePassword(r.Context(), userID, req)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	h.setRefreshTokenCookie(w, result.RefreshToken)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) UpdateDisplayName(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requestcontext.UserID(r.Context())
+	if !ok {
+		api.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		return
+	}
+
+	var req userdomain.UpdateDisplayNameRequest
+
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		api.WriteError(w, http.StatusBadRequest, "invalid_request", "invalid request body")
+		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
+		return
+	}
+
+	user, err := h.service.UpdateDisplayName(r.Context(), userID, req)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	api.WriteJSON(w, http.StatusOK, userdomain.UserResponse{
+		ID:          user.ID,
+		Email:       user.Email,
+		DisplayName: user.DisplayName,
+		CreatedAt:   user.CreatedAt,
+		UpdatedAt:   user.UpdatedAt,
+	})
+}
+
 func (h *Handler) writeAuthResponse(
 	w http.ResponseWriter,
 	status int,
@@ -158,10 +315,11 @@ func (h *Handler) writeAuthResponse(
 	api.WriteJSON(w, status, domain.AuthResponse{
 		AccessToken: result.AccessToken,
 		User: userdomain.UserResponse{
-			ID:        result.User.ID,
-			Email:     result.User.Email,
-			CreatedAt: result.User.CreatedAt,
-			UpdatedAt: result.User.UpdatedAt,
+			ID:          result.User.ID,
+			Email:       result.User.Email,
+			DisplayName: result.User.DisplayName,
+			CreatedAt:   result.User.CreatedAt,
+			UpdatedAt:   result.User.UpdatedAt,
 		},
 		Organization: orgdomain.OrganizationResponse{
 			ID:        result.Organization.ID,
@@ -248,6 +406,54 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 			http.StatusForbidden,
 			"no_organization",
 			"user has no organization",
+		)
+
+	case errors.Is(err, invites.ErrInviteNotFound):
+		api.WriteError(
+			w,
+			http.StatusNotFound,
+			"invite_not_found",
+			"invite not found",
+		)
+
+	case errors.Is(err, invites.ErrInviteExpired):
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invite_expired",
+			"invite expired",
+		)
+
+	case errors.Is(err, invites.ErrInviteUsed):
+		api.WriteError(
+			w,
+			http.StatusConflict,
+			"invite_used",
+			"invite already used",
+		)
+
+	case errors.Is(err, invites.ErrResetNotFound):
+		api.WriteError(
+			w,
+			http.StatusNotFound,
+			"reset_not_found",
+			"reset not found",
+		)
+
+	case errors.Is(err, invites.ErrResetExpired):
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"reset_expired",
+			"reset expired",
+		)
+
+	case errors.Is(err, invites.ErrResetUsed):
+		api.WriteError(
+			w,
+			http.StatusConflict,
+			"reset_used",
+			"reset already used",
 		)
 
 	default:

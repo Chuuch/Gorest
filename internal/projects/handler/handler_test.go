@@ -47,6 +47,8 @@ func withSession(req *http.Request, organizationID uuid.UUID, role string) *http
 type mockService struct {
 	listFunc   func(uuid.UUID, uuid.UUID) ([]*projectdomain.Project, error)
 	createFunc func(uuid.UUID, uuid.UUID, orgdomain.Role, projectdomain.CreateProjectRequest) (*projectdomain.Project, error)
+	updateFunc func(uuid.UUID, uuid.UUID, orgdomain.Role, projectdomain.UpdateProjectRequest) (*projectdomain.Project, error)
+	deleteFunc func(uuid.UUID, uuid.UUID, orgdomain.Role) error
 }
 
 func (m *mockService) List(
@@ -65,6 +67,23 @@ func (m *mockService) Create(
 	req projectdomain.CreateProjectRequest,
 ) (*projectdomain.Project, error) {
 	return m.createFunc(organizationID, clientID, actorRole, req)
+}
+
+func (m *mockService) Update(
+	_ context.Context,
+	organizationID, projectID uuid.UUID,
+	actorRole orgdomain.Role,
+	req projectdomain.UpdateProjectRequest,
+) (*projectdomain.Project, error) {
+	return m.updateFunc(organizationID, projectID, actorRole, req)
+}
+
+func (m *mockService) Delete(
+	_ context.Context,
+	organizationID, projectID uuid.UUID,
+	actorRole orgdomain.Role,
+) error {
+	return m.deleteFunc(organizationID, projectID, actorRole)
 }
 
 func TestHandler_List(t *testing.T) {
@@ -217,4 +236,186 @@ func TestHandler_Create_InvalidClientID(t *testing.T) {
 	handler.Create(rec, req)
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandler_Update(t *testing.T) {
+	organizationID := testOrganizationID()
+	project := testProject()
+	project.Name = "Mobile"
+	project.Notes = "App"
+
+	service := &mockService{
+		updateFunc: func(
+			gotOrganizationID, gotProjectID uuid.UUID,
+			actorRole orgdomain.Role,
+			req projectdomain.UpdateProjectRequest,
+		) (*projectdomain.Project, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, project.ID, gotProjectID)
+			require.Equal(t, orgdomain.RoleOwner, actorRole)
+			require.Equal(t, "Mobile", req.Name)
+			require.Equal(t, "App", req.Notes)
+			return project, nil
+		},
+	}
+
+	handler := projecthandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/projects/"+project.ID.String(),
+		bytes.NewBufferString(`{"name":"Mobile","notes":"App"}`),
+	)
+	req.SetPathValue("id", project.ID.String())
+	req = withSession(req, organizationID, "owner")
+
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response projectdomain.ProjectResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Equal(t, "Mobile", response.Name)
+}
+
+func TestHandler_Update_NotFound(t *testing.T) {
+	project := testProject()
+
+	service := &mockService{
+		updateFunc: func(
+			uuid.UUID,
+			uuid.UUID,
+			orgdomain.Role,
+			projectdomain.UpdateProjectRequest,
+		) (*projectdomain.Project, error) {
+			return nil, projectdomain.ErrProjectNotFound
+		},
+	}
+
+	handler := projecthandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/projects/"+project.ID.String(),
+		bytes.NewBufferString(`{"name":"Mobile"}`),
+	)
+	req.SetPathValue("id", project.ID.String())
+	req = withSession(req, testOrganizationID(), "admin")
+
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestHandler_Update_InvalidProjectID(t *testing.T) {
+	service := &mockService{
+		updateFunc: func(
+			uuid.UUID,
+			uuid.UUID,
+			orgdomain.Role,
+			projectdomain.UpdateProjectRequest,
+		) (*projectdomain.Project, error) {
+			t.Fatal("service should not be called")
+			return nil, nil
+		},
+	}
+
+	handler := projecthandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/projects/not-a-uuid",
+		bytes.NewBufferString(`{"name":"Mobile"}`),
+	)
+	req.SetPathValue("id", "not-a-uuid")
+	req = withSession(req, testOrganizationID(), "owner")
+
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandler_Delete(t *testing.T) {
+	organizationID := testOrganizationID()
+	project := testProject()
+
+	service := &mockService{
+		deleteFunc: func(
+			gotOrganizationID, gotProjectID uuid.UUID,
+			actorRole orgdomain.Role,
+		) error {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, project.ID, gotProjectID)
+			require.Equal(t, orgdomain.RoleAdmin, actorRole)
+			return nil
+		},
+	}
+
+	handler := projecthandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/projects/"+project.ID.String(),
+		nil,
+	)
+	req.SetPathValue("id", project.ID.String())
+	req = withSession(req, organizationID, "admin")
+
+	rec := httptest.NewRecorder()
+	handler.Delete(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestHandler_Delete_Forbidden(t *testing.T) {
+	project := testProject()
+
+	service := &mockService{
+		deleteFunc: func(uuid.UUID, uuid.UUID, orgdomain.Role) error {
+			return projectdomain.ErrForbidden
+		},
+	}
+
+	handler := projecthandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/projects/"+project.ID.String(),
+		nil,
+	)
+	req.SetPathValue("id", project.ID.String())
+	req = withSession(req, testOrganizationID(), "member")
+
+	rec := httptest.NewRecorder()
+	handler.Delete(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestHandler_Delete_NotFound(t *testing.T) {
+	project := testProject()
+
+	service := &mockService{
+		deleteFunc: func(uuid.UUID, uuid.UUID, orgdomain.Role) error {
+			return projectdomain.ErrProjectNotFound
+		},
+	}
+
+	handler := projecthandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/projects/"+project.ID.String(),
+		nil,
+	)
+	req.SetPathValue("id", project.ID.String())
+	req = withSession(req, testOrganizationID(), "owner")
+
+	rec := httptest.NewRecorder()
+	handler.Delete(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
 }

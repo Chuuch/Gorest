@@ -11,6 +11,11 @@ type CreateClientRequest struct {
 	Notes string `json:"notes" validate:"max=2000"`
 }
 
+type UpdateClientRequest struct {
+	Name  string `json:"name" validate:"required,min=4,max=100"`
+	Notes string `json:"notes" validate:"max=2000"`
+}
+
 type ClientResponse struct {
 	ID             uuid.UUID `json:"id"`
 	OrganizationID uuid.UUID `json:"organization_id"`

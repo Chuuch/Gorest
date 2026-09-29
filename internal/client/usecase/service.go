@@ -19,6 +19,17 @@ type Service interface {
 		actorRole orgdomain.Role,
 		req clientdomain.CreateClientRequest,
 	) (*clientdomain.Client, error)
+	Update(
+		ctx context.Context,
+		organizationID, clientID uuid.UUID,
+		actorRole orgdomain.Role,
+		req clientdomain.UpdateClientRequest,
+	) (*clientdomain.Client, error)
+	Delete(
+		ctx context.Context,
+		organizationID, clientID uuid.UUID,
+		actorRole orgdomain.Role,
+	) error
 }
 
 type service struct {
@@ -69,4 +80,46 @@ func (s *service) Create(
 	}
 
 	return client, nil
+}
+
+func (s *service) Update(
+	ctx context.Context,
+	organizationID, clientID uuid.UUID,
+	actorRole orgdomain.Role,
+	req clientdomain.UpdateClientRequest,
+) (*clientdomain.Client, error) {
+	if !actorRole.CanManageMembers() {
+		return nil, clientdomain.ErrForbidden
+	}
+
+	client, err := s.clients.GetByID(ctx, clientID, organizationID)
+	if err != nil {
+		return nil, err
+	}
+
+	client.Name = req.Name
+	client.Notes = req.Notes
+	client.UpdatedAt = time.Now().UTC()
+
+	if err := s.clients.Update(ctx, client); err != nil {
+		return nil, err
+	}
+
+	return client, nil
+}
+
+func (s *service) Delete(
+	ctx context.Context,
+	organizationID, clientID uuid.UUID,
+	actorRole orgdomain.Role,
+) error {
+	if !actorRole.CanManageMembers() {
+		return clientdomain.ErrForbidden
+	}
+
+	if _, err := s.clients.GetByID(ctx, clientID, organizationID); err != nil {
+		return err
+	}
+
+	return s.clients.Delete(ctx, clientID, organizationID)
 }

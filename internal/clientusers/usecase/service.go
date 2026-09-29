@@ -14,6 +14,7 @@ import (
 	clientuserdomain "github.com/chuuch/gorest/internal/clientusers/domain"
 	clientuserrepository "github.com/chuuch/gorest/internal/clientusers/repository"
 	"github.com/chuuch/gorest/internal/database"
+	"github.com/chuuch/gorest/internal/invites"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	orgrepository "github.com/chuuch/gorest/internal/organization/repository"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
@@ -48,10 +49,16 @@ type Service interface {
 		actorRole orgdomain.Role,
 		req clientuserdomain.CreateClientUserRequest,
 	) (*Member, error)
+	Delete(
+		ctx context.Context,
+		organizationID, clientID, userID uuid.UUID,
+		actorRole orgdomain.Role,
+	) error
 	Login(ctx context.Context, req clientuserdomain.LoginRequest) (*AuthResult, error)
 	Refresh(ctx context.Context, refreshToken string) (*AuthResult, error)
 	Logout(ctx context.Context, refreshToken string) error
 	Me(ctx context.Context, userID uuid.UUID) (*AuthResult, error)
+	ChangePassword(ctx context.Context, userID uuid.UUID, req authdomain.ChangePasswordRequest) (*AuthResult, error)
 }
 
 type service struct {
@@ -63,6 +70,7 @@ type service struct {
 	refreshTokens authrepository.RefreshTokenRepository
 	tokens        security.TokenManager
 	passwords     userusecase.PasswordHasher
+	inviter       invites.Service
 	db            *pgxpool.Pool
 	refreshTTL    time.Duration
 }
@@ -76,6 +84,7 @@ func NewService(
 	refreshTokens authrepository.RefreshTokenRepository,
 	tokens security.TokenManager,
 	passwords userusecase.PasswordHasher,
+	inviter invites.Service,
 	db *pgxpool.Pool,
 	refreshTTL time.Duration,
 ) Service {
@@ -88,6 +97,7 @@ func NewService(
 		refreshTokens: refreshTokens,
 		tokens:        tokens,
 		passwords:     passwords,
+		inviter:       inviter,
 		db:            db,
 		refreshTTL:    refreshTTL,
 	}
@@ -136,13 +146,14 @@ func (s *service) Create(
 		return nil, clientuserdomain.ErrForbidden
 	}
 
-	if _, err := s.clients.GetByID(ctx, clientID, organizationID); err != nil {
+	client, err := s.clients.GetByID(ctx, clientID, organizationID)
+	if err != nil {
 		return nil, err
 	}
 
 	var member *Member
 
-	err := database.WithTransaction(ctx, s.db, func(ctx context.Context) error {
+	err = database.WithTransaction(ctx, s.db, func(ctx context.Context) error {
 		existing, getErr := s.users.GetByEmail(ctx, req.Email)
 		if getErr != nil && !errors.Is(getErr, userdomain.ErrUserNotFound) {
 			return fmt.Errorf("get user by email: %w", getErr)
@@ -169,9 +180,14 @@ func (s *service) Create(
 
 			user = existing
 		} else {
+			discarded, createErr := invites.DiscardedPassword()
+			if createErr != nil {
+				return fmt.Errorf("generate discarded password: %w", createErr)
+			}
+
 			created, createErr := s.users.Create(ctx, userdomain.CreateUserRequest{
 				Email:    req.Email,
-				Password: req.Password,
+				Password: discarded,
 			})
 			if createErr != nil {
 				return fmt.Errorf("create user: %w", createErr)
@@ -208,7 +224,38 @@ func (s *service) Create(
 		return nil, err
 	}
 
+	org, err := s.organizations.GetByID(ctx, organizationID)
+	if err != nil {
+		return nil, fmt.Errorf("get organization: %w", err)
+	}
+
+	if err := s.inviter.Issue(ctx, invites.IssueInput{
+		UserID:           member.UserID,
+		Email:            member.Email,
+		OrganizationName: org.Name,
+		ClientName:       client.Name,
+		Kind:             invites.KindPortal,
+	}); err != nil {
+		return nil, fmt.Errorf("issue invite: %w", err)
+	}
+
 	return member, nil
+}
+
+func (s *service) Delete(
+	ctx context.Context,
+	organizationID, clientID, userID uuid.UUID,
+	actorRole orgdomain.Role,
+) error {
+	if !actorRole.CanManageMembers() {
+		return clientuserdomain.ErrForbidden
+	}
+
+	if _, err := s.clients.GetByID(ctx, clientID, organizationID); err != nil {
+		return err
+	}
+
+	return s.clientUsers.Delete(ctx, organizationID, clientID, userID)
 }
 
 func (s *service) Login(
@@ -286,6 +333,36 @@ func (s *service) Me(
 	userID uuid.UUID,
 ) (*AuthResult, error) {
 	return s.sessionFor(ctx, userID, "")
+}
+
+func (s *service) ChangePassword(
+	ctx context.Context,
+	userID uuid.UUID,
+	req authdomain.ChangePasswordRequest,
+) (*AuthResult, error) {
+	user, err := s.users.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+
+	if err := s.passwords.Compare(req.CurrentPassword, user.PasswordHash); err != nil {
+		if errors.Is(err, password.ErrPasswordMismatch) {
+			return nil, authdomain.ErrInvalidCredentials
+		}
+		return nil, fmt.Errorf("compare password: %w", err)
+	}
+
+	if _, err := s.users.Update(ctx, user.ID, userdomain.UpdateUserRequest{
+		Email:    user.Email,
+		Password: &req.Password,
+	}); err != nil {
+		return nil, fmt.Errorf("update password: %w", err)
+	}
+
+	if err := s.refreshTokens.RevokeAllForUser(ctx, userID); err != nil {
+		return nil, fmt.Errorf("revoke refresh tokens: %w", err)
+	}
+	return s.issueTokens(ctx, userID)
 }
 
 func (s *service) issueTokens(

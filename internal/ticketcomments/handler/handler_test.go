@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	"github.com/chuuch/gorest/internal/requestcontext"
 	ticketcommentdomain "github.com/chuuch/gorest/internal/ticketcomments/domain"
 	ticketcommenthandler "github.com/chuuch/gorest/internal/ticketcomments/handler"
@@ -66,6 +67,8 @@ func withPortalSession(
 type mockService struct {
 	listFunc   func(uuid.UUID, uuid.UUID, uuid.UUID) ([]*ticketcommentdomain.Comment, error)
 	createFunc func(uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID, ticketcommentdomain.CreateCommentRequest) (*ticketcommentdomain.Comment, error)
+	updateFunc func(uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID, orgdomain.Role, ticketcommentdomain.UpdateCommentRequest) (*ticketcommentdomain.Comment, error)
+	deleteFunc func(uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID, orgdomain.Role) error
 }
 
 func (m *mockService) List(
@@ -81,6 +84,23 @@ func (m *mockService) Create(
 	req ticketcommentdomain.CreateCommentRequest,
 ) (*ticketcommentdomain.Comment, error) {
 	return m.createFunc(organizationID, ticketID, userID, portalClientID, req)
+}
+
+func (m *mockService) Update(
+	_ context.Context,
+	organizationID, commentID, actorUserID, portalClientID uuid.UUID,
+	actorRole orgdomain.Role,
+	req ticketcommentdomain.UpdateCommentRequest,
+) (*ticketcommentdomain.Comment, error) {
+	return m.updateFunc(organizationID, commentID, actorUserID, portalClientID, actorRole, req)
+}
+
+func (m *mockService) Delete(
+	_ context.Context,
+	organizationID, commentID, actorUserID, portalClientID uuid.UUID,
+	actorRole orgdomain.Role,
+) error {
+	return m.deleteFunc(organizationID, commentID, actorUserID, portalClientID, actorRole)
 }
 
 func TestHandler_List(t *testing.T) {
@@ -294,4 +314,221 @@ func TestHandler_Create_InvalidTicketID(t *testing.T) {
 	handler.Create(rec, req)
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func withStaffRole(req *http.Request, organizationID, userID uuid.UUID, role string) *http.Request {
+	req = withStaffSession(req, organizationID, userID)
+	ctx := requestcontext.WithRole(req.Context(), role)
+	return req.WithContext(ctx)
+}
+
+func TestHandler_Update(t *testing.T) {
+	organizationID := testOrganizationID()
+	userID := testUserID()
+	comment := testComment()
+
+	service := &mockService{
+		updateFunc: func(
+			gotOrganizationID, gotCommentID, gotUserID, portalClientID uuid.UUID,
+			actorRole orgdomain.Role,
+			req ticketcommentdomain.UpdateCommentRequest,
+		) (*ticketcommentdomain.Comment, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, comment.ID, gotCommentID)
+			require.Equal(t, userID, gotUserID)
+			require.Equal(t, uuid.Nil, portalClientID)
+			require.Equal(t, orgdomain.RoleMember, actorRole)
+			require.Equal(t, "Try Safari first.", req.Body)
+			updated := *comment
+			updated.Body = req.Body
+			return &updated, nil
+		},
+	}
+
+	handler := ticketcommenthandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/ticket-comments/"+comment.ID.String(),
+		bytes.NewBufferString(`{"body":"Try Safari first."}`),
+	)
+	req.SetPathValue("id", comment.ID.String())
+	req = withStaffRole(req, organizationID, userID, "member")
+
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response ticketcommentdomain.CommentResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Equal(t, "Try Safari first.", response.Body)
+}
+
+func TestHandler_UpdatePortal(t *testing.T) {
+	organizationID := testOrganizationID()
+	userID := testUserID()
+	clientID := testClientID()
+	comment := testComment()
+
+	service := &mockService{
+		updateFunc: func(
+			gotOrganizationID, gotCommentID, gotUserID, portalClientID uuid.UUID,
+			actorRole orgdomain.Role,
+			req ticketcommentdomain.UpdateCommentRequest,
+		) (*ticketcommentdomain.Comment, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, comment.ID, gotCommentID)
+			require.Equal(t, userID, gotUserID)
+			require.Equal(t, clientID, portalClientID)
+			require.Equal(t, orgdomain.Role("client"), actorRole)
+			require.Equal(t, "Still broken on Safari", req.Body)
+			updated := *comment
+			updated.Body = req.Body
+			return &updated, nil
+		},
+	}
+
+	handler := ticketcommenthandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/client-auth/ticket-comments/"+comment.ID.String(),
+		bytes.NewBufferString(`{"body":"Still broken on Safari"}`),
+	)
+	req.SetPathValue("id", comment.ID.String())
+	req = withPortalSession(req, organizationID, userID, clientID)
+
+	rec := httptest.NewRecorder()
+	handler.UpdatePortal(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestHandler_Update_Forbidden(t *testing.T) {
+	comment := testComment()
+
+	service := &mockService{
+		updateFunc: func(
+			uuid.UUID,
+			uuid.UUID,
+			uuid.UUID,
+			uuid.UUID,
+			orgdomain.Role,
+			ticketcommentdomain.UpdateCommentRequest,
+		) (*ticketcommentdomain.Comment, error) {
+			return nil, ticketcommentdomain.ErrForbidden
+		},
+	}
+
+	handler := ticketcommenthandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/ticket-comments/"+comment.ID.String(),
+		bytes.NewBufferString(`{"body":"Nope"}`),
+	)
+	req.SetPathValue("id", comment.ID.String())
+	req = withStaffRole(req, testOrganizationID(), uuid.New(), "member")
+
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestHandler_Delete(t *testing.T) {
+	organizationID := testOrganizationID()
+	userID := testUserID()
+	comment := testComment()
+
+	service := &mockService{
+		deleteFunc: func(
+			gotOrganizationID, gotCommentID, gotUserID, portalClientID uuid.UUID,
+			actorRole orgdomain.Role,
+		) error {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, comment.ID, gotCommentID)
+			require.Equal(t, userID, gotUserID)
+			require.Equal(t, uuid.Nil, portalClientID)
+			require.Equal(t, orgdomain.RoleAdmin, actorRole)
+			return nil
+		},
+	}
+
+	handler := ticketcommenthandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/ticket-comments/"+comment.ID.String(),
+		nil,
+	)
+	req.SetPathValue("id", comment.ID.String())
+	req = withStaffRole(req, organizationID, userID, "admin")
+
+	rec := httptest.NewRecorder()
+	handler.Delete(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestHandler_DeletePortal(t *testing.T) {
+	organizationID := testOrganizationID()
+	userID := testUserID()
+	clientID := testClientID()
+	comment := testComment()
+
+	service := &mockService{
+		deleteFunc: func(
+			gotOrganizationID, gotCommentID, gotUserID, portalClientID uuid.UUID,
+			actorRole orgdomain.Role,
+		) error {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, comment.ID, gotCommentID)
+			require.Equal(t, userID, gotUserID)
+			require.Equal(t, clientID, portalClientID)
+			require.Equal(t, orgdomain.Role("client"), actorRole)
+			return nil
+		},
+	}
+
+	handler := ticketcommenthandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/client-auth/ticket-comments/"+comment.ID.String(),
+		nil,
+	)
+	req.SetPathValue("id", comment.ID.String())
+	req = withPortalSession(req, organizationID, userID, clientID)
+
+	rec := httptest.NewRecorder()
+	handler.DeletePortal(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestHandler_Delete_NotFound(t *testing.T) {
+	commentID := uuid.New()
+
+	service := &mockService{
+		deleteFunc: func(uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID, orgdomain.Role) error {
+			return ticketcommentdomain.ErrCommentNotFound
+		},
+	}
+
+	handler := ticketcommenthandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/v1/ticket-comments/"+commentID.String(),
+		nil,
+	)
+	req.SetPathValue("id", commentID.String())
+	req = withStaffRole(req, testOrganizationID(), testUserID(), "owner")
+
+	rec := httptest.NewRecorder()
+	handler.Delete(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
 }

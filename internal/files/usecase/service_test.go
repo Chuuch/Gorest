@@ -18,8 +18,9 @@ import (
 )
 
 type mockStore struct {
-	putURL string
-	getURL string
+	putURL  string
+	getURL  string
+	deleted []string
 }
 
 func (m *mockStore) PresignPut(context.Context, string, string) (string, error) {
@@ -28,6 +29,11 @@ func (m *mockStore) PresignPut(context.Context, string, string) (string, error) 
 
 func (m *mockStore) PresignGet(context.Context, string, string) (string, error) {
 	return m.getURL, nil
+}
+
+func (m *mockStore) Delete(_ context.Context, key string) error {
+	m.deleted = append(m.deleted, key)
+	return nil
 }
 
 func setupFileTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
@@ -57,6 +63,7 @@ func setupFileTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 		CREATE TABLE users (
 			id UUID PRIMARY KEY,
 			email TEXT NOT NULL,
+			display_name TEXT NOT NULL DEFAULT '',
 			password_hash TEXT NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL
@@ -233,19 +240,20 @@ func seedProject(
 	return projectID
 }
 
-func setupFileService(db *pgxpool.Pool) fileusecase.Service {
+func setupFileService(db *pgxpool.Pool) (fileusecase.Service, *mockStore) {
+	store := &mockStore{putURL: "http://minio/put", getURL: "http://minio/get"}
 	return fileusecase.NewService(
 		filepostgres.NewRepository(db),
 		projectpostgres.NewRepository(db),
-		&mockStore{putURL: "http://minio/put", getURL: "http://minio/get"},
-	)
+		store,
+	), store
 }
 
 func TestFileService_CreateAndList(t *testing.T) {
 	db, cleanup := setupFileTestDatabase(t)
 	defer cleanup()
 
-	service := setupFileService(db)
+	service, _ := setupFileService(db)
 	userID := seedUser(t, db, "ada@example.com")
 	organizationID := seedOrganization(t, db, "Acme")
 	otherOrganizationID := seedOrganization(t, db, "Other")
@@ -288,7 +296,7 @@ func TestFileService_Create_Forbidden(t *testing.T) {
 	db, cleanup := setupFileTestDatabase(t)
 	defer cleanup()
 
-	service := setupFileService(db)
+	service, _ := setupFileService(db)
 	userID := seedUser(t, db, "mike@example.com")
 	organizationID := seedOrganization(t, db, "Acme")
 	clientID := seedClient(t, db, organizationID, "Northwind")
@@ -314,7 +322,7 @@ func TestFileService_Create_UnsupportedContentType(t *testing.T) {
 	db, cleanup := setupFileTestDatabase(t)
 	defer cleanup()
 
-	service := setupFileService(db)
+	service, _ := setupFileService(db)
 	userID := seedUser(t, db, "ada@example.com")
 	organizationID := seedOrganization(t, db, "Acme")
 	clientID := seedClient(t, db, organizationID, "Northwind")
@@ -340,7 +348,7 @@ func TestFileService_Create_InvalidFilename(t *testing.T) {
 	db, cleanup := setupFileTestDatabase(t)
 	defer cleanup()
 
-	service := setupFileService(db)
+	service, _ := setupFileService(db)
 	userID := seedUser(t, db, "ada@example.com")
 	organizationID := seedOrganization(t, db, "Acme")
 	clientID := seedClient(t, db, organizationID, "Northwind")
@@ -366,7 +374,7 @@ func TestFileService_Create_ProjectNotFound(t *testing.T) {
 	db, cleanup := setupFileTestDatabase(t)
 	defer cleanup()
 
-	service := setupFileService(db)
+	service, _ := setupFileService(db)
 	userID := seedUser(t, db, "ada@example.com")
 	organizationID := seedOrganization(t, db, "Acme")
 
@@ -384,4 +392,167 @@ func TestFileService_Create_ProjectNotFound(t *testing.T) {
 	)
 
 	require.ErrorIs(t, err, projectdomain.ErrProjectNotFound)
+}
+
+func TestFileService_Delete(t *testing.T) {
+	db, cleanup := setupFileTestDatabase(t)
+	defer cleanup()
+
+	service, store := setupFileService(db)
+	userID := seedUser(t, db, "ada@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+
+	view, err := service.Create(
+		context.Background(),
+		organizationID,
+		projectID,
+		userID,
+		orgdomain.RoleOwner,
+		filedomain.CreateFileRequest{
+			Filename:    "spec.pdf",
+			ContentType: "application/pdf",
+			Size:        2048,
+		},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		organizationID,
+		view.File.ID,
+		userID,
+		orgdomain.RoleAdmin,
+	)
+	require.NoError(t, err)
+	require.Equal(t, []string{view.File.ObjectKey}, store.deleted)
+
+	listed, err := service.List(context.Background(), organizationID, projectID)
+	require.NoError(t, err)
+	require.Empty(t, listed)
+}
+
+func TestFileService_Delete_MemberOwn(t *testing.T) {
+	db, cleanup := setupFileTestDatabase(t)
+	defer cleanup()
+
+	service, _ := setupFileService(db)
+	memberID := seedUser(t, db, "mike@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+
+	view, err := service.Create(
+		context.Background(),
+		organizationID,
+		projectID,
+		memberID,
+		orgdomain.RoleOwner,
+		filedomain.CreateFileRequest{
+			Filename:    "notes.txt",
+			ContentType: "text/plain",
+			Size:        12,
+		},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		organizationID,
+		view.File.ID,
+		memberID,
+		orgdomain.RoleMember,
+	)
+	require.NoError(t, err)
+}
+
+func TestFileService_Delete_MemberForbiddenOnOthers(t *testing.T) {
+	db, cleanup := setupFileTestDatabase(t)
+	defer cleanup()
+
+	service, store := setupFileService(db)
+	ownerID := seedUser(t, db, "ada@example.com")
+	memberID := seedUser(t, db, "mike@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+
+	view, err := service.Create(
+		context.Background(),
+		organizationID,
+		projectID,
+		ownerID,
+		orgdomain.RoleOwner,
+		filedomain.CreateFileRequest{
+			Filename:    "spec.pdf",
+			ContentType: "application/pdf",
+			Size:        2048,
+		},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		organizationID,
+		view.File.ID,
+		memberID,
+		orgdomain.RoleMember,
+	)
+	require.ErrorIs(t, err, filedomain.ErrForbidden)
+	require.Empty(t, store.deleted)
+}
+
+func TestFileService_Delete_WrongOrg(t *testing.T) {
+	db, cleanup := setupFileTestDatabase(t)
+	defer cleanup()
+
+	service, store := setupFileService(db)
+	userID := seedUser(t, db, "ada@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	otherOrganizationID := seedOrganization(t, db, "Other")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+
+	view, err := service.Create(
+		context.Background(),
+		organizationID,
+		projectID,
+		userID,
+		orgdomain.RoleOwner,
+		filedomain.CreateFileRequest{
+			Filename:    "spec.pdf",
+			ContentType: "application/pdf",
+			Size:        2048,
+		},
+	)
+	require.NoError(t, err)
+
+	err = service.Delete(
+		context.Background(),
+		otherOrganizationID,
+		view.File.ID,
+		userID,
+		orgdomain.RoleOwner,
+	)
+	require.ErrorIs(t, err, filedomain.ErrFileNotFound)
+	require.Empty(t, store.deleted)
+}
+
+func TestFileService_Delete_NotFound(t *testing.T) {
+	db, cleanup := setupFileTestDatabase(t)
+	defer cleanup()
+
+	service, _ := setupFileService(db)
+	userID := seedUser(t, db, "ada@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+
+	err := service.Delete(
+		context.Background(),
+		organizationID,
+		uuid.New(),
+		userID,
+		orgdomain.RoleOwner,
+	)
+	require.ErrorIs(t, err, filedomain.ErrFileNotFound)
 }

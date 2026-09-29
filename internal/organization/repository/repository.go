@@ -10,6 +10,7 @@ import (
 type OrganizationRepository interface {
 	Create(ctx context.Context, org *domain.Organization) error
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Organization, error)
+	Update(ctx context.Context, org *domain.Organization) error
 }
 
 type MembershipRepository interface {

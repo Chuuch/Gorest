@@ -145,6 +145,20 @@ func (s *S3Store) PresignGet(
 	return out.URL, nil
 }
 
+func (s *S3Store) Delete(
+	ctx context.Context,
+	key string,
+) error {
+	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return fmt.Errorf("delete object: %w", err)
+	}
+	return nil
+}
+
 func contentDisposition(filename string) string {
 	safe := strings.ReplaceAll(filename, `"`, "'")
 	return `attachment; filename="` + safe + `"`

@@ -94,6 +94,36 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusCreated, toMemberResponse(*member))
 }
 
+func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
+	organizationID, actorRole, ok := h.staffSession(w, r)
+	if !ok {
+		return
+	}
+
+	clientID, ok := h.clientID(w, r)
+	if !ok {
+		return
+	}
+
+	userID, ok := h.userID(w, r)
+	if !ok {
+		return
+	}
+
+	if err := h.service.Delete(
+		r.Context(),
+		organizationID,
+		clientID,
+		userID,
+		actorRole,
+	); err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var req clientuserdomain.LoginRequest
 
@@ -175,6 +205,35 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	h.writeAuthResponse(w, http.StatusOK, result)
 }
 
+func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requestcontext.UserID(r.Context())
+	if !ok {
+		api.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		return
+	}
+
+	var req authdomain.ChangePasswordRequest
+
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		api.WriteError(w, http.StatusBadRequest, "invalid_request", "invalid request body")
+		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
+		return
+	}
+
+	result, err := h.service.ChangePassword(r.Context(), userID, req)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	h.setRefreshTokenCookie(w, result.RefreshToken)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) clientID(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -190,6 +249,23 @@ func (h *Handler) clientID(
 		return uuid.Nil, false
 	}
 	return clientID, true
+}
+
+func (h *Handler) userID(
+	w http.ResponseWriter,
+	r *http.Request,
+) (uuid.UUID, bool) {
+	userID, err := uuid.Parse(r.PathValue("userId"))
+	if err != nil {
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_user_id",
+			"invlaid user id",
+		)
+		return uuid.Nil, false
+	}
+	return userID, true
 }
 
 func (h *Handler) staffSession(
@@ -227,10 +303,11 @@ func (h *Handler) writeAuthResponse(
 	api.WriteJSON(w, status, clientuserdomain.AuthResponse{
 		AccessToken: result.AccessToken,
 		User: userdomain.UserResponse{
-			ID:        result.User.ID,
-			Email:     result.User.Email,
-			CreatedAt: result.User.CreatedAt,
-			UpdatedAt: result.User.UpdatedAt,
+			ID:          result.User.ID,
+			Email:       result.User.Email,
+			DisplayName: result.User.DisplayName,
+			CreatedAt:   result.User.CreatedAt,
+			UpdatedAt:   result.User.UpdatedAt,
 		},
 		Organization: orgdomain.OrganizationResponse{
 			ID:        result.Organization.ID,
@@ -287,6 +364,9 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 
 	case errors.Is(err, clientuserdomain.ErrClientUserAlreadyExists):
 		api.WriteError(w, http.StatusConflict, "client_user_already_exists", "client user already exists")
+
+	case errors.Is(err, clientuserdomain.ErrClientUserNotFound):
+		api.WriteError(w, http.StatusNotFound, "client_user_not_found", "client user not found")
 
 	case errors.Is(err, clientdomain.ErrClientNotFound):
 		api.WriteError(w, http.StatusNotFound, "client_not_found", "client not found")
