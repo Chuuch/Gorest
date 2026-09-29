@@ -50,10 +50,11 @@ func withSession(req *http.Request, organizationID, userID uuid.UUID) *http.Requ
 }
 
 type mockService struct {
-	listFunc   func(uuid.UUID, uuid.UUID) ([]*timeentrydomain.TimeEntry, error)
-	createFunc func(uuid.UUID, uuid.UUID, uuid.UUID, timeentrydomain.CreateTimeEntryRequest) (*timeentrydomain.TimeEntry, error)
-	updateFunc func(uuid.UUID, uuid.UUID, uuid.UUID, orgdomain.Role, timeentrydomain.UpdateTimeEntryRequest) (*timeentrydomain.TimeEntry, error)
-	deleteFunc func(uuid.UUID, uuid.UUID, uuid.UUID, orgdomain.Role) error
+	listFunc      func(uuid.UUID, uuid.UUID) ([]*timeentrydomain.TimeEntry, error)
+	listRangeFunc func(uuid.UUID, uuid.UUID, orgdomain.Role, time.Time, time.Time) ([]*timeentrydomain.TimeEntry, error)
+	createFunc    func(uuid.UUID, uuid.UUID, uuid.UUID, timeentrydomain.CreateTimeEntryRequest) (*timeentrydomain.TimeEntry, error)
+	updateFunc    func(uuid.UUID, uuid.UUID, uuid.UUID, orgdomain.Role, timeentrydomain.UpdateTimeEntryRequest) (*timeentrydomain.TimeEntry, error)
+	deleteFunc    func(uuid.UUID, uuid.UUID, uuid.UUID, orgdomain.Role) error
 }
 
 func (m *mockService) List(
@@ -62,6 +63,15 @@ func (m *mockService) List(
 	taskID uuid.UUID,
 ) ([]*timeentrydomain.TimeEntry, error) {
 	return m.listFunc(organizationID, taskID)
+}
+
+func (m *mockService) ListRange(
+	_ context.Context,
+	organizationID, actorUserID uuid.UUID,
+	actorRole orgdomain.Role,
+	from, to time.Time,
+) ([]*timeentrydomain.TimeEntry, error) {
+	return m.listRangeFunc(organizationID, actorUserID, actorRole, from, to)
 }
 
 func (m *mockService) Create(
@@ -147,6 +157,77 @@ func TestHandler_List_TaskNotFound(t *testing.T) {
 	handler.List(rec, req)
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestHandler_ListRange(t *testing.T) {
+	organizationID := testOrganizationID()
+	userID := testUserID()
+	entry := testTimeEntry()
+	from := time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
+
+	service := &mockService{
+		listRangeFunc: func(
+			gotOrganizationID, gotUserID uuid.UUID,
+			actorRole orgdomain.Role,
+			gotFrom, gotTo time.Time,
+		) ([]*timeentrydomain.TimeEntry, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, userID, gotUserID)
+			require.Equal(t, orgdomain.RoleOwner, actorRole)
+			require.True(t, from.Equal(gotFrom))
+			require.True(t, to.Equal(gotTo))
+			return []*timeentrydomain.TimeEntry{entry}, nil
+		},
+	}
+
+	handler := timeentryhandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/time-entries?from=2026-09-28T00:00:00.000Z&to=2026-10-05T00:00:00.000Z",
+		nil,
+	)
+	req = withActor(req, organizationID, userID, "owner")
+
+	rec := httptest.NewRecorder()
+	handler.ListRange(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response []timeentrydomain.TimeEntryResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Len(t, response, 1)
+	require.Equal(t, 90, response[0].Minutes)
+}
+
+func TestHandler_ListRange_InvalidRange(t *testing.T) {
+	service := &mockService{
+		listRangeFunc: func(
+			uuid.UUID,
+			uuid.UUID,
+			orgdomain.Role,
+			time.Time,
+			time.Time,
+		) ([]*timeentrydomain.TimeEntry, error) {
+			t.Fatal("service should not be called")
+			return nil, nil
+		},
+	}
+
+	handler := timeentryhandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/time-entries?from=nope&to=2026-10-05T00:00:00Z",
+		nil,
+	)
+	req = withActor(req, testOrganizationID(), testUserID(), "owner")
+
+	rec := httptest.NewRecorder()
+	handler.ListRange(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
 func TestHandler_Create(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/chuuch/gorest/internal/database"
 	"github.com/chuuch/gorest/internal/timeentries/domain"
@@ -126,32 +127,40 @@ func (r *Repository) ListByTaskID(
 	}
 	defer rows.Close()
 
-	entries := make([]*domain.TimeEntry, 0)
+	return scanTimeEntries(rows)
+}
 
-	for rows.Next() {
-		var entry domain.TimeEntry
+func (r *Repository) ListByRange(
+	ctx context.Context,
+	organizationID uuid.UUID,
+	userID *uuid.UUID,
+	from, to time.Time,
+) ([]*domain.TimeEntry, error) {
+	const query = `
+			SELECT
+				id,
+				organization_id,
+				task_id,
+				user_id,
+				minutes,
+				notes,
+				created_at,
+				updated_at
+			FROM time_entries
+			WHERE organization_id = $1
+				AND created_at >= $2
+				AND created_at < $3
+				AND ($4::uuid IS NULL OR user_id = $4)
+			ORDER BY created_at ASC, id ASC
+		`
 
-		if err := rows.Scan(
-			&entry.ID,
-			&entry.OrganizationID,
-			&entry.TaskID,
-			&entry.UserID,
-			&entry.Minutes,
-			&entry.Notes,
-			&entry.CreatedAt,
-			&entry.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan time entry: %w", err)
-		}
-
-		entries = append(entries, &entry)
-	}
-
-	if err := rows.Err(); err != nil {
+	rows, err := r.db.Query(ctx, query, organizationID, from, to, userID)
+	if err != nil {
 		return nil, fmt.Errorf("list time entries: %w", err)
 	}
+	defer rows.Close()
 
-	return entries, nil
+	return scanTimeEntries(rows)
 }
 
 func (r *Repository) Update(
@@ -211,4 +220,33 @@ func (r *Repository) Delete(
 	}
 
 	return nil
+}
+
+func scanTimeEntries(rows pgx.Rows) ([]*domain.TimeEntry, error) {
+	entries := make([]*domain.TimeEntry, 0)
+
+	for rows.Next() {
+		var entry domain.TimeEntry
+
+		if err := rows.Scan(
+			&entry.ID,
+			&entry.OrganizationID,
+			&entry.TaskID,
+			&entry.UserID,
+			&entry.Minutes,
+			&entry.Notes,
+			&entry.CreatedAt,
+			&entry.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan time entry: %w", err)
+		}
+
+		entries = append(entries, &entry)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list time entries: %w", err)
+	}
+
+	return entries, nil
 }
