@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/chuuch/gorest/internal/notifications"
+	notificationdomain "github.com/chuuch/gorest/internal/notifications/domain"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	orgrepository "github.com/chuuch/gorest/internal/organization/repository"
 	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
@@ -55,6 +57,7 @@ type service struct {
 	projects    projectrepository.ProjectRepository
 	tickets     ticketrepository.TicketRepository
 	memberships orgrepository.MembershipRepository
+	notify      notifications.Publisher
 }
 
 func NewService(
@@ -68,7 +71,17 @@ func NewService(
 		projects:    projects,
 		tickets:     tickets,
 		memberships: memberships,
+		notify:      notifications.Nop{},
 	}
+}
+
+func EnableNotifications(s Service, pub notifications.Publisher) Service {
+	impl, ok := s.(*service)
+	if !ok || pub == nil {
+		return s
+	}
+	impl.notify = pub
+	return impl
 }
 
 func (s *service) List(
@@ -149,6 +162,7 @@ func (s *service) Update(
 		return nil, err
 	}
 
+	previousAssignee := task.AssigneeID
 	now := time.Now().UTC()
 	status := taskdomain.Status(req.Status)
 
@@ -175,6 +189,19 @@ func (s *service) Update(
 
 	if err := s.tasks.Update(ctx, task); err != nil {
 		return nil, err
+	}
+
+	if assigneeChanged(previousAssignee, task.AssigneeID) && task.AssigneeID != nil {
+		notifications.NotifyUser(
+			ctx,
+			s.notify,
+			organizationID,
+			*task.AssigneeID,
+			notificationdomain.KindTaskAssigned,
+			notificationdomain.EntityTask,
+			task.Title,
+			task.ID,
+		)
 	}
 
 	return task, nil
@@ -249,6 +276,17 @@ func (s *service) Convert(
 		return nil, err
 	}
 
+	notifications.NotifyUser(
+		ctx,
+		s.notify,
+		organizationID,
+		ticket.UserID,
+		notificationdomain.KindTicketConverted,
+		notificationdomain.EntityTicket,
+		ticket.Title,
+		ticket.ID,
+	)
+
 	return task, nil
 }
 
@@ -295,4 +333,14 @@ func completedAtFor(status taskdomain.Status, current *time.Time, now time.Time)
 
 	completedAt := now
 	return &completedAt
+}
+
+func assigneeChanged(previous, next *uuid.UUID) bool {
+	if next == nil {
+		return false
+	}
+	if previous == nil {
+		return true
+	}
+	return *previous != *next
 }
