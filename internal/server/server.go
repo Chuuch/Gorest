@@ -34,6 +34,9 @@ import (
 	"github.com/chuuch/gorest/internal/invites"
 	"github.com/chuuch/gorest/internal/mailer"
 	"github.com/chuuch/gorest/internal/middleware"
+	notificationhandler "github.com/chuuch/gorest/internal/notifications/handler"
+	notificationpostgres "github.com/chuuch/gorest/internal/notifications/postgres"
+	notificationsusecase "github.com/chuuch/gorest/internal/notifications/usecase"
 	orghandler "github.com/chuuch/gorest/internal/organization/handler"
 	orgpostgres "github.com/chuuch/gorest/internal/organization/postgres"
 	orgusecase "github.com/chuuch/gorest/internal/organization/usecase"
@@ -187,6 +190,16 @@ func New(cfg *config.Config) (*Server, error) {
 	reportHandler := reporthandler.NewHandler(reportService)
 
 	// -------------------------------------------------------------
+	// Notifications domain
+	// -------------------------------------------------------------
+	notificationRepository := notificationpostgres.NewRepository(db)
+	notificationService := notificationsusecase.NewService(
+		notificationRepository,
+		membershipRepository,
+	)
+	notificationHandler := notificationhandler.NewHandler(notificationService)
+
+	// -------------------------------------------------------------
 	// Client domain
 	// -------------------------------------------------------------
 	clientRepository := clientpostgres.NewRepository(db)
@@ -204,14 +217,20 @@ func New(cfg *config.Config) (*Server, error) {
 	// Ticket domain
 	// -------------------------------------------------------------
 	ticketRepository := ticketpostgres.NewRepository(db)
-	ticketService := ticketusecase.NewService(ticketRepository, clientRepository)
+	ticketService := ticketusecase.EnableNotifications(
+		ticketusecase.NewService(ticketRepository, clientRepository),
+		notificationService,
+	)
 	ticketHandler := tickethandler.NewHandler(ticketService).WithActivity(activityService)
 
 	// -------------------------------------------------------------
 	// Task domain
 	// -------------------------------------------------------------
 	taskRepository := taskpostgres.NewRepository(db)
-	taskService := taskusecase.NewService(taskRepository, projectRepository, ticketRepository, membershipRepository)
+	taskService := taskusecase.EnableNotifications(
+		taskusecase.NewService(taskRepository, projectRepository, ticketRepository, membershipRepository),
+		notificationService,
+	)
 	taskHandler := taskhandler.NewHandler(taskService).WithActivity(activityService)
 
 	// -------------------------------------------------------------
@@ -232,7 +251,10 @@ func New(cfg *config.Config) (*Server, error) {
 	// Comment  domain
 	// -------------------------------------------------------------
 	commentRepository := commentpostgres.NewRepository(db)
-	commentService := commentusecase.NewService(commentRepository, taskRepository)
+	commentService := commentusecase.EnableNotifications(
+		commentusecase.NewService(commentRepository, taskRepository),
+		notificationService,
+	)
 	commentHandler := commenthandler.NewHandler(commentService).WithActivity(activityService)
 
 	// -------------------------------------------------------------
@@ -269,7 +291,10 @@ func New(cfg *config.Config) (*Server, error) {
 	// Ticket comment domain
 	// -------------------------------------------------------------
 	ticketCommentRepository := ticketcommentpostgres.NewRepository(db)
-	ticketCommentService := ticketcommentusecase.NewService(ticketCommentRepository, ticketRepository)
+	ticketCommentService := ticketcommentusecase.EnableNotifications(
+		ticketcommentusecase.NewService(ticketCommentRepository, ticketRepository),
+		notificationService,
+	)
 	ticketCommentHandler := ticketcommenthandler.NewHandler(ticketCommentService).WithActivity(activityService)
 
 	// -------------------------------------------------------------
@@ -291,6 +316,7 @@ func New(cfg *config.Config) (*Server, error) {
 		ticketCommentHandler,
 		activityHandler,
 		reportHandler,
+		notificationHandler,
 		tokenManager,
 	)
 

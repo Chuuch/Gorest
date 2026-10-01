@@ -12,6 +12,7 @@ import (
 	commenthandler "github.com/chuuch/gorest/internal/comments/handler"
 	filehandler "github.com/chuuch/gorest/internal/files/handler"
 	"github.com/chuuch/gorest/internal/middleware"
+	notificationhandler "github.com/chuuch/gorest/internal/notifications/handler"
 	orghandler "github.com/chuuch/gorest/internal/organization/handler"
 	projecthandler "github.com/chuuch/gorest/internal/projects/handler"
 	reporthandler "github.com/chuuch/gorest/internal/reports/handler"
@@ -47,6 +48,7 @@ func newRouter(
 	ticketCommentHandler *ticketcommenthandler.Handler,
 	activityHandler *activityhandler.Handler,
 	reportHandler *reporthandler.Handler,
+	notificationHandler *notificationhandler.Handler,
 	tokenManager security.TokenManager,
 ) *http.ServeMux {
 	mux := http.NewServeMux()
@@ -68,6 +70,7 @@ func newRouter(
 		ticketCommentHandler,
 		activityHandler,
 		reportHandler,
+		notificationHandler,
 		tokenManager,
 	)
 
@@ -91,6 +94,7 @@ func registerRoutes(
 	ticketCommentHandler *ticketcommenthandler.Handler,
 	activityHandler *activityhandler.Handler,
 	reportHandler *reporthandler.Handler,
+	notificationHandler *notificationhandler.Handler,
 	tokenManager security.TokenManager,
 ) {
 	loginLimiter := middleware.NewLimiter(10, 15*time.Minute)
@@ -115,6 +119,8 @@ func registerRoutes(
 	// ACTIVITY
 	mux.Handle("GET /api/v1/activity", staff(tokenManager, activityHandler.List))
 	mux.Handle("GET /api/v1/reports/time", staff(tokenManager, reportHandler.Time))
+	mux.Handle("GET /api/v1/notifications", staff(tokenManager, notificationHandler.List))
+	mux.Handle("PATCH /api/v1/notifications/{id}/read", staff(tokenManager, notificationHandler.MarkRead))
 
 	// CLIENTS
 	mux.Handle("GET /api/v1/clients", staff(tokenManager, clientHandler.List))
@@ -175,6 +181,8 @@ func registerRoutes(
 	mux.Handle("POST /api/v1/client-auth/tickets/{id}/files", portal(tokenManager, ticketFileHandler.CreatePortal))
 	mux.Handle("GET /api/v1/client-auth/tickets/{id}/comments", portal(tokenManager, ticketCommentHandler.ListPortal))
 	mux.Handle("POST /api/v1/client-auth/tickets/{id}/comments", portal(tokenManager, ticketCommentHandler.CreatePortal))
+	mux.Handle("GET /api/v1/client-auth/notifications", portal(tokenManager, notificationHandler.List))
+	mux.Handle("PATCH /api/v1/client-auth/notifications/{id}/read", portal(tokenManager, notificationHandler.MarkRead))
 	mux.Handle("PATCH /api/v1/ticket-comments/{id}", staff(tokenManager, ticketCommentHandler.Update))
 	mux.Handle("DELETE /api/v1/ticket-comments/{id}", staff(tokenManager, ticketCommentHandler.Delete))
 	mux.Handle("PATCH /api/v1/client-auth/ticket-comments/{id}", portal(tokenManager, ticketCommentHandler.UpdatePortal))

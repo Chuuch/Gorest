@@ -7,6 +7,8 @@ import (
 
 	commentdomain "github.com/chuuch/gorest/internal/comments/domain"
 	commentrepository "github.com/chuuch/gorest/internal/comments/repository"
+	"github.com/chuuch/gorest/internal/notifications"
+	notificationdomain "github.com/chuuch/gorest/internal/notifications/domain"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	taskrepository "github.com/chuuch/gorest/internal/tasks/repository"
 	"github.com/google/uuid"
@@ -34,6 +36,7 @@ type Service interface {
 type service struct {
 	comments commentrepository.CommentRepository
 	tasks    taskrepository.TaskRepository
+	notify   notifications.Publisher
 }
 
 func NewService(
@@ -43,7 +46,17 @@ func NewService(
 	return &service{
 		comments: comments,
 		tasks:    tasks,
+		notify:   notifications.Nop{},
 	}
+}
+
+func EnableNotifications(s Service, pub notifications.Publisher) Service {
+	impl, ok := s.(*service)
+	if !ok || pub == nil {
+		return s
+	}
+	impl.notify = pub
+	return impl
 }
 
 func (s *service) List(
@@ -67,7 +80,8 @@ func (s *service) Create(
 	organizationID, taskID, userID uuid.UUID,
 	req commentdomain.CreateCommentRequest,
 ) (*commentdomain.Comment, error) {
-	if _, err := s.tasks.GetByID(ctx, taskID, organizationID); err != nil {
+	task, err := s.tasks.GetByID(ctx, taskID, organizationID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -85,6 +99,19 @@ func (s *service) Create(
 
 	if err := s.comments.Create(ctx, comment); err != nil {
 		return nil, err
+	}
+
+	if task.AssigneeID != nil {
+		notifications.NotifyUser(
+			ctx,
+			s.notify,
+			organizationID,
+			*task.AssigneeID,
+			notificationdomain.KindTaskCommented,
+			notificationdomain.EntityComment,
+			task.Title,
+			comment.ID,
+		)
 	}
 
 	return comment, nil
