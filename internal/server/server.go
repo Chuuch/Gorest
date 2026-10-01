@@ -40,6 +40,9 @@ import (
 	projecthandler "github.com/chuuch/gorest/internal/projects/handler"
 	projectpostgres "github.com/chuuch/gorest/internal/projects/postgres"
 	projectusecase "github.com/chuuch/gorest/internal/projects/usecase"
+	reporthandler "github.com/chuuch/gorest/internal/reports/handler"
+	reportspostgres "github.com/chuuch/gorest/internal/reports/postgres"
+	reportsusecase "github.com/chuuch/gorest/internal/reports/usecase"
 	"github.com/chuuch/gorest/internal/storage"
 	taskhandler "github.com/chuuch/gorest/internal/tasks/handler"
 	taskpostgres "github.com/chuuch/gorest/internal/tasks/postgres"
@@ -177,6 +180,13 @@ func New(cfg *config.Config) (*Server, error) {
 	activityHandler := activityhandler.NewHandler(activityService)
 
 	// -------------------------------------------------------------
+	// Reports domain
+	// -------------------------------------------------------------
+	reportRepository := reportspostgres.NewRepository(db)
+	reportService := reportsusecase.NewService(reportRepository)
+	reportHandler := reporthandler.NewHandler(reportService)
+
+	// -------------------------------------------------------------
 	// Client domain
 	// -------------------------------------------------------------
 	clientRepository := clientpostgres.NewRepository(db)
@@ -280,6 +290,7 @@ func New(cfg *config.Config) (*Server, error) {
 		ticketFileHandler,
 		ticketCommentHandler,
 		activityHandler,
+		reportHandler,
 		tokenManager,
 	)
 

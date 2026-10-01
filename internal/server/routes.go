@@ -14,6 +14,7 @@ import (
 	"github.com/chuuch/gorest/internal/middleware"
 	orghandler "github.com/chuuch/gorest/internal/organization/handler"
 	projecthandler "github.com/chuuch/gorest/internal/projects/handler"
+	reporthandler "github.com/chuuch/gorest/internal/reports/handler"
 	taskhandler "github.com/chuuch/gorest/internal/tasks/handler"
 	ticketcommenthandler "github.com/chuuch/gorest/internal/ticketcomments/handler"
 	ticketfilehandler "github.com/chuuch/gorest/internal/ticketfiles/handler"
@@ -45,6 +46,7 @@ func newRouter(
 	ticketFileHandler *ticketfilehandler.Handler,
 	ticketCommentHandler *ticketcommenthandler.Handler,
 	activityHandler *activityhandler.Handler,
+	reportHandler *reporthandler.Handler,
 	tokenManager security.TokenManager,
 ) *http.ServeMux {
 	mux := http.NewServeMux()
@@ -65,6 +67,7 @@ func newRouter(
 		ticketFileHandler,
 		ticketCommentHandler,
 		activityHandler,
+		reportHandler,
 		tokenManager,
 	)
 
@@ -87,6 +90,7 @@ func registerRoutes(
 	ticketFileHandler *ticketfilehandler.Handler,
 	ticketCommentHandler *ticketcommenthandler.Handler,
 	activityHandler *activityhandler.Handler,
+	reportHandler *reporthandler.Handler,
 	tokenManager security.TokenManager,
 ) {
 	loginLimiter := middleware.NewLimiter(10, 15*time.Minute)
@@ -110,6 +114,7 @@ func registerRoutes(
 
 	// ACTIVITY
 	mux.Handle("GET /api/v1/activity", staff(tokenManager, activityHandler.List))
+	mux.Handle("GET /api/v1/reports/time", staff(tokenManager, reportHandler.Time))
 
 	// CLIENTS
 	mux.Handle("GET /api/v1/clients", staff(tokenManager, clientHandler.List))
