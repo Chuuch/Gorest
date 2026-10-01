@@ -97,7 +97,10 @@ func (s *service) Issue(ctx context.Context, in IssueInput) error {
 	}
 
 	acceptURL := s.publicURL + "/accept-invite?token=" + raw
-	subject, text, html := inviteMail(in, acceptURL)
+	subject, text, html, err := inviteMail(in, acceptURL)
+	if err != nil {
+		return fmt.Errorf("render invite: %w", err)
+	}
 
 	if err := s.mailer.Send(ctx, mailer.Message{
 		To:      in.Email,
@@ -179,8 +182,16 @@ func (s *service) RequestReset(ctx context.Context, email string) error {
 	resetURL := s.publicURL + "/reset-password?token=" + raw
 	subject := "Reset your Flourish password"
 	text := "Reset your password:\n" + resetURL + "\n\nThis link expires in 1 hour.\n"
-	html := "<p><a href=\"" + resetURL + "\">Reset your password</a></p>" +
-		"<p>This link expires in 1 hour.</p>"
+	html, err := mailer.RenderTransactional(mailer.Transactional{
+		Heading:     "Reset your password",
+		Body:        "Use the button below to choose a new password for your Flourish account.",
+		ActionURL:   resetURL,
+		ActionLabel: "Reset your password",
+		Expiry:      "This link expires in 1 hour.",
+	})
+	if err != nil {
+		return fmt.Errorf("render reset: %w", err)
+	}
 
 	if err := s.mailer.Send(ctx, mailer.Message{
 		To:      user.Email,
@@ -255,7 +266,7 @@ func (s *service) Reset(ctx context.Context, rawToken, password string) error {
 	return nil
 }
 
-func inviteMail(in IssueInput, acceptURL string) (string, string, string) {
+func inviteMail(in IssueInput, acceptURL string) (string, string, string, error) {
 	org := in.OrganizationName
 	if org == "" {
 		org = "Flourish"
@@ -276,9 +287,16 @@ func inviteMail(in IssueInput, acceptURL string) (string, string, string) {
 		"Set your password:\n" + acceptURL + "\n\n" +
 		"This link expires in 7 days.\n"
 
-	html := "<p>You've been invited to " + who + ".<p>" +
-		"<p><a href=\"" + acceptURL + "\">Set your password</a></p>" +
-		"<p>This link expires in 7 days.</p>"
+	html, err := mailer.RenderTransactional(mailer.Transactional{
+		Heading:     "You're invited",
+		Body:        "You've been invited to " + who + ".",
+		ActionURL:   acceptURL,
+		ActionLabel: "Set your password",
+		Expiry:      "This link expires in 7 days.",
+	})
+	if err != nil {
+		return "", "", "", err
+	}
 
-	return subject, text, html
+	return subject, text, html, nil
 }
