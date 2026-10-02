@@ -11,6 +11,7 @@ import (
 	clientuserhandler "github.com/chuuch/gorest/internal/clientusers/handler"
 	commenthandler "github.com/chuuch/gorest/internal/comments/handler"
 	filehandler "github.com/chuuch/gorest/internal/files/handler"
+	invoicehandler "github.com/chuuch/gorest/internal/invoices/handler"
 	"github.com/chuuch/gorest/internal/middleware"
 	notificationhandler "github.com/chuuch/gorest/internal/notifications/handler"
 	orghandler "github.com/chuuch/gorest/internal/organization/handler"
@@ -49,6 +50,7 @@ func newRouter(
 	activityHandler *activityhandler.Handler,
 	reportHandler *reporthandler.Handler,
 	notificationHandler *notificationhandler.Handler,
+	invoiceHandler *invoicehandler.Handler,
 	tokenManager security.TokenManager,
 ) *http.ServeMux {
 	mux := http.NewServeMux()
@@ -71,6 +73,7 @@ func newRouter(
 		activityHandler,
 		reportHandler,
 		notificationHandler,
+		invoiceHandler,
 		tokenManager,
 	)
 
@@ -95,6 +98,7 @@ func registerRoutes(
 	activityHandler *activityhandler.Handler,
 	reportHandler *reporthandler.Handler,
 	notificationHandler *notificationhandler.Handler,
+	invoiceHandler *invoicehandler.Handler,
 	tokenManager security.TokenManager,
 ) {
 	loginLimiter := middleware.NewLimiter(10, 15*time.Minute)
@@ -138,6 +142,15 @@ func registerRoutes(
 	mux.Handle("GET /api/v1/clients/{id}/users", staff(tokenManager, clientUserHandler.List))
 	mux.Handle("POST /api/v1/clients/{id}/users", staff(tokenManager, clientUserHandler.Create))
 	mux.Handle("DELETE /api/v1/clients/{id}/users/{userId}", staff(tokenManager, clientUserHandler.Delete))
+
+	// INVOICES
+	mux.Handle("GET /api/v1/clients/{id}/invoices", staff(tokenManager, invoiceHandler.List))
+	mux.Handle("POST /api/v1/clients/{id}/invoices", staff(tokenManager, invoiceHandler.Create))
+	mux.Handle("GET /api/v1/invoices/{id}", staff(tokenManager, invoiceHandler.Get))
+	mux.Handle("PATCH /api/v1/invoices/{id}", staff(tokenManager, invoiceHandler.Update))
+	mux.Handle("DELETE /api/v1/invoices/{id}", staff(tokenManager, invoiceHandler.Delete))
+	mux.Handle("POST /api/v1/invoices/{id}/send", staff(tokenManager, invoiceHandler.Send))
+	mux.Handle("POST /api/v1/invoices/{id}/paid", staff(tokenManager, invoiceHandler.MarkPaid))
 
 	// TASKS
 	mux.Handle("GET /api/v1/projects/{id}/tasks", staff(tokenManager, taskHandler.List))
