@@ -208,6 +208,9 @@ func registerRoutes(
 	mux.HandleFunc("POST /api/v1/client-auth/logout", clientUserHandler.Logout)
 	mux.Handle("GET /api/v1/client-auth/me", portal(tokenManager, clientUserHandler.Me))
 	mux.Handle("POST /api/v1/client-auth/change-password", portal(tokenManager, clientUserHandler.ChangePassword))
+	mux.Handle("GET /api/v1/client-auth/invoices", portal(tokenManager, invoiceHandler.ListPortal))
+	mux.Handle("GET /api/v1/client-auth/invoices/{id}", portal(tokenManager, invoiceHandler.GetPortal))
+	mux.Handle("GET /api/v1/client-auth/invoices/{id}/pdf", portal(tokenManager, invoiceHandler.PDFPortal))
 
 	// AUTH
 	mux.HandleFunc("POST /api/v1/auth/register", authHandler.Register)

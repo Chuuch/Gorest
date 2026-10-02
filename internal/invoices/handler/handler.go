@@ -199,6 +199,103 @@ func (h *Handler) PDF(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
+func (h *Handler) ListPortal(w http.ResponseWriter, r *http.Request) {
+	organizationID, _, clientID, ok := h.portalSession(w, r)
+	if !ok {
+		return
+	}
+
+	invoices, err := h.service.ListPortal(r.Context(), organizationID, clientID)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	h.writeList(w, invoices)
+}
+
+func (h *Handler) GetPortal(w http.ResponseWriter, r *http.Request) {
+	organizationID, _, clientID, ok := h.portalSession(w, r)
+	if !ok {
+		return
+	}
+
+	invoiceID, ok := h.invoiceID(w, r)
+	if !ok {
+		return
+	}
+
+	invoice, err := h.service.GetPortal(r.Context(), organizationID, clientID, invoiceID)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	api.WriteJSON(w, http.StatusOK, toResponse(invoice))
+}
+
+func (h *Handler) PDFPortal(w http.ResponseWriter, r *http.Request) {
+	organizationID, _, clientID, ok := h.portalSession(w, r)
+	if !ok {
+		return
+	}
+
+	invoiceID, ok := h.invoiceID(w, r)
+	if !ok {
+		return
+	}
+
+	data, filename, err := h.service.PDFPortal(r.Context(), organizationID, clientID, invoiceID)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
+func (h *Handler) portalSession(
+	w http.ResponseWriter,
+	r *http.Request,
+) (uuid.UUID, uuid.UUID, uuid.UUID, bool) {
+	organizationID, ok := requestcontext.OrganizationID(r.Context())
+	if !ok {
+		api.WriteError(
+			w,
+			http.StatusUnauthorized,
+			"unauthorized",
+			"unauthorized",
+		)
+		return uuid.Nil, uuid.Nil, uuid.Nil, false
+	}
+
+	userID, ok := requestcontext.UserID(r.Context())
+	if !ok {
+		api.WriteError(
+			w,
+			http.StatusUnauthorized,
+			"unauthorized",
+			"unauthorized",
+		)
+		return uuid.Nil, uuid.Nil, uuid.Nil, false
+	}
+
+	clientID, ok := requestcontext.ClientID(r.Context())
+	if !ok {
+		api.WriteError(
+			w,
+			http.StatusUnauthorized,
+			"unauthorized",
+			"unauthorized",
+		)
+		return uuid.Nil, uuid.Nil, uuid.Nil, false
+	}
+	return organizationID, userID, clientID, true
+}
+
 func (h *Handler) rangeFromBody(
 	w http.ResponseWriter,
 	r *http.Request,
