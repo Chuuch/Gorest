@@ -77,6 +77,7 @@ type mockService struct {
 	deleteFunc   func(uuid.UUID, uuid.UUID, orgdomain.Role) error
 	sendFunc     func(uuid.UUID, uuid.UUID, orgdomain.Role) (*invoicedomain.Invoice, error)
 	markPaidFunc func(uuid.UUID, uuid.UUID, orgdomain.Role) (*invoicedomain.Invoice, error)
+	pdfFunc      func(uuid.UUID, uuid.UUID) ([]byte, string, error)
 }
 
 func (m *mockService) List(_ context.Context, organizationID, clientID uuid.UUID) ([]*invoicedomain.Invoice, error) {
@@ -127,6 +128,13 @@ func (m *mockService) MarkPaid(
 	actorRole orgdomain.Role,
 ) (*invoicedomain.Invoice, error) {
 	return m.markPaidFunc(organizationID, invoiceID, actorRole)
+}
+
+func (m *mockService) PDF(
+	_ context.Context,
+	organizationID, invoiceID uuid.UUID,
+) ([]byte, string, error) {
+	return m.pdfFunc(organizationID, invoiceID)
 }
 
 func TestHandler_List(t *testing.T) {
@@ -212,4 +220,45 @@ func TestHandler_Create_NoLineItems(t *testing.T) {
 	invoicehandler.NewHandler(service).Create(rec, req)
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandler_PDF(t *testing.T) {
+	service := &mockService{
+		pdfFunc: func(organizationID, invoiceID uuid.UUID) ([]byte, string, error) {
+			require.Equal(t, testOrganizationID(), organizationID)
+			require.Equal(t, testInvoiceID(), invoiceID)
+			return []byte("%PDF-1.4 mock"), "INV-2026-0001.pdf", nil
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/invoices/"+testInvoiceID().String()+"/pdf", nil)
+	req.SetPathValue("id", testInvoiceID().String())
+	req = withStaffSession(req, "member")
+	rec := httptest.NewRecorder()
+	invoicehandler.NewHandler(service).PDF(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "application/pdf", rec.Header().Get("Content-Type"))
+	require.Equal(
+		t,
+		`attachment; filename="INV-2026-0001.pdf"`,
+		rec.Header().Get("Content-Disposition"),
+	)
+	require.Equal(t, "%PDF-1.4 mock", rec.Body.String())
+}
+
+func TestHandler_PDF_NotFound(t *testing.T) {
+	service := &mockService{
+		pdfFunc: func(uuid.UUID, uuid.UUID) ([]byte, string, error) {
+			return nil, "", invoicedomain.ErrInvoiceNotFound
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/invoices/"+testInvoiceID().String()+"/pdf", nil)
+	req.SetPathValue("id", testInvoiceID().String())
+	req = withStaffSession(req, "owner")
+	rec := httptest.NewRecorder()
+	invoicehandler.NewHandler(service).PDF(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
 }

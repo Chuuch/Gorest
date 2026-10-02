@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -170,6 +171,32 @@ func (h *Handler) MarkPaid(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.WriteJSON(w, http.StatusOK, toResponse(invoice))
+}
+
+func (h *Handler) PDF(w http.ResponseWriter, r *http.Request) {
+	organizationID, _, ok := h.staffSession(w, r)
+	if !ok {
+		return
+	}
+
+	invoiceID, ok := h.invoiceID(w, r)
+	if !ok {
+		return
+	}
+
+	data, filename, err := h.service.PDF(r.Context(), organizationID, invoiceID)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set(
+		"Content-Disposition",
+		fmt.Sprintf(`attachment; filename="%s"`, filename),
+	)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
 }
 
 func (h *Handler) rangeFromBody(
