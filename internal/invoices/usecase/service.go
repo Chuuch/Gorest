@@ -12,6 +12,7 @@ import (
 	clientuserrepository "github.com/chuuch/gorest/internal/clientusers/repository"
 	"github.com/chuuch/gorest/internal/database"
 	"github.com/chuuch/gorest/internal/invoices/domain"
+	invoicepdf "github.com/chuuch/gorest/internal/invoices/pdf"
 	invoicerepository "github.com/chuuch/gorest/internal/invoices/repository"
 	"github.com/chuuch/gorest/internal/mailer"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
@@ -57,6 +58,10 @@ type Service interface {
 		organizationID, invoiceID uuid.UUID,
 		actorRole orgdomain.Role,
 	) (*domain.Invoice, error)
+	PDF(
+		ctx context.Context,
+		organizationID, invoiceID uuid.UUID,
+	) ([]byte, string, error)
 }
 
 type service struct {
@@ -330,6 +335,23 @@ func (s *service) MarkPaid(
 	}
 
 	return invoice, nil
+}
+
+func (s *service) PDF(
+	ctx context.Context,
+	organizationID, invoiceID uuid.UUID,
+) ([]byte, string, error) {
+	invoice, err := s.invoices.GetByID(ctx, invoiceID, organizationID)
+	if err != nil {
+		return nil, "", err
+	}
+
+	data, err := invoicepdf.Generate(invoice)
+	if err != nil {
+		return nil, "", fmt.Errorf("generate invoice pdf: %w", err)
+	}
+
+	return data, invoice.Number + ".pdf", nil
 }
 
 func (s *service) mailInvoice(

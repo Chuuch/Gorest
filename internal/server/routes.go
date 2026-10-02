@@ -145,6 +145,7 @@ func registerRoutes(
 
 	// INVOICES
 	mux.Handle("GET /api/v1/clients/{id}/invoices", staff(tokenManager, invoiceHandler.List))
+	mux.Handle("GET /api/v1/invoices/{id}/pdf", staff(tokenManager, invoiceHandler.PDF))
 	mux.Handle("POST /api/v1/clients/{id}/invoices", staff(tokenManager, invoiceHandler.Create))
 	mux.Handle("GET /api/v1/invoices/{id}", staff(tokenManager, invoiceHandler.Get))
 	mux.Handle("PATCH /api/v1/invoices/{id}", staff(tokenManager, invoiceHandler.Update))
