@@ -32,6 +32,9 @@ import (
 	filepostgres "github.com/chuuch/gorest/internal/files/postgres"
 	fileusecase "github.com/chuuch/gorest/internal/files/usecase"
 	"github.com/chuuch/gorest/internal/invites"
+	invoicehandler "github.com/chuuch/gorest/internal/invoices/handler"
+	invoicepostgres "github.com/chuuch/gorest/internal/invoices/postgres"
+	invoiceusecase "github.com/chuuch/gorest/internal/invoices/usecase"
 	"github.com/chuuch/gorest/internal/mailer"
 	"github.com/chuuch/gorest/internal/middleware"
 	notificationhandler "github.com/chuuch/gorest/internal/notifications/handler"
@@ -298,6 +301,22 @@ func New(cfg *config.Config) (*Server, error) {
 	ticketCommentHandler := ticketcommenthandler.NewHandler(ticketCommentService).WithActivity(activityService)
 
 	// -------------------------------------------------------------
+	// Invoices domain
+	// -------------------------------------------------------------
+	invoiceRepository := invoicepostgres.NewRepository(db)
+	invoiceService := invoiceusecase.NewService(
+		invoiceRepository,
+		clientRepository,
+		organizationRepository,
+		clientUserRepository,
+		userRepository,
+		mailSender,
+		db,
+		cfg.App.PublicURL,
+	)
+	invoiceHandler := invoicehandler.NewHandler(invoiceService)
+
+	// -------------------------------------------------------------
 	// HTTP Server
 	// -------------------------------------------------------------
 	router := newRouter(
@@ -317,6 +336,7 @@ func New(cfg *config.Config) (*Server, error) {
 		activityHandler,
 		reportHandler,
 		notificationHandler,
+		invoiceHandler,
 		tokenManager,
 	)
 
