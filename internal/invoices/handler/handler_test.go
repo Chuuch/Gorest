@@ -70,14 +70,17 @@ func withStaffSession(req *http.Request, role string) *http.Request {
 }
 
 type mockService struct {
-	listFunc     func(uuid.UUID, uuid.UUID) ([]*invoicedomain.Invoice, error)
-	getFunc      func(uuid.UUID, uuid.UUID) (*invoicedomain.Invoice, error)
-	createFunc   func(uuid.UUID, uuid.UUID, orgdomain.Role, time.Time, time.Time) (*invoicedomain.Invoice, error)
-	updateFunc   func(uuid.UUID, uuid.UUID, orgdomain.Role, time.Time, time.Time) (*invoicedomain.Invoice, error)
-	deleteFunc   func(uuid.UUID, uuid.UUID, orgdomain.Role) error
-	sendFunc     func(uuid.UUID, uuid.UUID, orgdomain.Role) (*invoicedomain.Invoice, error)
-	markPaidFunc func(uuid.UUID, uuid.UUID, orgdomain.Role) (*invoicedomain.Invoice, error)
-	pdfFunc      func(uuid.UUID, uuid.UUID) ([]byte, string, error)
+	listFunc       func(uuid.UUID, uuid.UUID) ([]*invoicedomain.Invoice, error)
+	getFunc        func(uuid.UUID, uuid.UUID) (*invoicedomain.Invoice, error)
+	createFunc     func(uuid.UUID, uuid.UUID, orgdomain.Role, time.Time, time.Time) (*invoicedomain.Invoice, error)
+	updateFunc     func(uuid.UUID, uuid.UUID, orgdomain.Role, time.Time, time.Time) (*invoicedomain.Invoice, error)
+	deleteFunc     func(uuid.UUID, uuid.UUID, orgdomain.Role) error
+	sendFunc       func(uuid.UUID, uuid.UUID, orgdomain.Role) (*invoicedomain.Invoice, error)
+	markPaidFunc   func(uuid.UUID, uuid.UUID, orgdomain.Role) (*invoicedomain.Invoice, error)
+	pdfFunc        func(uuid.UUID, uuid.UUID) ([]byte, string, error)
+	listPortalFunc func(uuid.UUID, uuid.UUID) ([]*invoicedomain.Invoice, error)
+	getPortalFunc  func(uuid.UUID, uuid.UUID, uuid.UUID) (*invoicedomain.Invoice, error)
+	pdfPortalFunc  func(uuid.UUID, uuid.UUID, uuid.UUID) ([]byte, string, error)
 }
 
 func (m *mockService) List(_ context.Context, organizationID, clientID uuid.UUID) ([]*invoicedomain.Invoice, error) {
@@ -135,6 +138,27 @@ func (m *mockService) PDF(
 	organizationID, invoiceID uuid.UUID,
 ) ([]byte, string, error) {
 	return m.pdfFunc(organizationID, invoiceID)
+}
+
+func (m *mockService) ListPortal(
+	_ context.Context,
+	organizationID, clientID uuid.UUID,
+) ([]*invoicedomain.Invoice, error) {
+	return m.listPortalFunc(organizationID, clientID)
+}
+
+func (m *mockService) GetPortal(
+	_ context.Context,
+	organizationID, clientID, invoiceID uuid.UUID,
+) (*invoicedomain.Invoice, error) {
+	return m.getPortalFunc(organizationID, clientID, invoiceID)
+}
+
+func (m *mockService) PDFPortal(
+	_ context.Context,
+	organizationID, clientID, invoiceID uuid.UUID,
+) ([]byte, string, error) {
+	return m.pdfPortalFunc(organizationID, clientID, invoiceID)
 }
 
 func TestHandler_List(t *testing.T) {
@@ -259,6 +283,53 @@ func TestHandler_PDF_NotFound(t *testing.T) {
 	req = withStaffSession(req, "owner")
 	rec := httptest.NewRecorder()
 	invoicehandler.NewHandler(service).PDF(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func withPortalSession(req *http.Request) *http.Request {
+	ctx := requestcontext.WithOrganizationID(req.Context(), testOrganizationID())
+	ctx = requestcontext.WithUserID(ctx, uuid.MustParse("11111111-1111-1111-1111-111111111111"))
+	ctx = requestcontext.WithClientID(ctx, testClientID())
+	ctx = requestcontext.WithRole(ctx, "client")
+	return req.WithContext(ctx)
+}
+
+func TestHandler_ListPortal(t *testing.T) {
+	invoice := testInvoice()
+	invoice.Status = invoicedomain.StatusSent
+	service := &mockService{
+		listPortalFunc: func(organizationID, clientID uuid.UUID) ([]*invoicedomain.Invoice, error) {
+			require.Equal(t, testOrganizationID(), organizationID)
+			require.Equal(t, testClientID(), clientID)
+			return []*invoicedomain.Invoice{invoice}, nil
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/client-auth/invoices", nil)
+	req = withPortalSession(req)
+	rec := httptest.NewRecorder()
+	invoicehandler.NewHandler(service).ListPortal(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var response []invoicedomain.InvoiceResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Len(t, response, 1)
+	require.Equal(t, "INV-2026-0001", response[0].Number)
+}
+
+func TestHandler_GetPortal_NotFound(t *testing.T) {
+	service := &mockService{
+		getPortalFunc: func(uuid.UUID, uuid.UUID, uuid.UUID) (*invoicedomain.Invoice, error) {
+			return nil, invoicedomain.ErrInvoiceNotFound
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/client-auth/invoices/"+testInvoiceID().String(), nil)
+	req.SetPathValue("id", testInvoiceID().String())
+	req = withPortalSession(req)
+	rec := httptest.NewRecorder()
+	invoicehandler.NewHandler(service).GetPortal(rec, req)
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
 }

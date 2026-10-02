@@ -23,45 +23,17 @@ import (
 )
 
 type Service interface {
-	List(
-		ctx context.Context,
-		organizationID, clientID uuid.UUID,
-	) ([]*domain.Invoice, error)
-	Get(
-		ctx context.Context,
-		organizationID, invoiceID uuid.UUID,
-	) (*domain.Invoice, error)
-	Create(
-		ctx context.Context,
-		organizationID, clientID uuid.UUID,
-		actorRole orgdomain.Role,
-		from, to time.Time,
-	) (*domain.Invoice, error)
-	Update(
-		ctx context.Context,
-		organizationID, invoiceID uuid.UUID,
-		actorRole orgdomain.Role,
-		from, to time.Time,
-	) (*domain.Invoice, error)
-	Delete(
-		ctx context.Context,
-		organizationID, invoiceID uuid.UUID,
-		actorRole orgdomain.Role,
-	) error
-	Send(
-		ctx context.Context,
-		organizationID, invoiceID uuid.UUID,
-		actorRole orgdomain.Role,
-	) (*domain.Invoice, error)
-	MarkPaid(
-		ctx context.Context,
-		organizationID, invoiceID uuid.UUID,
-		actorRole orgdomain.Role,
-	) (*domain.Invoice, error)
-	PDF(
-		ctx context.Context,
-		organizationID, invoiceID uuid.UUID,
-	) ([]byte, string, error)
+	List(ctx context.Context, organizationID, clientID uuid.UUID) ([]*domain.Invoice, error)
+	Get(ctx context.Context, organizationID, invoiceID uuid.UUID) (*domain.Invoice, error)
+	Create(ctx context.Context, organizationID, clientID uuid.UUID, actorRole orgdomain.Role, from, to time.Time) (*domain.Invoice, error)
+	Update(ctx context.Context, organizationID, invoiceID uuid.UUID, actorRole orgdomain.Role, from, to time.Time) (*domain.Invoice, error)
+	Delete(ctx context.Context, organizationID, invoiceID uuid.UUID, actorRole orgdomain.Role) error
+	Send(ctx context.Context, organizationID, invoiceID uuid.UUID, actorRole orgdomain.Role) (*domain.Invoice, error)
+	MarkPaid(ctx context.Context, organizationID, invoiceID uuid.UUID, actorRole orgdomain.Role) (*domain.Invoice, error)
+	PDF(ctx context.Context, organizationID, invoiceID uuid.UUID) ([]byte, string, error)
+	ListPortal(ctx context.Context, organizationID, clientID uuid.UUID) ([]*domain.Invoice, error)
+	GetPortal(ctx context.Context, organizationID, clientID, invoiceID uuid.UUID) (*domain.Invoice, error)
+	PDFPortal(ctx context.Context, organizationID, clientID, invoiceID uuid.UUID) ([]byte, string, error)
 }
 
 type service struct {
@@ -342,6 +314,57 @@ func (s *service) PDF(
 	organizationID, invoiceID uuid.UUID,
 ) ([]byte, string, error) {
 	invoice, err := s.invoices.GetByID(ctx, invoiceID, organizationID)
+	if err != nil {
+		return nil, "", err
+	}
+
+	data, err := invoicepdf.Generate(invoice)
+	if err != nil {
+		return nil, "", fmt.Errorf("generate invoice pdf: %w", err)
+	}
+
+	return data, invoice.Number + ".pdf", nil
+}
+
+func (s *service) ListPortal(
+	ctx context.Context,
+	organizationID, clientID uuid.UUID,
+) ([]*domain.Invoice, error) {
+	invoices, err := s.invoices.ListByClientID(ctx, organizationID, clientID)
+	if err != nil {
+		return nil, fmt.Errorf("list portal invoices: %w", err)
+	}
+
+	visible := make([]*domain.Invoice, 0, len(invoices))
+	for _, invoice := range invoices {
+		if invoice.Status == domain.StatusSent || invoice.Status == domain.StatusPaid {
+			visible = append(visible, invoice)
+		}
+	}
+	return visible, nil
+}
+
+func (s *service) GetPortal(
+	ctx context.Context,
+	organizationID, clientID, invoiceID uuid.UUID,
+) (*domain.Invoice, error) {
+	invoice, err := s.invoices.GetByID(ctx, invoiceID, organizationID)
+	if err != nil {
+		return nil, err
+	}
+
+	if invoice.ClientID != clientID || invoice.Status == domain.StatusDraft {
+		return nil, domain.ErrInvoiceNotFound
+	}
+
+	return invoice, nil
+}
+
+func (s *service) PDFPortal(
+	ctx context.Context,
+	organizationID, clientID, invoiceID uuid.UUID,
+) ([]byte, string, error) {
+	invoice, err := s.GetPortal(ctx, organizationID, clientID, invoiceID)
 	if err != nil {
 		return nil, "", err
 	}
