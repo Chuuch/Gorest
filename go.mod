@@ -3,6 +3,7 @@ module github.com/chuuch/gorest
 go 1.27.0
 
 require (
+	codeberg.org/go-pdf/fpdf v0.12.0
 	github.com/aws/aws-sdk-go-v2 v1.47.0
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.5
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.113.1
@@ -20,7 +21,6 @@ require (
 )
 
 require (
-	codeberg.org/go-pdf/fpdf v0.12.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
