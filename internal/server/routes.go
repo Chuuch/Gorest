@@ -10,6 +10,7 @@ import (
 	clienthandler "github.com/chuuch/gorest/internal/client/handler"
 	clientuserhandler "github.com/chuuch/gorest/internal/clientusers/handler"
 	commenthandler "github.com/chuuch/gorest/internal/comments/handler"
+	eventshandler "github.com/chuuch/gorest/internal/events/handler"
 	filehandler "github.com/chuuch/gorest/internal/files/handler"
 	invoicehandler "github.com/chuuch/gorest/internal/invoices/handler"
 	"github.com/chuuch/gorest/internal/middleware"
@@ -51,6 +52,7 @@ func newRouter(
 	reportHandler *reporthandler.Handler,
 	notificationHandler *notificationhandler.Handler,
 	invoiceHandler *invoicehandler.Handler,
+	eventsHandler *eventshandler.Handler,
 	tokenManager security.TokenManager,
 ) *http.ServeMux {
 	mux := http.NewServeMux()
@@ -74,6 +76,7 @@ func newRouter(
 		reportHandler,
 		notificationHandler,
 		invoiceHandler,
+		eventsHandler,
 		tokenManager,
 	)
 
@@ -99,6 +102,7 @@ func registerRoutes(
 	reportHandler *reporthandler.Handler,
 	notificationHandler *notificationhandler.Handler,
 	invoiceHandler *invoicehandler.Handler,
+	eventsHandler *eventshandler.Handler,
 	tokenManager security.TokenManager,
 ) {
 	loginLimiter := middleware.NewLimiter(10, 15*time.Minute)
@@ -125,6 +129,7 @@ func registerRoutes(
 	mux.Handle("GET /api/v1/reports/time", staff(tokenManager, reportHandler.Time))
 	mux.Handle("GET /api/v1/notifications", staff(tokenManager, notificationHandler.List))
 	mux.Handle("PATCH /api/v1/notifications/{id}/read", staff(tokenManager, notificationHandler.MarkRead))
+	mux.Handle("GET /api/v1/events", staff(tokenManager, eventsHandler.Staff))
 
 	// CLIENTS
 	mux.Handle("GET /api/v1/clients", staff(tokenManager, clientHandler.List))
@@ -211,6 +216,7 @@ func registerRoutes(
 	mux.Handle("GET /api/v1/client-auth/invoices", portal(tokenManager, invoiceHandler.ListPortal))
 	mux.Handle("GET /api/v1/client-auth/invoices/{id}", portal(tokenManager, invoiceHandler.GetPortal))
 	mux.Handle("GET /api/v1/client-auth/invoices/{id}/pdf", portal(tokenManager, invoiceHandler.PDFPortal))
+	mux.Handle("GET /api/v1/client-auth/events", portal(tokenManager, eventsHandler.Portal))
 
 	// AUTH
 	mux.HandleFunc("POST /api/v1/auth/register", authHandler.Register)
