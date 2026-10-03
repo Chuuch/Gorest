@@ -28,6 +28,8 @@ import (
 	commentusecase "github.com/chuuch/gorest/internal/comments/usecase"
 	"github.com/chuuch/gorest/internal/config"
 	"github.com/chuuch/gorest/internal/database"
+	"github.com/chuuch/gorest/internal/events"
+	eventshandler "github.com/chuuch/gorest/internal/events/handler"
 	filehandler "github.com/chuuch/gorest/internal/files/handler"
 	filepostgres "github.com/chuuch/gorest/internal/files/postgres"
 	fileusecase "github.com/chuuch/gorest/internal/files/usecase"
@@ -182,7 +184,14 @@ func New(cfg *config.Config) (*Server, error) {
 	// Activity domain
 	// -------------------------------------------------------------
 	activityRepository := activitypostgres.NewRepository(db)
-	activityService := activityusecase.NewService(activityRepository)
+
+	eventHub := events.NewHub()
+	eventsHandler := eventshandler.NewHandler(eventHub)
+
+	activityService := activityusecase.EnableRealtime(
+		activityusecase.NewService(activityRepository),
+		eventHub,
+	)
 	activityHandler := activityhandler.NewHandler(activityService)
 
 	// -------------------------------------------------------------
@@ -196,9 +205,12 @@ func New(cfg *config.Config) (*Server, error) {
 	// Notifications domain
 	// -------------------------------------------------------------
 	notificationRepository := notificationpostgres.NewRepository(db)
-	notificationService := notificationsusecase.NewService(
-		notificationRepository,
-		membershipRepository,
+	notificationService := notificationsusecase.EnableRealtime(
+		notificationsusecase.NewService(
+			notificationRepository,
+			membershipRepository,
+		),
+		eventHub,
 	)
 	notificationHandler := notificationhandler.NewHandler(notificationService)
 
@@ -337,6 +349,7 @@ func New(cfg *config.Config) (*Server, error) {
 		reportHandler,
 		notificationHandler,
 		invoiceHandler,
+		eventsHandler,
 		tokenManager,
 	)
 

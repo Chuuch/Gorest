@@ -7,6 +7,7 @@ import (
 
 	"github.com/chuuch/gorest/internal/activity/domain"
 	"github.com/chuuch/gorest/internal/activity/repository"
+	"github.com/chuuch/gorest/internal/events"
 	"github.com/google/uuid"
 )
 
@@ -21,10 +22,20 @@ type Service interface {
 
 type service struct {
 	events repository.EventRepository
+	hub    *events.Hub
 }
 
 func NewService(events repository.EventRepository) Service {
 	return &service{events: events}
+}
+
+func EnableRealtime(s Service, hub *events.Hub) Service {
+	inner, ok := s.(*service)
+	if !ok || hub == nil {
+		return s
+	}
+	inner.hub = hub
+	return inner
 }
 
 func (s *service) Record(
@@ -40,6 +51,10 @@ func (s *service) Record(
 
 	if err := s.events.Create(ctx, &event); err != nil {
 		return fmt.Errorf("create activity event: %w", err)
+	}
+
+	if s.hub != nil {
+		s.hub.PublishActivity(event.OrganizationID)
 	}
 
 	return nil

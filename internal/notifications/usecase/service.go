@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/chuuch/gorest/internal/events"
 	"github.com/chuuch/gorest/internal/notifications"
 	"github.com/chuuch/gorest/internal/notifications/domain"
 	"github.com/chuuch/gorest/internal/notifications/repository"
@@ -29,6 +30,7 @@ type Service interface {
 type service struct {
 	notifications repository.NotificationRepository
 	memberships   orgrepository.MembershipRepository
+	hub           *events.Hub
 }
 
 func NewService(
@@ -39,6 +41,15 @@ func NewService(
 		notifications: notes,
 		memberships:   memberships,
 	}
+}
+
+func EnableRealtime(s Service, hub *events.Hub) Service {
+	inner, ok := s.(*service)
+	if !ok || hub == nil {
+		return s
+	}
+	inner.hub = hub
+	return inner
 }
 
 func (s *service) Publish(ctx context.Context, msg notifications.Message) error {
@@ -71,6 +82,9 @@ func (s *service) Publish(ctx context.Context, msg notifications.Message) error 
 		}
 		if err := s.notifications.Create(ctx, item); err != nil {
 			return fmt.Errorf("create notification: %w", err)
+		}
+		if s.hub != nil {
+			s.hub.PublishNotification(recipientID)
 		}
 	}
 
