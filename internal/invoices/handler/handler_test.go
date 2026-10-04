@@ -32,23 +32,36 @@ func testInvoiceID() uuid.UUID {
 
 func testInvoice() *invoicedomain.Invoice {
 	return &invoicedomain.Invoice{
-		ID:               testInvoiceID(),
-		OrganizationID:   testOrganizationID(),
-		ClientID:         testClientID(),
-		Number:           "INV-2026-0001",
-		Status:           invoicedomain.StatusDraft,
-		Currency:         invoicedomain.CurrencyEUR,
-		RateCents:        3000,
-		OrganizationName: "Acme",
-		ClientName:       "Northwind",
-		PeriodFrom:       time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC),
-		PeriodTo:         time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC),
-		IssuedAt:         time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC),
-		DueAt:            time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC),
-		TotalMinutes:     90,
-		TotalCents:       4500,
-		CreatedAt:        time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC),
-		UpdatedAt:        time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC),
+		ID:                       testInvoiceID(),
+		OrganizationID:           testOrganizationID(),
+		ClientID:                 testClientID(),
+		Number:                   "INV-2026-0001",
+		Status:                   invoicedomain.StatusDraft,
+		Currency:                 invoicedomain.CurrencyEUR,
+		RateCents:                3000,
+		OrganizationName:         "Acme",
+		ClientName:               "Northwind",
+		SellerLegalName:          "Acme",
+		SellerRegistrationNumber: "",
+		SellerVATID:              "",
+		SellerAddressLine1:       "1 Main St",
+		SellerCity:               "Sofia",
+		SellerPostalCode:         "1000",
+		SellerCountry:            "BG",
+		BuyerLegalName:           "Northwind",
+		BuyerCountry:             "BG",
+		VATRegime:                invoicedomain.RegimeUntaxed,
+		VATRateBPS:               0,
+		SubtotalCents:            4500,
+		VATCents:                 0,
+		PeriodFrom:               time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC),
+		PeriodTo:                 time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC),
+		IssuedAt:                 time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC),
+		DueAt:                    time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC),
+		TotalMinutes:             90,
+		TotalCents:               4500,
+		CreatedAt:                time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC),
+		UpdatedAt:                time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC),
 		Lines: []invoicedomain.LineItem{
 			{
 				ID:          uuid.MustParse("66666666-6666-6666-6666-666666666666"),
@@ -183,6 +196,8 @@ func TestHandler_List(t *testing.T) {
 	require.Len(t, response, 1)
 	require.Equal(t, "INV-2026-0001", response[0].Number)
 	require.Equal(t, 4500, response[0].TotalCents)
+	require.Equal(t, 4500, response[0].SubtotalCents)
+	require.Equal(t, invoicedomain.RegimeUntaxed, response[0].VATRegime)
 	require.Equal(t, "Portal", response[0].Lines[0].ProjectName)
 }
 
@@ -332,4 +347,20 @@ func TestHandler_GetPortal_NotFound(t *testing.T) {
 	invoicehandler.NewHandler(service).GetPortal(rec, req)
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestHandler_Send_BillingIncomplete(t *testing.T) {
+	service := &mockService{
+		sendFunc: func(uuid.UUID, uuid.UUID, orgdomain.Role) (*invoicedomain.Invoice, error) {
+			return nil, invoicedomain.ErrBillingProfileIncomplete
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/invoices/"+testInvoiceID().String()+"/send", nil)
+	req.SetPathValue("id", testInvoiceID().String())
+	req = withStaffSession(req, "owner")
+	rec := httptest.NewRecorder()
+	invoicehandler.NewHandler(service).Send(rec, req)
+
+	require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 }

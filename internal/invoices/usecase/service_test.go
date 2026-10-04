@@ -68,6 +68,18 @@ func setupInvoiceTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 		CREATE TABLE organizations (
 			id UUID PRIMARY KEY,
 			name TEXT NOT NULL,
+			legal_name TEXT NOT NULL DEFAULT '',
+			registration_number TEXT NOT NULL DEFAULT '',
+			vat_id TEXT NOT NULL DEFAULT '',
+			address_line1 TEXT NOT NULL DEFAULT '',
+			address_line2 TEXT NOT NULL DEFAULT '',
+			city TEXT NOT NULL DEFAULT '',
+			postal_code TEXT NOT NULL DEFAULT '',
+			country TEXT NOT NULL DEFAULT '',
+			default_vat_rate_bps INTEGER NOT NULL DEFAULT 2000,
+			bank_iban TEXT NOT NULL DEFAULT '',
+			bank_bic TEXT NOT NULL DEFAULT '',
+			bank_name TEXT NOT NULL DEFAULT '',
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL
 		)
@@ -80,6 +92,13 @@ func setupInvoiceTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 			organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
 			name TEXT NOT NULL,
 			notes TEXT NOT NULL DEFAULT '',
+			legal_name TEXT NOT NULL DEFAULT '',
+			vat_id TEXT NOT NULL DEFAULT '',
+			address_line1 TEXT NOT NULL DEFAULT '',
+			address_line2 TEXT NOT NULL DEFAULT '',
+			city TEXT NOT NULL DEFAULT '',
+			postal_code TEXT NOT NULL DEFAULT '',
+			country TEXT NOT NULL DEFAULT '',
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL
 		)
@@ -149,6 +168,28 @@ func setupInvoiceTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 			rate_cents INTEGER NOT NULL,
 			organization_name TEXT NOT NULL,
 			client_name TEXT NOT NULL,
+			seller_legal_name TEXT NOT NULL DEFAULT '',
+			seller_registration_number TEXT NOT NULL DEFAULT '',
+			seller_vat_id TEXT NOT NULL DEFAULT '',
+			seller_address_line1 TEXT NOT NULL DEFAULT '',
+			seller_address_line2 TEXT NOT NULL DEFAULT '',
+			seller_city TEXT NOT NULL DEFAULT '',
+			seller_postal_code TEXT NOT NULL DEFAULT '',
+			seller_country TEXT NOT NULL DEFAULT '',
+			buyer_legal_name TEXT NOT NULL DEFAULT '',
+			buyer_vat_id TEXT NOT NULL DEFAULT '',
+			buyer_address_line1 TEXT NOT NULL DEFAULT '',
+			buyer_address_line2 TEXT NOT NULL DEFAULT '',
+			buyer_city TEXT NOT NULL DEFAULT '',
+			buyer_postal_code TEXT NOT NULL DEFAULT '',
+			buyer_country TEXT NOT NULL DEFAULT '',
+			vat_regime TEXT NOT NULL DEFAULT 'untaxed',
+			vat_rate_bps INTEGER NOT NULL DEFAULT 0,
+			subtotal_cents INTEGER NOT NULL DEFAULT 0,
+			vat_cents INTEGER NOT NULL DEFAULT 0,
+			bank_iban TEXT NOT NULL DEFAULT '',
+			bank_bic TEXT NOT NULL DEFAULT '',
+			bank_name TEXT NOT NULL DEFAULT '',
 			period_from TIMESTAMPTZ NOT NULL,
 			period_to TIMESTAMPTZ NOT NULL,
 			issued_at TIMESTAMPTZ NOT NULL,
@@ -224,6 +265,70 @@ func seedUser(t *testing.T, db *pgxpool.Pool, email string) uuid.UUID {
 
 func seedOrganization(t *testing.T, db *pgxpool.Pool, name string) uuid.UUID {
 	t.Helper()
+	return seedOrganizationWithVAT(t, db, name, "")
+}
+
+func seedOrganizationWithVAT(
+	t *testing.T,
+	db *pgxpool.Pool,
+	name string,
+	vatID string,
+) uuid.UUID {
+	t.Helper()
+
+	organizationID := uuid.New()
+	now := time.Now().UTC()
+	_, err := db.Exec(
+		context.Background(),
+		`
+			INSERT INTO organizations (
+				id,
+				name,
+				legal_name,
+				registration_number,
+				vat_id,
+				address_line1,
+				address_line2,
+				city,
+				postal_code,
+				country,
+				default_vat_rate_bps,
+				bank_iban,
+				bank_bic,
+				bank_name,
+				created_at,
+				updated_at
+			)
+			VALUES (
+				$1, $2, $3, $4, $5,
+				$6, $7, $8, $9, $10,
+				$11, $12, $13, $14,
+				$15, $16
+			)
+		`,
+		organizationID,
+		name,
+		"",
+		"",
+		vatID,
+		"1 Main St",
+		"",
+		"Sofia",
+		"1000",
+		"BG",
+		2000,
+		"",
+		"",
+		"",
+		now,
+		now,
+	)
+	require.NoError(t, err)
+	return organizationID
+}
+
+func seedOrganizationIncomplete(t *testing.T, db *pgxpool.Pool, name string) uuid.UUID {
+	t.Helper()
 
 	organizationID := uuid.New()
 	now := time.Now().UTC()
@@ -250,13 +355,38 @@ func seedClient(t *testing.T, db *pgxpool.Pool, organizationID uuid.UUID, name s
 	_, err := db.Exec(
 		context.Background(),
 		`
-			INSERT INTO clients (id, organization_id, name, notes, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6)
+			INSERT INTO clients (
+				id,
+				organization_id,
+				name,
+				notes,
+				legal_name,
+				vat_id,
+				address_line1,
+				address_line2,
+				city,
+				postal_code,
+				country,
+				created_at,
+				updated_at
+			)
+			VALUES (
+				$1, $2, $3, $4, $5,
+				$6, $7, $8, $9, $10,
+				$11, $12, $13
+			)
 		`,
 		clientID,
 		organizationID,
 		name,
 		"",
+		"",
+		"",
+		"",
+		"",
+		"",
+		"",
+		"BG",
 		now,
 		now,
 	)
@@ -404,12 +534,41 @@ func TestCreateInvoice_SnapshotsLines(t *testing.T) {
 	require.Equal(t, "Northwind", invoice.ClientName)
 	require.Equal(t, "INV-2026-0001", invoice.Number)
 	require.Equal(t, 90, invoice.TotalMinutes)
+	require.Equal(t, invoicedomain.RegimeUntaxed, invoice.VATRegime)
+	require.Equal(t, 4500, invoice.SubtotalCents)
+	require.Equal(t, 0, invoice.VATCents)
 	require.Equal(t, 4500, invoice.TotalCents)
+	require.Equal(t, "BG", invoice.SellerCountry)
+	require.Equal(t, "1 Main St", invoice.SellerAddressLine1)
 	require.Len(t, invoice.Lines, 1)
 	require.Equal(t, "Portal", invoice.Lines[0].ProjectName)
 	require.Equal(t, "Draw", invoice.Lines[0].TaskTitle)
 	require.Equal(t, 90, invoice.Lines[0].Minutes)
 	require.Equal(t, 4500, invoice.Lines[0].AmountCents)
+}
+
+func TestCreateInvoice_StandardVAT(t *testing.T) {
+	db, cleanup := setupInvoiceTestDatabase(t)
+	defer cleanup()
+
+	service := newInvoiceService(db, &mockMailer{})
+	userID := seedUser(t, db, "ada@example.com")
+	organizationID := seedOrganizationWithVAT(t, db, "Acme", "BG123456789")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Portal")
+	taskID := seedTask(t, db, organizationID, projectID, "Draw")
+	from := time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
+	seedTimeEntry(t, db, organizationID, taskID, userID, 90, time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC))
+
+	invoice, err := service.Create(context.Background(), organizationID, clientID, orgdomain.RoleOwner, from, to)
+	require.NoError(t, err)
+	require.Equal(t, invoicedomain.RegimeStandard, invoice.VATRegime)
+	require.Equal(t, 2000, invoice.VATRateBPS)
+	require.Equal(t, 4500, invoice.SubtotalCents)
+	require.Equal(t, 900, invoice.VATCents)
+	require.Equal(t, 5400, invoice.TotalCents)
+	require.Equal(t, "BG123456789", invoice.SellerVATID)
 }
 
 func TestCreateInvoice_MemberForbidden(t *testing.T) {
@@ -469,6 +628,7 @@ func TestSendInvoice_EmailsClientUsers(t *testing.T) {
 	require.Contains(t, mail.messages[0].Subject, "INV-2026-0001")
 	require.Contains(t, mail.messages[0].HTML, "Portal")
 	require.Contains(t, mail.messages[0].HTML, "Draw")
+	require.Contains(t, mail.messages[0].HTML, "Subtotal")
 	require.Contains(t, mail.messages[0].HTML, "€45.00")
 	require.Contains(t, mail.messages[0].Text, "1.50 h")
 
@@ -479,6 +639,29 @@ func TestSendInvoice_EmailsClientUsers(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, invoicedomain.StatusPaid, paid.Status)
 	require.NotNil(t, paid.PaidAt)
+}
+
+func TestSendInvoice_BillingIncomplete(t *testing.T) {
+	db, cleanup := setupInvoiceTestDatabase(t)
+	defer cleanup()
+
+	service := newInvoiceService(db, &mockMailer{})
+	staffID := seedUser(t, db, "ada@example.com")
+	portalID := seedUser(t, db, "pat@example.com")
+	organizationID := seedOrganizationIncomplete(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	seedClientUser(t, db, organizationID, clientID, portalID)
+	projectID := seedProject(t, db, organizationID, clientID, "Portal")
+	taskID := seedTask(t, db, organizationID, projectID, "Draw")
+	from := time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
+	seedTimeEntry(t, db, organizationID, taskID, staffID, 90, time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC))
+
+	invoice, err := service.Create(context.Background(), organizationID, clientID, orgdomain.RoleOwner, from, to)
+	require.NoError(t, err)
+
+	_, err = service.Send(context.Background(), organizationID, invoice.ID, orgdomain.RoleOwner)
+	require.ErrorIs(t, err, invoicedomain.ErrBillingProfileIncomplete)
 }
 
 func TestSendInvoice_NoClientUsers(t *testing.T) {

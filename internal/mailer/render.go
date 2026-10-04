@@ -34,18 +34,35 @@ type InvoiceMailLine struct {
 }
 
 type InvoiceMail struct {
-	Heading     string
-	AgencyName  string
-	ClientName  string
-	Number      string
-	Issued      string
-	Period      string
-	Due         string
-	Rate        string
-	Total       string
-	Lines       []InvoiceMailLine
-	ActionURL   string
-	ActionLabel string
+	Heading                  string
+	AgencyName               string
+	SellerRegistrationNumber string
+	SellerVATID              string
+	SellerAddressLine1       string
+	SellerAddressLine2       string
+	SellerCityLine           string
+	ClientName               string
+	BuyerVATID               string
+	BuyerAddressLine1        string
+	BuyerAddressLine2        string
+	BuyerCityLine            string
+	Number                   string
+	Issued                   string
+	Period                   string
+	Due                      string
+	Rate                     string
+	Subtotal                 string
+	VATLabel                 string
+	VATAmount                string
+	VATNote                  string
+	ShowVATAmount            bool
+	Total                    string
+	BankIBAN                 string
+	BankBIC                  string
+	BankName                 string
+	Lines                    []InvoiceMailLine
+	ActionURL                string
+	ActionLabel              string
 }
 
 func RenderTransactional(data Transactional) (string, error) {

@@ -407,6 +407,13 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 		api.WriteError(w, http.StatusConflict, "invoice_not_sent", "invoice is not sent")
 	case errors.Is(err, invoicedomain.ErrNoClientUsers):
 		api.WriteError(w, http.StatusConflict, "no_client_users", "no client users")
+	case errors.Is(err, invoicedomain.ErrBillingProfileIncomplete):
+		api.WriteError(
+			w,
+			http.StatusUnprocessableEntity,
+			"billing_profile_incomplete",
+			"complete organization and client billing details before sending",
+		)
 	default:
 		api.WriteError(w, http.StatusInternalServerError, "internal_error", "internal error")
 	}
@@ -426,25 +433,47 @@ func toResponse(invoice *invoicedomain.Invoice) invoicedomain.InvoiceResponse {
 	}
 
 	return invoicedomain.InvoiceResponse{
-		ID:               invoice.ID,
-		OrganizationID:   invoice.OrganizationID,
-		ClientID:         invoice.ClientID,
-		Number:           invoice.Number,
-		Status:           invoice.Status,
-		Currency:         invoice.Currency,
-		RateCents:        invoice.RateCents,
-		OrganizationName: invoice.OrganizationName,
-		ClientName:       invoice.ClientName,
-		PeriodFrom:       invoice.PeriodFrom,
-		PeriodTo:         invoice.PeriodTo,
-		IssuedAt:         invoice.IssuedAt,
-		DueAt:            invoice.DueAt,
-		SentAt:           invoice.SentAt,
-		PaidAt:           invoice.PaidAt,
-		TotalMinutes:     invoice.TotalMinutes,
-		TotalCents:       invoice.TotalCents,
-		CreatedAt:        invoice.CreatedAt,
-		UpdatedAt:        invoice.UpdatedAt,
-		Lines:            lines,
+		ID:                       invoice.ID,
+		OrganizationID:           invoice.OrganizationID,
+		ClientID:                 invoice.ClientID,
+		Number:                   invoice.Number,
+		Status:                   invoice.Status,
+		Currency:                 invoice.Currency,
+		RateCents:                invoice.RateCents,
+		OrganizationName:         invoice.OrganizationName,
+		ClientName:               invoice.ClientName,
+		SellerLegalName:          invoice.SellerLegalName,
+		SellerRegistrationNumber: invoice.SellerRegistrationNumber,
+		SellerVATID:              invoice.SellerVATID,
+		SellerAddressLine1:       invoice.SellerAddressLine1,
+		SellerAddressLine2:       invoice.SellerAddressLine2,
+		SellerCity:               invoice.SellerCity,
+		SellerPostalCode:         invoice.SellerPostalCode,
+		SellerCountry:            invoice.SellerCountry,
+		BuyerLegalName:           invoice.BuyerLegalName,
+		BuyerVATID:               invoice.BuyerVATID,
+		BuyerAddressLine1:        invoice.BuyerAddressLine1,
+		BuyerAddressLine2:        invoice.BuyerAddressLine2,
+		BuyerCity:                invoice.BuyerCity,
+		BuyerPostalCode:          invoice.BuyerPostalCode,
+		BuyerCountry:             invoice.BuyerCountry,
+		VATRegime:                invoice.VATRegime,
+		VATRateBPS:               invoice.VATRateBPS,
+		SubtotalCents:            invoice.SubtotalCents,
+		VATCents:                 invoice.VATCents,
+		BankIBAN:                 invoice.BankIBAN,
+		BankBIC:                  invoice.BankBIC,
+		BankName:                 invoice.BankName,
+		PeriodFrom:               invoice.PeriodFrom,
+		PeriodTo:                 invoice.PeriodTo,
+		IssuedAt:                 invoice.IssuedAt,
+		DueAt:                    invoice.DueAt,
+		SentAt:                   invoice.SentAt,
+		PaidAt:                   invoice.PaidAt,
+		TotalMinutes:             invoice.TotalMinutes,
+		TotalCents:               invoice.TotalCents,
+		CreatedAt:                invoice.CreatedAt,
+		UpdatedAt:                invoice.UpdatedAt,
+		Lines:                    lines,
 	}
 }

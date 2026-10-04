@@ -321,13 +321,8 @@ func (h *Handler) writeAuthResponse(
 			CreatedAt:   result.User.CreatedAt,
 			UpdatedAt:   result.User.UpdatedAt,
 		},
-		Organization: orgdomain.OrganizationResponse{
-			ID:        result.Organization.ID,
-			Name:      result.Organization.Name,
-			CreatedAt: result.Organization.CreatedAt,
-			UpdatedAt: result.Organization.UpdatedAt,
-		},
-		Role: string(result.Role),
+		Organization: orgdomain.ToResponse(result.Organization),
+		Role:         string(result.Role),
 	})
 }
 

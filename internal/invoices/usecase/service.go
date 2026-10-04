@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	clientdomain "github.com/chuuch/gorest/internal/client/domain"
 	clientrepository "github.com/chuuch/gorest/internal/client/repository"
 	clientuserdomain "github.com/chuuch/gorest/internal/clientusers/domain"
 	clientuserrepository "github.com/chuuch/gorest/internal/clientusers/repository"
@@ -17,6 +18,7 @@ import (
 	"github.com/chuuch/gorest/internal/mailer"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	orgrepository "github.com/chuuch/gorest/internal/organization/repository"
+	"github.com/chuuch/gorest/internal/taxid"
 	userrepository "github.com/chuuch/gorest/internal/user/repository"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -123,21 +125,21 @@ func (s *service) Create(
 
 	now := time.Now().UTC()
 	invoice := &domain.Invoice{
-		ID:               uuid.New(),
-		OrganizationID:   organizationID,
-		ClientID:         clientID,
-		Status:           domain.StatusDraft,
-		Currency:         domain.CurrencyEUR,
-		RateCents:        domain.DefaultRateCents,
-		OrganizationName: org.Name,
-		ClientName:       client.Name,
-		PeriodFrom:       from,
-		PeriodTo:         to,
-		IssuedAt:         now,
-		DueAt:            domain.DueAt(now),
-		CreatedAt:        now,
+		ID:             uuid.New(),
+		OrganizationID: organizationID,
+		ClientID:       clientID,
+		Status:         domain.StatusDraft,
+		Currency:       domain.CurrencyEUR,
+		RateCents:      domain.DefaultRateCents,
+		PeriodFrom:     from,
+		PeriodTo:       to,
+		IssuedAt:       now,
+		DueAt:          domain.DueAt(now),
+		CreatedAt:      now,
 	}
+	fillInvoiceBilling(invoice, org, client)
 	domain.ApplySnapshot(invoice, lines, now)
+	domain.ApplyTax(invoice)
 
 	for attempt := 0; attempt < 2; attempt++ {
 		err := database.WithTransaction(ctx, s.db, func(ctx context.Context) error {
@@ -196,11 +198,11 @@ func (s *service) Update(
 	}
 
 	now := time.Now().UTC()
-	invoice.OrganizationName = org.Name
-	invoice.ClientName = client.Name
+	fillInvoiceBilling(invoice, org, client)
 	invoice.PeriodFrom = from
 	invoice.PeriodTo = to
 	domain.ApplySnapshot(invoice, lines, now)
+	domain.ApplyTax(invoice)
 
 	if err := database.WithTransaction(ctx, s.db, func(ctx context.Context) error {
 		if err := s.invoices.Update(ctx, invoice); err != nil {
@@ -251,6 +253,10 @@ func (s *service) Send(
 
 	if invoice.Status != domain.StatusDraft {
 		return nil, domain.ErrNotDraft
+	}
+
+	if err := invoice.BillingReady(); err != nil {
+		return nil, err
 	}
 
 	clientUsers, err := s.clientUsers.ListByClientID(ctx, organizationID, invoice.ClientID)
@@ -377,6 +383,45 @@ func (s *service) PDFPortal(
 	return data, invoice.Number + ".pdf", nil
 }
 
+func fillInvoiceBilling(
+	invoice *domain.Invoice,
+	org *orgdomain.Organization,
+	client *clientdomain.Client,
+) {
+	invoice.OrganizationName = org.InvoiceLegalName()
+	invoice.ClientName = client.InvoiceLegalName()
+	invoice.SellerLegalName = invoice.OrganizationName
+	invoice.SellerRegistrationNumber = strings.TrimSpace(org.RegistrationNumber)
+	invoice.SellerVATID = taxid.NormalizeVATID(org.VATID)
+	invoice.SellerAddressLine1 = strings.TrimSpace(org.AddressLine1)
+	invoice.SellerAddressLine2 = strings.TrimSpace(org.AddressLine2)
+	invoice.SellerCity = strings.TrimSpace(org.City)
+	invoice.SellerPostalCode = strings.TrimSpace(org.PostalCode)
+	invoice.SellerCountry = taxid.NormalizeCountry(org.Country)
+	invoice.BuyerLegalName = client.InvoiceLegalName()
+	invoice.BuyerVATID = taxid.NormalizeVATID(client.VATID)
+	invoice.BuyerAddressLine1 = strings.TrimSpace(client.AddressLine1)
+	invoice.BuyerAddressLine2 = strings.TrimSpace(client.AddressLine2)
+	invoice.BuyerCity = strings.TrimSpace(client.City)
+	invoice.BuyerPostalCode = strings.TrimSpace(client.PostalCode)
+	invoice.BuyerCountry = taxid.NormalizeCountry(client.Country)
+	invoice.BankIBAN = strings.TrimSpace(org.BankIBAN)
+	invoice.BankBIC = strings.TrimSpace(org.BankBIC)
+	invoice.BankName = strings.TrimSpace(org.BankName)
+
+	rate := org.DefaultVATRateBPS
+	if rate == 0 {
+		rate = domain.DefaultVATRateBPS
+	}
+	invoice.VATRegime, invoice.VATRateBPS = domain.ResolveVATRegime(
+		invoice.SellerVATID,
+		invoice.SellerCountry,
+		invoice.BuyerVATID,
+		invoice.BuyerCountry,
+		rate,
+	)
+}
+
 func (s *service) mailInvoice(
 	ctx context.Context,
 	invoice *domain.Invoice,
@@ -419,29 +464,65 @@ func toInvoiceMail(invoice *domain.Invoice, actionURL string) mailer.InvoiceMail
 			Amount:      formatEUR(line.AmountCents),
 		})
 	}
-
 	inclusiveTo := invoice.PeriodTo.Add(-time.Nanosecond)
-
+	showVAT := invoice.VATRegime == domain.RegimeStandard
 	return mailer.InvoiceMail{
-		Heading:     invoice.Number,
-		AgencyName:  invoice.OrganizationName,
-		ClientName:  invoice.ClientName,
-		Number:      invoice.Number,
-		Issued:      invoice.IssuedAt.UTC().Format("2 Jan 2006"),
-		Period:      invoice.PeriodFrom.UTC().Format("2 Jan 2006") + " - " + inclusiveTo.UTC().Format("2 Jan 2006"),
-		Due:         invoice.DueAt.UTC().Format("2 Jan 2006"),
-		Rate:        formatEUR(invoice.RateCents) + " / h",
-		Total:       formatEUR(invoice.TotalCents),
-		Lines:       lines,
-		ActionURL:   actionURL,
-		ActionLabel: "Open portal",
+		Heading:                  invoice.Number,
+		AgencyName:               invoice.OrganizationName,
+		SellerRegistrationNumber: invoice.SellerRegistrationNumber,
+		SellerVATID:              invoice.SellerVATID,
+		SellerAddressLine1:       invoice.SellerAddressLine1,
+		SellerAddressLine2:       invoice.SellerAddressLine2,
+		SellerCityLine: formatCityLine(
+			invoice.SellerCity,
+			invoice.SellerPostalCode,
+			invoice.SellerCountry,
+		),
+		ClientName:        invoice.ClientName,
+		BuyerVATID:        invoice.BuyerVATID,
+		BuyerAddressLine1: invoice.BuyerAddressLine1,
+		BuyerAddressLine2: invoice.BuyerAddressLine2,
+		BuyerCityLine: formatCityLine(
+			invoice.BuyerCity,
+			invoice.BuyerPostalCode,
+			invoice.BuyerCountry,
+		),
+		Number:        invoice.Number,
+		Issued:        invoice.IssuedAt.UTC().Format("2 Jan 2006"),
+		Period:        invoice.PeriodFrom.UTC().Format("2 Jan 2006") + " - " + inclusiveTo.UTC().Format("2 Jan 2006"),
+		Due:           invoice.DueAt.UTC().Format("2 Jan 2006"),
+		Rate:          formatEUR(invoice.RateCents) + " / h",
+		Subtotal:      formatEUR(invoice.SubtotalCents),
+		VATLabel:      "VAT " + formatRate(invoice.VATRateBPS) + "%",
+		VATAmount:     formatEUR(invoice.VATCents),
+		VATNote:       domain.VATNote(invoice.VATRegime),
+		ShowVATAmount: showVAT,
+		Total:         formatEUR(invoice.TotalCents),
+		BankIBAN:      invoice.BankIBAN,
+		BankBIC:       invoice.BankBIC,
+		BankName:      invoice.BankName,
+		Lines:         lines,
+		ActionURL:     actionURL,
+		ActionLabel:   "Open portal",
 	}
 }
 
 func invoiceText(invoice *domain.Invoice) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s from %s\n", invoice.Number, invoice.OrganizationName)
+	if invoice.SellerAddressLine1 != "" {
+		fmt.Fprintf(&b, "%s\n", invoice.SellerAddressLine1)
+	}
+	if city := formatCityLine(invoice.SellerCity, invoice.SellerPostalCode, invoice.SellerCountry); city != "" {
+		fmt.Fprintf(&b, "%s\n", city)
+	}
+	if invoice.SellerVATID != "" {
+		fmt.Fprintf(&b, "VAT %s\n", invoice.SellerVATID)
+	}
 	fmt.Fprintf(&b, "Bill to: %s\n", invoice.ClientName)
+	if invoice.BuyerVATID != "" {
+		fmt.Fprintf(&b, "VAT %s\n", invoice.BuyerVATID)
+	}
 	fmt.Fprintf(&b, "Due: %s\n", invoice.DueAt.UTC().Format("2 Jan 2006"))
 	fmt.Fprintf(&b, "Rate: %s / h\n\n", formatEUR(invoice.RateCents))
 	for _, line := range invoice.Lines {
@@ -454,14 +535,45 @@ func invoiceText(invoice *domain.Invoice) string {
 			formatEUR(line.AmountCents),
 		)
 	}
-	fmt.Fprintf(&b, "\nTotal: %s\n", formatEUR(invoice.TotalCents))
+	fmt.Fprintf(&b, "\nSubtotal: %s\n", formatEUR(invoice.SubtotalCents))
+	if invoice.VATRegime == domain.RegimeStandard {
+		fmt.Fprintf(&b, "VAT %s%%: %s\n", formatRate(invoice.VATRateBPS), formatEUR(invoice.VATCents))
+	} else if note := domain.VATNote(invoice.VATRegime); note != "" {
+		fmt.Fprintf(&b, "%s\n", note)
+	}
+	fmt.Fprintf(&b, "Total: %s\n", formatEUR(invoice.TotalCents))
+	if invoice.BankIBAN != "" {
+		fmt.Fprintf(&b, "\nIBAN: %s\n", invoice.BankIBAN)
+		if invoice.BankBIC != "" {
+			fmt.Fprintf(&b, "BIC: %s\n", invoice.BankBIC)
+		}
+	}
 	return b.String()
 }
-
 func formatHours(minutes int) string {
 	return fmt.Sprintf("%.2f", float64(minutes)/60)
 }
-
 func formatEUR(cents int) string {
 	return fmt.Sprintf("€%.2f", float64(cents)/100)
+}
+func formatRate(bps int) string {
+	return fmt.Sprintf("%.2f", float64(bps)/100)
+}
+func formatCityLine(city, postal, country string) string {
+	parts := make([]string, 0, 2)
+	if strings.TrimSpace(postal) != "" {
+		parts = append(parts, strings.TrimSpace(postal))
+	}
+	if strings.TrimSpace(city) != "" {
+		parts = append(parts, strings.TrimSpace(city))
+	}
+	line := strings.Join(parts, " ")
+	country = strings.TrimSpace(country)
+	if country == "" {
+		return line
+	}
+	if line == "" {
+		return country
+	}
+	return line + ", " + country
 }

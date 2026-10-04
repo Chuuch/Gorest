@@ -67,15 +67,64 @@
                 >
                   {{.Number}}
                 </h1>
-                <p style="margin: 0 0 16px 0; font-size: 15px; color: #14201b">
+                <p style="margin: 0 0 4px 0; font-size: 15px; color: #14201b">
                   {{.AgencyName}}
                 </p>
+                {{if .SellerAddressLine1}}
+                <p style="margin: 0 0 2px 0; font-size: 13px; color: #5d6e66">
+                  {{.SellerAddressLine1}}
+                </p>
+                {{end}}
+                {{if .SellerAddressLine2}}
+                <p style="margin: 0 0 2px 0; font-size: 13px; color: #5d6e66">
+                  {{.SellerAddressLine2}}
+                </p>
+                {{end}}
+                {{if .SellerCityLine}}
+                <p style="margin: 0 0 2px 0; font-size: 13px; color: #5d6e66">
+                  {{.SellerCityLine}}
+                </p>
+                {{end}}
+                {{if .SellerRegistrationNumber}}
+                <p style="margin: 0 0 2px 0; font-size: 13px; color: #5d6e66">
+                  Reg. {{.SellerRegistrationNumber}}
+                </p>
+                {{end}}
+                {{if .SellerVATID}}
+                <p style="margin: 0 0 16px 0; font-size: 13px; color: #5d6e66">
+                  VAT {{.SellerVATID}}
+                </p>
+                {{else}}
+                <p style="margin: 0 0 16px 0"></p>
+                {{end}}
                 <p style="margin: 0 0 4px 0; font-size: 13px; color: #5d6e66">
                   Bill to
                 </p>
-                <p style="margin: 0 0 16px 0; font-size: 15px; color: #14201b">
+                <p style="margin: 0 0 4px 0; font-size: 15px; color: #14201b">
                   {{.ClientName}}
                 </p>
+                {{if .BuyerAddressLine1}}
+                <p style="margin: 0 0 2px 0; font-size: 13px; color: #5d6e66">
+                  {{.BuyerAddressLine1}}
+                </p>
+                {{end}}
+                {{if .BuyerAddressLine2}}
+                <p style="margin: 0 0 2px 0; font-size: 13px; color: #5d6e66">
+                  {{.BuyerAddressLine2}}
+                </p>
+                {{end}}
+                {{if .BuyerCityLine}}
+                <p style="margin: 0 0 2px 0; font-size: 13px; color: #5d6e66">
+                  {{.BuyerCityLine}}
+                </p>
+                {{end}}
+                {{if .BuyerVATID}}
+                <p style="margin: 0 0 16px 0; font-size: 13px; color: #5d6e66">
+                  VAT {{.BuyerVATID}}
+                </p>
+                {{else}}
+                <p style="margin: 0 0 16px 0"></p>
+                {{end}}
                 <p style="margin: 0 0 4px 0; font-size: 13px; color: #5d6e66">
                   Issued {{.Issued}} · Due {{.Due}}
                 </p>
@@ -165,6 +214,61 @@
                       align="right"
                       style="
                         padding: 16px 8px 0 0;
+                        font-size: 14px;
+                        color: #14201b;
+                      "
+                    >
+                      Subtotal
+                    </td>
+                    <td
+                      align="right"
+                      style="padding: 16px 0 0 0; font-size: 14px; color: #14201b"
+                    >
+                      {{.Subtotal}}
+                    </td>
+                  </tr>
+                  {{if .ShowVATAmount}}
+                  <tr>
+                    <td
+                      colspan="3"
+                      align="right"
+                      style="
+                        padding: 8px 8px 0 0;
+                        font-size: 14px;
+                        color: #14201b;
+                      "
+                    >
+                      {{.VATLabel}}
+                    </td>
+                    <td
+                      align="right"
+                      style="padding: 8px 0 0 0; font-size: 14px; color: #14201b"
+                    >
+                      {{.VATAmount}}
+                    </td>
+                  </tr>
+                  {{end}}
+                  {{if .VATNote}}
+                  <tr>
+                    <td
+                      colspan="4"
+                      align="right"
+                      style="
+                        padding: 8px 0 0 0;
+                        font-size: 12px;
+                        color: #5d6e66;
+                      "
+                    >
+                      {{.VATNote}}
+                    </td>
+                  </tr>
+                  {{end}}
+                  <tr>
+                    <td
+                      colspan="3"
+                      align="right"
+                      style="
+                        padding: 12px 8px 0 0;
                         font-size: 15px;
                         font-weight: 600;
                         color: #14201b;
@@ -175,7 +279,7 @@
                     <td
                       align="right"
                       style="
-                        padding: 16px 0 0 0;
+                        padding: 12px 0 0 0;
                         font-size: 15px;
                         font-weight: 600;
                         color: #14201b;
@@ -185,6 +289,24 @@
                     </td>
                   </tr>
                 </table>
+                {{if .BankIBAN}}
+                <p style="margin: 20px 0 0 0; font-size: 13px; color: #5d6e66">
+                  Payment
+                </p>
+                {{if .BankName}}
+                <p style="margin: 4px 0 0 0; font-size: 14px; color: #14201b">
+                  {{.BankName}}
+                </p>
+                {{end}}
+                <p style="margin: 4px 0 0 0; font-size: 14px; color: #14201b">
+                  IBAN {{.BankIBAN}}
+                </p>
+                {{if .BankBIC}}
+                <p style="margin: 4px 0 0 0; font-size: 14px; color: #14201b">
+                  BIC {{.BankBIC}}
+                </p>
+                {{end}}
+                {{end}}
                 <table
                   role="presentation"
                   cellpadding="0"

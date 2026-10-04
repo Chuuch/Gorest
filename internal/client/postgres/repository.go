@@ -31,10 +31,17 @@ func (r *Repository) Create(
 				organization_id,
 				name,
 				notes,
+				legal_name,
+				vat_id,
+				address_line1,
+				address_line2,
+				city,
+				postal_code,
+				country,
 				created_at,
 				updated_at
 			)
-			VALUES ($1, $2, $3, $4, $5, $6)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		`
 
 	_, err := database.QuerierFrom(ctx, r.db).Exec(
@@ -44,6 +51,13 @@ func (r *Repository) Create(
 		client.OrganizationID,
 		client.Name,
 		client.Notes,
+		client.LegalName,
+		client.VATID,
+		client.AddressLine1,
+		client.AddressLine2,
+		client.City,
+		client.PostalCode,
+		client.Country,
 		client.CreatedAt,
 		client.UpdatedAt,
 	)
@@ -69,6 +83,13 @@ func (r *Repository) GetByID(
 				organization_id,
 				name,
 				notes,
+				legal_name,
+				vat_id,
+				address_line1,
+				address_line2,
+				city,
+				postal_code,
+				country,
 				created_at,
 				updated_at
 			FROM clients
@@ -87,6 +108,13 @@ func (r *Repository) GetByID(
 		&client.OrganizationID,
 		&client.Name,
 		&client.Notes,
+		&client.LegalName,
+		&client.VATID,
+		&client.AddressLine1,
+		&client.AddressLine2,
+		&client.City,
+		&client.PostalCode,
+		&client.Country,
 		&client.CreatedAt,
 		&client.UpdatedAt,
 	)
@@ -111,8 +139,15 @@ func (r *Repository) Update(
 			SET
 					name = $1,
 					notes = $2,
-					updated_at = $3
-			WHERE id = $4 AND organization_id = $5
+					legal_name = $3,
+					vat_id = $4,
+					address_line1 = $5,
+					address_line2 = $6,
+					city = $7,
+					postal_code = $8,
+					country = $9,
+					updated_at = $10
+			WHERE id = $11 AND organization_id = $12
 		`
 
 	tag, err := database.QuerierFrom(ctx, r.db).Exec(
@@ -120,6 +155,13 @@ func (r *Repository) Update(
 		query,
 		client.Name,
 		client.Notes,
+		client.LegalName,
+		client.VATID,
+		client.AddressLine1,
+		client.AddressLine2,
+		client.City,
+		client.PostalCode,
+		client.Country,
 		client.UpdatedAt,
 		client.ID,
 		client.OrganizationID,
@@ -174,6 +216,13 @@ func (r *Repository) ListByOrganizationID(
 				organization_id,
 				name,
 				notes,
+				legal_name,
+				vat_id,
+				address_line1,
+				address_line2,
+				city,
+				postal_code,
+				country,
 				created_at,
 				updated_at
 			FROM clients
@@ -197,6 +246,13 @@ func (r *Repository) ListByOrganizationID(
 			&client.OrganizationID,
 			&client.Name,
 			&client.Notes,
+			&client.LegalName,
+			&client.VATID,
+			&client.AddressLine1,
+			&client.AddressLine2,
+			&client.City,
+			&client.PostalCode,
+			&client.Country,
 			&client.CreatedAt,
 			&client.UpdatedAt,
 		); err != nil {
