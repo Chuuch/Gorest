@@ -106,10 +106,11 @@ func (s *service) Register(
 		now := time.Now().UTC()
 
 		org = &orgdomain.Organization{
-			ID:        uuid.New(),
-			Name:      req.OrganizationName,
-			CreatedAt: now,
-			UpdatedAt: now,
+			ID:                uuid.New(),
+			Name:              req.OrganizationName,
+			DefaultVATRateBPS: 2000,
+			CreatedAt:         now,
+			UpdatedAt:         now,
 		}
 
 		if err := s.organizations.Create(ctx, org); err != nil {

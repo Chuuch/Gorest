@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/chuuch/gorest/internal/database"
 	"github.com/chuuch/gorest/internal/invites"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	orgrepository "github.com/chuuch/gorest/internal/organization/repository"
+	"github.com/chuuch/gorest/internal/taxid"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
 	userusecase "github.com/chuuch/gorest/internal/user/usecase"
 	"github.com/google/uuid"
@@ -93,7 +95,24 @@ func (s *service) Update(
 		return nil, err
 	}
 
+	rate := req.DefaultVATRateBPS
+	if rate == 0 {
+		rate = 2000
+	}
+
 	org.Name = req.Name
+	org.LegalName = strings.TrimSpace(req.LegalName)
+	org.RegistrationNumber = strings.TrimSpace(req.RegistrationNumber)
+	org.VATID = taxid.NormalizeVATID(req.VATID)
+	org.AddressLine1 = strings.TrimSpace(req.AddressLine1)
+	org.AddressLine2 = strings.TrimSpace(req.AddressLine2)
+	org.City = strings.TrimSpace(req.City)
+	org.PostalCode = strings.TrimSpace(req.PostalCode)
+	org.Country = taxid.NormalizeCountry(req.Country)
+	org.DefaultVATRateBPS = rate
+	org.BankIBAN = strings.TrimSpace(req.BankIBAN)
+	org.BankBIC = strings.TrimSpace(req.BankBIC)
+	org.BankName = strings.TrimSpace(req.BankName)
 	org.UpdatedAt = time.Now().UTC()
 
 	if err := s.organizations.Update(ctx, org); err != nil {

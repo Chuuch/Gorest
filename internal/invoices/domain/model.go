@@ -32,26 +32,48 @@ type LineItem struct {
 }
 
 type Invoice struct {
-	ID               uuid.UUID
-	OrganizationID   uuid.UUID
-	ClientID         uuid.UUID
-	Number           string
-	Status           string
-	Currency         string
-	RateCents        int
-	OrganizationName string
-	ClientName       string
-	PeriodFrom       time.Time
-	PeriodTo         time.Time
-	IssuedAt         time.Time
-	DueAt            time.Time
-	SentAt           *time.Time
-	PaidAt           *time.Time
-	TotalMinutes     int
-	TotalCents       int
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	Lines            []LineItem
+	ID                       uuid.UUID
+	OrganizationID           uuid.UUID
+	ClientID                 uuid.UUID
+	Number                   string
+	Status                   string
+	Currency                 string
+	RateCents                int
+	OrganizationName         string
+	ClientName               string
+	SellerLegalName          string
+	SellerRegistrationNumber string
+	SellerVATID              string
+	SellerAddressLine1       string
+	SellerAddressLine2       string
+	SellerCity               string
+	SellerPostalCode         string
+	SellerCountry            string
+	BuyerLegalName           string
+	BuyerVATID               string
+	BuyerAddressLine1        string
+	BuyerAddressLine2        string
+	BuyerCity                string
+	BuyerPostalCode          string
+	BuyerCountry             string
+	VATRegime                string
+	VATRateBPS               int
+	SubtotalCents            int
+	VATCents                 int
+	BankIBAN                 string
+	BankBIC                  string
+	BankName                 string
+	PeriodFrom               time.Time
+	PeriodTo                 time.Time
+	IssuedAt                 time.Time
+	DueAt                    time.Time
+	SentAt                   *time.Time
+	PaidAt                   *time.Time
+	TotalMinutes             int
+	TotalCents               int
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
+	Lines                    []LineItem
 }
 
 type SnapshotLine struct {
@@ -71,12 +93,12 @@ func DueAt(issuedAt time.Time) time.Time {
 func ApplySnapshot(invoice *Invoice, lines []SnapshotLine, now time.Time) {
 	items := make([]LineItem, 0, len(lines))
 	totalMinutes := 0
-	totalCents := 0
+	subtotalCents := 0
 
 	for i, line := range lines {
 		amount := AmountCents(line.Minutes, invoice.RateCents)
 		totalMinutes += line.Minutes
-		totalCents += amount
+		subtotalCents += amount
 		items = append(items, LineItem{
 			ID:             uuid.New(),
 			InvoiceID:      invoice.ID,
@@ -92,6 +114,6 @@ func ApplySnapshot(invoice *Invoice, lines []SnapshotLine, now time.Time) {
 
 	invoice.Lines = items
 	invoice.TotalMinutes = totalMinutes
-	invoice.TotalCents = totalCents
+	invoice.SubtotalCents = subtotalCents
 	invoice.UpdatedAt = now
 }

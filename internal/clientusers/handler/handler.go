@@ -309,21 +309,9 @@ func (h *Handler) writeAuthResponse(
 			CreatedAt:   result.User.CreatedAt,
 			UpdatedAt:   result.User.UpdatedAt,
 		},
-		Organization: orgdomain.OrganizationResponse{
-			ID:        result.Organization.ID,
-			Name:      result.Organization.Name,
-			CreatedAt: result.Organization.CreatedAt,
-			UpdatedAt: result.Organization.UpdatedAt,
-		},
-		Client: clientdomain.ClientResponse{
-			ID:             result.Client.ID,
-			OrganizationID: result.Client.OrganizationID,
-			Name:           result.Client.Name,
-			Notes:          result.Client.Notes,
-			CreatedAt:      result.Client.CreatedAt,
-			UpdatedAt:      result.Client.UpdatedAt,
-		},
-		Role: result.Role,
+		Organization: orgdomain.ToResponse(result.Organization),
+		Client:       clientdomain.ToResponse(result.Client),
+		Role:         result.Role,
 	})
 }
 

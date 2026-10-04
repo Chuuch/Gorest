@@ -86,6 +86,18 @@ func setupClientUserTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 		CREATE TABLE organizations (
 			id UUID PRIMARY KEY,
 			name TEXT NOT NULL,
+			legal_name TEXT NOT NULL DEFAULT '',
+			registration_number TEXT NOT NULL DEFAULT '',
+			vat_id TEXT NOT NULL DEFAULT '',
+			address_line1 TEXT NOT NULL DEFAULT '',
+			address_line2 TEXT NOT NULL DEFAULT '',
+			city TEXT NOT NULL DEFAULT '',
+			postal_code TEXT NOT NULL DEFAULT '',
+			country TEXT NOT NULL DEFAULT '',
+			default_vat_rate_bps INTEGER NOT NULL DEFAULT 2000,
+			bank_iban TEXT NOT NULL DEFAULT '',
+			bank_bic TEXT NOT NULL DEFAULT '',
+			bank_name TEXT NOT NULL DEFAULT '',
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL
 		)
@@ -111,6 +123,13 @@ func setupClientUserTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 			organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
 			name TEXT NOT NULL,
 			notes TEXT NOT NULL DEFAULT '',
+			legal_name TEXT NOT NULL DEFAULT '',
+			vat_id TEXT NOT NULL DEFAULT '',
+			address_line1 TEXT NOT NULL DEFAULT '',
+			address_line2 TEXT NOT NULL DEFAULT '',
+			city TEXT NOT NULL DEFAULT '',
+			postal_code TEXT NOT NULL DEFAULT '',
+			country TEXT NOT NULL DEFAULT '',
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL,
 			CONSTRAINT clients_org_name_unique UNIQUE (organization_id, name)

@@ -1,0 +1,46 @@
+ALTER TABLE invoices
+  DROP COLUMN IF EXISTS seller_legal_name,
+  DROP COLUMN IF EXISTS seller_registration_number,
+  DROP COLUMN IF EXISTS seller_vat_id,
+  DROP COLUMN IF EXISTS seller_address_line1,
+  DROP COLUMN IF EXISTS seller_address_line2,
+  DROP COLUMN IF EXISTS seller_city,
+  DROP COLUMN IF EXISTS seller_postal_code,
+  DROP COLUMN IF EXISTS seller_country,
+  DROP COLUMN IF EXISTS buyer_legal_name,
+  DROP COLUMN IF EXISTS buyer_vat_id,
+  DROP COLUMN IF EXISTS buyer_address_line1,
+  DROP COLUMN IF EXISTS buyer_address_line2,
+  DROP COLUMN IF EXISTS buyer_city,
+  DROP COLUMN IF EXISTS buyer_postal_code,
+  DROP COLUMN IF EXISTS buyer_country,
+  DROP COLUMN IF EXISTS vat_regime,
+  DROP COLUMN IF EXISTS vat_rate_bps,
+  DROP COLUMN IF EXISTS subtotal_cents,
+  DROP COLUMN IF EXISTS vat_cents,
+  DROP COLUMN IF EXISTS bank_iban,
+  DROP COLUMN IF EXISTS bank_bic,
+  DROP COLUMN IF EXISTS bank_name;
+
+ALTER TABLE clients
+  DROP COLUMN IF EXISTS legal_name,
+  DROP COLUMN IF EXISTS vat_id,
+  DROP COLUMN IF EXISTS address_line1,
+  DROP COLUMN IF EXISTS address_line2,
+  DROP COLUMN IF EXISTS city,
+  DROP COLUMN IF EXISTS postal_code,
+  DROP COLUMN IF EXISTS country;
+
+ALTER TABLE organizations
+  DROP COLUMN IF EXISTS legal_name,
+  DROP COLUMN IF EXISTS registration_number,
+  DROP COLUMN IF EXISTS vat_id,
+  DROP COLUMN IF EXISTS address_line1,
+  DROP COLUMN IF EXISTS address_line2,
+  DROP COLUMN IF EXISTS city,
+  DROP COLUMN IF EXISTS postal_code,
+  DROP COLUMN IF EXISTS country,
+  DROP COLUMN IF EXISTS default_vat_rate_bps,
+  DROP COLUMN IF EXISTS bank_iban,
+  DROP COLUMN IF EXISTS bank_bic,
+  DROP COLUMN IF EXISTS bank_name;
