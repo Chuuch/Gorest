@@ -4,15 +4,20 @@ import (
 	"net/http"
 	"time"
 
+	activityhandler "github.com/chuuch/gorest/internal/activity/handler"
 	authhandler "github.com/chuuch/gorest/internal/auth/handler"
 	"github.com/chuuch/gorest/internal/auth/security"
 	clienthandler "github.com/chuuch/gorest/internal/client/handler"
 	clientuserhandler "github.com/chuuch/gorest/internal/clientusers/handler"
 	commenthandler "github.com/chuuch/gorest/internal/comments/handler"
+	eventshandler "github.com/chuuch/gorest/internal/events/handler"
 	filehandler "github.com/chuuch/gorest/internal/files/handler"
+	invoicehandler "github.com/chuuch/gorest/internal/invoices/handler"
 	"github.com/chuuch/gorest/internal/middleware"
+	notificationhandler "github.com/chuuch/gorest/internal/notifications/handler"
 	orghandler "github.com/chuuch/gorest/internal/organization/handler"
 	projecthandler "github.com/chuuch/gorest/internal/projects/handler"
+	reporthandler "github.com/chuuch/gorest/internal/reports/handler"
 	taskhandler "github.com/chuuch/gorest/internal/tasks/handler"
 	ticketcommenthandler "github.com/chuuch/gorest/internal/ticketcomments/handler"
 	ticketfilehandler "github.com/chuuch/gorest/internal/ticketfiles/handler"
@@ -43,6 +48,11 @@ func newRouter(
 	ticketHandler *tickethandler.Handler,
 	ticketFileHandler *ticketfilehandler.Handler,
 	ticketCommentHandler *ticketcommenthandler.Handler,
+	activityHandler *activityhandler.Handler,
+	reportHandler *reporthandler.Handler,
+	notificationHandler *notificationhandler.Handler,
+	invoiceHandler *invoicehandler.Handler,
+	eventsHandler *eventshandler.Handler,
 	tokenManager security.TokenManager,
 ) *http.ServeMux {
 	mux := http.NewServeMux()
@@ -62,6 +72,11 @@ func newRouter(
 		ticketHandler,
 		ticketFileHandler,
 		ticketCommentHandler,
+		activityHandler,
+		reportHandler,
+		notificationHandler,
+		invoiceHandler,
+		eventsHandler,
 		tokenManager,
 	)
 
@@ -83,6 +98,11 @@ func registerRoutes(
 	ticketHandler *tickethandler.Handler,
 	ticketFileHandler *ticketfilehandler.Handler,
 	ticketCommentHandler *ticketcommenthandler.Handler,
+	activityHandler *activityhandler.Handler,
+	reportHandler *reporthandler.Handler,
+	notificationHandler *notificationhandler.Handler,
+	invoiceHandler *invoicehandler.Handler,
+	eventsHandler *eventshandler.Handler,
 	tokenManager security.TokenManager,
 ) {
 	loginLimiter := middleware.NewLimiter(10, 15*time.Minute)
@@ -104,6 +124,13 @@ func registerRoutes(
 	mux.Handle("DELETE /api/v1/members/{id}", staff(tokenManager, orgHandler.DeleteMember))
 	mux.Handle("PATCH /api/v1/organization", staff(tokenManager, orgHandler.Update))
 
+	// ACTIVITY
+	mux.Handle("GET /api/v1/activity", staff(tokenManager, activityHandler.List))
+	mux.Handle("GET /api/v1/reports/time", staff(tokenManager, reportHandler.Time))
+	mux.Handle("GET /api/v1/notifications", staff(tokenManager, notificationHandler.List))
+	mux.Handle("PATCH /api/v1/notifications/{id}/read", staff(tokenManager, notificationHandler.MarkRead))
+	mux.Handle("GET /api/v1/events", staff(tokenManager, eventsHandler.Staff))
+
 	// CLIENTS
 	mux.Handle("GET /api/v1/clients", staff(tokenManager, clientHandler.List))
 	mux.Handle("POST /api/v1/clients", staff(tokenManager, clientHandler.Create))
@@ -120,6 +147,16 @@ func registerRoutes(
 	mux.Handle("GET /api/v1/clients/{id}/users", staff(tokenManager, clientUserHandler.List))
 	mux.Handle("POST /api/v1/clients/{id}/users", staff(tokenManager, clientUserHandler.Create))
 	mux.Handle("DELETE /api/v1/clients/{id}/users/{userId}", staff(tokenManager, clientUserHandler.Delete))
+
+	// INVOICES
+	mux.Handle("GET /api/v1/clients/{id}/invoices", staff(tokenManager, invoiceHandler.List))
+	mux.Handle("GET /api/v1/invoices/{id}/pdf", staff(tokenManager, invoiceHandler.PDF))
+	mux.Handle("POST /api/v1/clients/{id}/invoices", staff(tokenManager, invoiceHandler.Create))
+	mux.Handle("GET /api/v1/invoices/{id}", staff(tokenManager, invoiceHandler.Get))
+	mux.Handle("PATCH /api/v1/invoices/{id}", staff(tokenManager, invoiceHandler.Update))
+	mux.Handle("DELETE /api/v1/invoices/{id}", staff(tokenManager, invoiceHandler.Delete))
+	mux.Handle("POST /api/v1/invoices/{id}/send", staff(tokenManager, invoiceHandler.Send))
+	mux.Handle("POST /api/v1/invoices/{id}/paid", staff(tokenManager, invoiceHandler.MarkPaid))
 
 	// TASKS
 	mux.Handle("GET /api/v1/projects/{id}/tasks", staff(tokenManager, taskHandler.List))
@@ -163,6 +200,8 @@ func registerRoutes(
 	mux.Handle("POST /api/v1/client-auth/tickets/{id}/files", portal(tokenManager, ticketFileHandler.CreatePortal))
 	mux.Handle("GET /api/v1/client-auth/tickets/{id}/comments", portal(tokenManager, ticketCommentHandler.ListPortal))
 	mux.Handle("POST /api/v1/client-auth/tickets/{id}/comments", portal(tokenManager, ticketCommentHandler.CreatePortal))
+	mux.Handle("GET /api/v1/client-auth/notifications", portal(tokenManager, notificationHandler.List))
+	mux.Handle("PATCH /api/v1/client-auth/notifications/{id}/read", portal(tokenManager, notificationHandler.MarkRead))
 	mux.Handle("PATCH /api/v1/ticket-comments/{id}", staff(tokenManager, ticketCommentHandler.Update))
 	mux.Handle("DELETE /api/v1/ticket-comments/{id}", staff(tokenManager, ticketCommentHandler.Delete))
 	mux.Handle("PATCH /api/v1/client-auth/ticket-comments/{id}", portal(tokenManager, ticketCommentHandler.UpdatePortal))
@@ -174,6 +213,10 @@ func registerRoutes(
 	mux.HandleFunc("POST /api/v1/client-auth/logout", clientUserHandler.Logout)
 	mux.Handle("GET /api/v1/client-auth/me", portal(tokenManager, clientUserHandler.Me))
 	mux.Handle("POST /api/v1/client-auth/change-password", portal(tokenManager, clientUserHandler.ChangePassword))
+	mux.Handle("GET /api/v1/client-auth/invoices", portal(tokenManager, invoiceHandler.ListPortal))
+	mux.Handle("GET /api/v1/client-auth/invoices/{id}", portal(tokenManager, invoiceHandler.GetPortal))
+	mux.Handle("GET /api/v1/client-auth/invoices/{id}/pdf", portal(tokenManager, invoiceHandler.PDFPortal))
+	mux.Handle("GET /api/v1/client-auth/events", portal(tokenManager, eventsHandler.Portal))
 
 	// AUTH
 	mux.HandleFunc("POST /api/v1/auth/register", authHandler.Register)

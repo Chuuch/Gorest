@@ -57,3 +57,22 @@ func TestRequestLog_SkipsMetrics(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Empty(t, buffer.String())
 }
+
+func TestRequestLog_PreservesFlusher(t *testing.T) {
+	var sawFlusher bool
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /stream", func(w http.ResponseWriter, r *http.Request) {
+		_, sawFlusher = w.(http.Flusher)
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := middleware.RequestLog(mux)
+	req := httptest.NewRequest(http.MethodGet, "/stream", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	require.True(t, sawFlusher)
+	require.Equal(t, http.StatusOK, rec.Code)
+}

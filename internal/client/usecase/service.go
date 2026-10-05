@@ -3,11 +3,13 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	clientdomain "github.com/chuuch/gorest/internal/client/domain"
 	clientrepository "github.com/chuuch/gorest/internal/client/repository"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	"github.com/chuuch/gorest/internal/taxid"
 	"github.com/google/uuid"
 )
 
@@ -71,6 +73,13 @@ func (s *service) Create(
 		OrganizationID: organizationID,
 		Name:           req.Name,
 		Notes:          req.Notes,
+		LegalName:      strings.TrimSpace(req.LegalName),
+		VATID:          taxid.NormalizeVATID(req.VATID),
+		AddressLine1:   strings.TrimSpace(req.AddressLine1),
+		AddressLine2:   strings.TrimSpace(req.AddressLine2),
+		City:           strings.TrimSpace(req.City),
+		PostalCode:     strings.TrimSpace(req.PostalCode),
+		Country:        taxid.NormalizeCountry(req.Country),
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
@@ -99,6 +108,13 @@ func (s *service) Update(
 
 	client.Name = req.Name
 	client.Notes = req.Notes
+	client.LegalName = strings.TrimSpace(req.LegalName)
+	client.VATID = taxid.NormalizeVATID(req.VATID)
+	client.AddressLine1 = strings.TrimSpace(req.AddressLine1)
+	client.AddressLine2 = strings.TrimSpace(req.AddressLine2)
+	client.City = strings.TrimSpace(req.City)
+	client.PostalCode = strings.TrimSpace(req.PostalCode)
+	client.Country = taxid.NormalizeCountry(req.Country)
 	client.UpdatedAt = time.Now().UTC()
 
 	if err := s.clients.Update(ctx, client); err != nil {

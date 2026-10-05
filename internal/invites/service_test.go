@@ -153,6 +153,9 @@ func TestInviteService_IssueAndAccept(t *testing.T) {
 	require.Equal(t, "ada@example.com", deps.mailer.messages[0].To)
 	require.Contains(t, deps.mailer.messages[0].Subject, "Acme")
 	require.Contains(t, deps.mailer.messages[0].Text, testPublicURL+"/accept-invite?token=")
+	require.Contains(t, deps.mailer.messages[0].HTML, "Set your password")
+	require.Contains(t, deps.mailer.messages[0].HTML, testPublicURL+"/accept-invite?token=")
+	require.Contains(t, deps.mailer.messages[0].HTML, "#0f766e")
 
 	raw := tokenFromMail(t, deps.mailer.messages[0].Text, "/accept-invite?token=")
 
@@ -199,6 +202,7 @@ func TestInviteService_Accept_Expired(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Contains(t, deps.mailer.messages[0].Text, "Northwind")
+	require.Contains(t, deps.mailer.messages[0].HTML, "Northwind")
 
 	time.Sleep(5 * time.Millisecond)
 
@@ -226,6 +230,9 @@ func TestInviteService_RequestResetAndReset(t *testing.T) {
 	require.Equal(t, "ada@example.com", deps.mailer.messages[0].To)
 	require.Contains(t, deps.mailer.messages[0].Subject, "Reset")
 	require.Contains(t, deps.mailer.messages[0].Text, testPublicURL+"/reset-password?token=")
+	require.Contains(t, deps.mailer.messages[0].HTML, "Reset your password")
+	require.Contains(t, deps.mailer.messages[0].HTML, testPublicURL+"/reset-password?token=")
+	require.Contains(t, deps.mailer.messages[0].HTML, "#0f766e")
 
 	raw := tokenFromMail(t, deps.mailer.messages[0].Text, "/reset-password?token=")
 

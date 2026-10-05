@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/chuuch/gorest/internal/notifications"
+	notificationdomain "github.com/chuuch/gorest/internal/notifications/domain"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	ticketcommentdomain "github.com/chuuch/gorest/internal/ticketcomments/domain"
 	ticketcommentrepository "github.com/chuuch/gorest/internal/ticketcomments/repository"
@@ -40,6 +42,7 @@ type Service interface {
 type service struct {
 	comments ticketcommentrepository.TicketCommentRepository
 	tickets  ticketrepository.TicketRepository
+	notify   notifications.Publisher
 }
 
 func NewService(
@@ -49,7 +52,17 @@ func NewService(
 	return &service{
 		comments: comments,
 		tickets:  tickets,
+		notify:   notifications.Nop{},
 	}
+}
+
+func EnableNotifications(s Service, pub notifications.Publisher) Service {
+	impl, ok := s.(*service)
+	if !ok || pub == nil {
+		return s
+	}
+	impl.notify = pub
+	return impl
 }
 
 func (s *service) visibleTicket(
@@ -88,7 +101,8 @@ func (s *service) Create(
 	organizationID, ticketID, userID, portalClientID uuid.UUID,
 	req ticketcommentdomain.CreateCommentRequest,
 ) (*ticketcommentdomain.Comment, error) {
-	if _, err := s.visibleTicket(ctx, organizationID, ticketID, portalClientID); err != nil {
+	ticket, err := s.visibleTicket(ctx, organizationID, ticketID, portalClientID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -106,6 +120,29 @@ func (s *service) Create(
 
 	if err := s.comments.Create(ctx, comment); err != nil {
 		return nil, err
+	}
+
+	if portalClientID != uuid.Nil {
+		notifications.NotifyStaff(
+			ctx,
+			s.notify,
+			organizationID,
+			notificationdomain.KindTicketClientComment,
+			notificationdomain.EntityTicketComment,
+			ticket.Title,
+			comment.ID,
+		)
+	} else {
+		notifications.NotifyUser(
+			ctx,
+			s.notify,
+			organizationID,
+			ticket.UserID,
+			notificationdomain.KindTicketStaffComment,
+			notificationdomain.EntityTicketComment,
+			ticket.Title,
+			comment.ID,
+		)
 	}
 
 	return comment, nil

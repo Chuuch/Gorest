@@ -10,6 +10,9 @@ import (
 	"os/signal"
 	"syscall"
 
+	activityhandler "github.com/chuuch/gorest/internal/activity/handler"
+	activitypostgres "github.com/chuuch/gorest/internal/activity/postgres"
+	activityusecase "github.com/chuuch/gorest/internal/activity/usecase"
 	authhandler "github.com/chuuch/gorest/internal/auth/handler"
 	authpostgres "github.com/chuuch/gorest/internal/auth/postgres"
 	"github.com/chuuch/gorest/internal/auth/security"
@@ -25,18 +28,29 @@ import (
 	commentusecase "github.com/chuuch/gorest/internal/comments/usecase"
 	"github.com/chuuch/gorest/internal/config"
 	"github.com/chuuch/gorest/internal/database"
+	"github.com/chuuch/gorest/internal/events"
+	eventshandler "github.com/chuuch/gorest/internal/events/handler"
 	filehandler "github.com/chuuch/gorest/internal/files/handler"
 	filepostgres "github.com/chuuch/gorest/internal/files/postgres"
 	fileusecase "github.com/chuuch/gorest/internal/files/usecase"
 	"github.com/chuuch/gorest/internal/invites"
+	invoicehandler "github.com/chuuch/gorest/internal/invoices/handler"
+	invoicepostgres "github.com/chuuch/gorest/internal/invoices/postgres"
+	invoiceusecase "github.com/chuuch/gorest/internal/invoices/usecase"
 	"github.com/chuuch/gorest/internal/mailer"
 	"github.com/chuuch/gorest/internal/middleware"
+	notificationhandler "github.com/chuuch/gorest/internal/notifications/handler"
+	notificationpostgres "github.com/chuuch/gorest/internal/notifications/postgres"
+	notificationsusecase "github.com/chuuch/gorest/internal/notifications/usecase"
 	orghandler "github.com/chuuch/gorest/internal/organization/handler"
 	orgpostgres "github.com/chuuch/gorest/internal/organization/postgres"
 	orgusecase "github.com/chuuch/gorest/internal/organization/usecase"
 	projecthandler "github.com/chuuch/gorest/internal/projects/handler"
 	projectpostgres "github.com/chuuch/gorest/internal/projects/postgres"
 	projectusecase "github.com/chuuch/gorest/internal/projects/usecase"
+	reporthandler "github.com/chuuch/gorest/internal/reports/handler"
+	reportspostgres "github.com/chuuch/gorest/internal/reports/postgres"
+	reportsusecase "github.com/chuuch/gorest/internal/reports/usecase"
 	"github.com/chuuch/gorest/internal/storage"
 	taskhandler "github.com/chuuch/gorest/internal/tasks/handler"
 	taskpostgres "github.com/chuuch/gorest/internal/tasks/postgres"
@@ -167,6 +181,40 @@ func New(cfg *config.Config) (*Server, error) {
 	orgHandler := orghandler.NewHandler(orgService)
 
 	// -------------------------------------------------------------
+	// Activity domain
+	// -------------------------------------------------------------
+	activityRepository := activitypostgres.NewRepository(db)
+
+	eventHub := events.NewHub()
+	eventsHandler := eventshandler.NewHandler(eventHub)
+
+	activityService := activityusecase.EnableRealtime(
+		activityusecase.NewService(activityRepository),
+		eventHub,
+	)
+	activityHandler := activityhandler.NewHandler(activityService)
+
+	// -------------------------------------------------------------
+	// Reports domain
+	// -------------------------------------------------------------
+	reportRepository := reportspostgres.NewRepository(db)
+	reportService := reportsusecase.NewService(reportRepository)
+	reportHandler := reporthandler.NewHandler(reportService)
+
+	// -------------------------------------------------------------
+	// Notifications domain
+	// -------------------------------------------------------------
+	notificationRepository := notificationpostgres.NewRepository(db)
+	notificationService := notificationsusecase.EnableRealtime(
+		notificationsusecase.NewService(
+			notificationRepository,
+			membershipRepository,
+		),
+		eventHub,
+	)
+	notificationHandler := notificationhandler.NewHandler(notificationService)
+
+	// -------------------------------------------------------------
 	// Client domain
 	// -------------------------------------------------------------
 	clientRepository := clientpostgres.NewRepository(db)
@@ -184,15 +232,21 @@ func New(cfg *config.Config) (*Server, error) {
 	// Ticket domain
 	// -------------------------------------------------------------
 	ticketRepository := ticketpostgres.NewRepository(db)
-	ticketService := ticketusecase.NewService(ticketRepository, clientRepository)
-	ticketHandler := tickethandler.NewHandler(ticketService)
+	ticketService := ticketusecase.EnableNotifications(
+		ticketusecase.NewService(ticketRepository, clientRepository),
+		notificationService,
+	)
+	ticketHandler := tickethandler.NewHandler(ticketService).WithActivity(activityService)
 
 	// -------------------------------------------------------------
 	// Task domain
 	// -------------------------------------------------------------
 	taskRepository := taskpostgres.NewRepository(db)
-	taskService := taskusecase.NewService(taskRepository, projectRepository, ticketRepository, membershipRepository)
-	taskHandler := taskhandler.NewHandler(taskService)
+	taskService := taskusecase.EnableNotifications(
+		taskusecase.NewService(taskRepository, projectRepository, ticketRepository, membershipRepository),
+		notificationService,
+	)
+	taskHandler := taskhandler.NewHandler(taskService).WithActivity(activityService)
 
 	// -------------------------------------------------------------
 	// Time entry domain
@@ -206,14 +260,17 @@ func New(cfg *config.Config) (*Server, error) {
 	// -------------------------------------------------------------
 	fileRepository := filepostgres.NewRepository(db)
 	fileSerivce := fileusecase.NewService(fileRepository, projectRepository, objectStore)
-	fileHandler := filehandler.NewHandler(fileSerivce)
+	fileHandler := filehandler.NewHandler(fileSerivce).WithActivity(activityService)
 
 	// -------------------------------------------------------------
 	// Comment  domain
 	// -------------------------------------------------------------
 	commentRepository := commentpostgres.NewRepository(db)
-	commentService := commentusecase.NewService(commentRepository, taskRepository)
-	commentHandler := commenthandler.NewHandler(commentService)
+	commentService := commentusecase.EnableNotifications(
+		commentusecase.NewService(commentRepository, taskRepository),
+		notificationService,
+	)
+	commentHandler := commenthandler.NewHandler(commentService).WithActivity(activityService)
 
 	// -------------------------------------------------------------
 	// Client User domain
@@ -243,14 +300,33 @@ func New(cfg *config.Config) (*Server, error) {
 	// -------------------------------------------------------------
 	ticketFileRepository := ticketfilepostgres.NewRepository(db)
 	ticketFileService := ticketfileusecase.NewService(ticketFileRepository, ticketRepository, objectStore)
-	ticketFileHandler := ticketfilehandler.NewHandler(ticketFileService)
+	ticketFileHandler := ticketfilehandler.NewHandler(ticketFileService).WithActivity(activityService)
 
 	// -------------------------------------------------------------
 	// Ticket comment domain
 	// -------------------------------------------------------------
 	ticketCommentRepository := ticketcommentpostgres.NewRepository(db)
-	ticketCommentService := ticketcommentusecase.NewService(ticketCommentRepository, ticketRepository)
-	ticketCommentHandler := ticketcommenthandler.NewHandler(ticketCommentService)
+	ticketCommentService := ticketcommentusecase.EnableNotifications(
+		ticketcommentusecase.NewService(ticketCommentRepository, ticketRepository),
+		notificationService,
+	)
+	ticketCommentHandler := ticketcommenthandler.NewHandler(ticketCommentService).WithActivity(activityService)
+
+	// -------------------------------------------------------------
+	// Invoices domain
+	// -------------------------------------------------------------
+	invoiceRepository := invoicepostgres.NewRepository(db)
+	invoiceService := invoiceusecase.NewService(
+		invoiceRepository,
+		clientRepository,
+		organizationRepository,
+		clientUserRepository,
+		userRepository,
+		mailSender,
+		db,
+		cfg.App.PublicURL,
+	)
+	invoiceHandler := invoicehandler.NewHandler(invoiceService)
 
 	// -------------------------------------------------------------
 	// HTTP Server
@@ -269,6 +345,11 @@ func New(cfg *config.Config) (*Server, error) {
 		ticketHandler,
 		ticketFileHandler,
 		ticketCommentHandler,
+		activityHandler,
+		reportHandler,
+		notificationHandler,
+		invoiceHandler,
+		eventsHandler,
 		tokenManager,
 	)
 

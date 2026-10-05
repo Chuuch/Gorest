@@ -6,6 +6,8 @@ import (
 	"time"
 
 	clientrepository "github.com/chuuch/gorest/internal/client/repository"
+	"github.com/chuuch/gorest/internal/notifications"
+	notificationdomain "github.com/chuuch/gorest/internal/notifications/domain"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	ticketdomain "github.com/chuuch/gorest/internal/tickets/domain"
 	ticketrepository "github.com/chuuch/gorest/internal/tickets/repository"
@@ -37,6 +39,7 @@ type Service interface {
 type service struct {
 	tickets ticketrepository.TicketRepository
 	clients clientrepository.ClientRepository
+	notify  notifications.Publisher
 }
 
 func NewService(
@@ -46,7 +49,17 @@ func NewService(
 	return &service{
 		tickets: tickets,
 		clients: clients,
+		notify:  notifications.Nop{},
 	}
+}
+
+func EnableNotifications(s Service, pub notifications.Publisher) Service {
+	impl, ok := s.(*service)
+	if !ok || pub == nil {
+		return s
+	}
+	impl.notify = pub
+	return impl
 }
 
 func (s *service) List(
@@ -93,6 +106,16 @@ func (s *service) Create(
 		return nil, err
 	}
 
+	notifications.NotifyStaff(
+		ctx,
+		s.notify,
+		organizationID,
+		notificationdomain.KindTicketOpened,
+		notificationdomain.EntityTicket,
+		ticket.Title,
+		ticket.ID,
+	)
+
 	return ticket, nil
 }
 
@@ -106,12 +129,26 @@ func (s *service) Update(
 		return nil, err
 	}
 
+	previous := ticket.Status
 	ticket.Status = ticketdomain.Status(req.Status)
 	ticket.UpdatedAt = time.Now().UTC()
 	ticket.Version = req.Version
 
 	if err := s.tickets.Update(ctx, ticket); err != nil {
 		return nil, err
+	}
+
+	if previous != ticket.Status {
+		notifications.NotifyUser(
+			ctx,
+			s.notify,
+			organizationID,
+			ticket.UserID,
+			notificationdomain.KindTicketStatusChanged,
+			notificationdomain.EntityTicket,
+			ticket.Title,
+			ticket.ID,
+		)
 	}
 
 	return ticket, nil

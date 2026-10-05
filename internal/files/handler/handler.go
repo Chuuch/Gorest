@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/chuuch/gorest/internal/activity"
+	activitydomain "github.com/chuuch/gorest/internal/activity/domain"
 	"github.com/chuuch/gorest/internal/api"
 	filedomain "github.com/chuuch/gorest/internal/files/domain"
 	"github.com/chuuch/gorest/internal/files/usecase"
@@ -16,11 +18,12 @@ import (
 )
 
 type Handler struct {
-	service usecase.Service
+	service  usecase.Service
+	activity activity.Recorder
 }
 
 func NewHandler(service usecase.Service) *Handler {
-	return &Handler{service: service}
+	return &Handler{service: service, activity: activity.Nop{}}
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
@@ -89,6 +92,16 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	activity.Capture(
+		r.Context(),
+		h.activity,
+		organizationID,
+		activitydomain.ActionCreated,
+		activitydomain.EntityFile,
+		view.File.Filename,
+		view.File.ID,
+	)
+
 	api.WriteJSON(w, http.StatusCreated, toResponse(view))
 }
 
@@ -116,6 +129,16 @@ func (h *Handler) Delete(
 		h.handleError(w, err)
 		return
 	}
+
+	activity.Capture(
+		r.Context(),
+		h.activity,
+		organizationID,
+		activitydomain.ActionDeleted,
+		activitydomain.EntityFile,
+		"",
+		fileID,
+	)
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -247,4 +270,11 @@ func toResponse(view *filedomain.FileView) filedomain.FileResponse {
 		UploadURL:      view.UploadURL,
 		DownloadURL:    view.DownloadURL,
 	}
+}
+
+func (h *Handler) WithActivity(rec activity.Recorder) *Handler {
+	if rec != nil {
+		h.activity = rec
+	}
+	return h
 }
