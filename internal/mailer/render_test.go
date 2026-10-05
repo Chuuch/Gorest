@@ -21,7 +21,7 @@ func TestRenderTransactional(t *testing.T) {
 	require.Contains(t, html, "You&#39;ve been invited to join Acme.")
 	require.Contains(t, html, "Set your password")
 	require.Contains(t, html, "http://localhost:5173/accept-invite?token=abc")
-	require.Contains(t, html, "#0f766e")
+	require.Contains(t, html, "#ff5c00")
 	require.Contains(t, html, "#f3f6f4")
 	require.Contains(t, html, "This link expires in 7 days.")
 }
@@ -90,7 +90,7 @@ func TestRenderInvoice(t *testing.T) {
 	require.Contains(t, html, "€45.00")
 	require.Contains(t, html, "VAT reverse charge")
 	require.Contains(t, html, "IBAN BG80BNBG96611020345678")
-	require.Contains(t, html, "#0f766e")
+	require.Contains(t, html, "#ff5c00")
 	require.Contains(t, html, "http://localhost:5173/portal")
 }
 
