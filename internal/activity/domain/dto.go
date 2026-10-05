@@ -10,8 +10,8 @@ type EventResponse struct {
 	ID               uuid.UUID `json:"id"`
 	OrganizationID   uuid.UUID `json:"organization_id"`
 	ActorID          uuid.UUID `json:"actor_id"`
-	ActorEmail       string    `json:"acotr_email"`
-	ActorDisplayName string    `json:"display_name"`
+	ActorEmail       string    `json:"actor_email"`
+	ActorDisplayName string    `json:"actor_display_name"`
 	Action           string    `json:"action"`
 	EntityType       string    `json:"entity_type"`
 	EntityID         uuid.UUID `json:"entity_id"`

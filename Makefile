@@ -7,7 +7,7 @@ MIGRATIONS_PATH := ./migrations
 MIGRATE := migrate
 
 .PHONY: migrate-up migrate-down migrate-version migrate-create
-.PHONY: docker-up docker-down docker-logs docker-build
+.PHONY: docker-up docker-down docker-logs docker-build seed
 
 migrate-up:
 	@test -n "$(GOREST_DATABASE_URL)" || (echo "GOREST_DATABASE_URL is not set"; exit 1)
@@ -24,6 +24,10 @@ migrate-version:
 migrate-create:
 	@test - "$(GOREST_DATABASE_URL)" || (echo "GOREST_DATABASE_URL is not set"; exit 1)
 	$(MIGRATE) create -ext sql -dir $(MIGRATIONS_PATH) $(name)
+
+seed:
+	@test -n "$(GOREST_DATABASE_URL)" || (echo "GOREST_DATABASE_URL is not set"; exit 1)
+	go run ./cmd/seed -org="$(or $(ORG),Zyntera)" $(if $(FORCE),-force,)
 
 docker-up:
 	docker compose up -d

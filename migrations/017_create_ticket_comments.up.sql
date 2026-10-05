@@ -4,7 +4,7 @@ CREATE TABLE ticket_comments (
   ticket_id UUID NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   body TEXT NOT NULL,
-  creatd_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL,
   CONSTRAINT ticket_comments_body_check CHECK (char_length(body) >= 1 AND char_length(body) <= 2000)
 );

@@ -27,7 +27,8 @@ services:
       start_period: 10s
 
   minio:
-    image: quay.io/minio/minio:latest
+    # Official MinIO images gone from Hub/Quay; community CE rebuild.
+    image: coollabsio/minio:latest
     container_name: gorest-minio
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]

@@ -56,7 +56,10 @@ func (h *Handler) stream(
 	defer cancel()
 
 	rc := http.NewResponseController(w)
-	_ = rc.SetWriteDeadline(time.Time{})
+	if err := rc.SetWriteDeadline(time.Time{}); err != nil {
+		api.WriteError(w, http.StatusInternalServerError, "internal", "streaming unavailable")
+		return
+	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")

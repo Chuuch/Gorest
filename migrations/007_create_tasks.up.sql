@@ -8,7 +8,7 @@ CREATE TABLE tasks (
   created_at TIMESTAMPTZ NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL,
   CONSTRAINT tasks_project_title_unique UNIQUE (project_id, title),
-  CONSTRAINT tasks_status_check CHECK (status IN ('todo', 'in_progres', 'done'))
+  CONSTRAINT tasks_status_check CHECK (status IN ('todo', 'in_progress', 'done'))
 );
 
 CREATE INDEX idx_tasks_organization_id ON tasks (organization_id);
