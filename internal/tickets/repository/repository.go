@@ -13,4 +13,5 @@ type TicketRepository interface {
 	Update(ctx context.Context, ticket *domain.Ticket) error
 	Delete(ctx context.Context, id, organizationID uuid.UUID) error
 	ListByClientID(ctx context.Context, organizationID, clientID uuid.UUID) ([]*domain.Ticket, error)
+	ListByOrganizationID(ctx context.Context, organizationID uuid.UUID) ([]*domain.Ticket, error)
 }
