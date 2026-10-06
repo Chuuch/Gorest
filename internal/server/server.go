@@ -39,6 +39,9 @@ import (
 	invoiceusecase "github.com/chuuch/gorest/internal/invoices/usecase"
 	"github.com/chuuch/gorest/internal/mailer"
 	"github.com/chuuch/gorest/internal/middleware"
+	navhandler "github.com/chuuch/gorest/internal/nav/handler"
+	navpostgres "github.com/chuuch/gorest/internal/nav/postgres"
+	navusecase "github.com/chuuch/gorest/internal/nav/usecase"
 	notificationhandler "github.com/chuuch/gorest/internal/notifications/handler"
 	notificationpostgres "github.com/chuuch/gorest/internal/notifications/postgres"
 	notificationsusecase "github.com/chuuch/gorest/internal/notifications/usecase"
@@ -215,6 +218,13 @@ func New(cfg *config.Config) (*Server, error) {
 	notificationHandler := notificationhandler.NewHandler(notificationService)
 
 	// -------------------------------------------------------------
+	// Nav counts domain
+	// -------------------------------------------------------------
+	navRepository := navpostgres.NewRepository(db)
+	navService := navusecase.NewService(navRepository)
+	navHandler := navhandler.NewHandler(navService)
+
+	// -------------------------------------------------------------
 	// Client domain
 	// -------------------------------------------------------------
 	clientRepository := clientpostgres.NewRepository(db)
@@ -349,6 +359,7 @@ func New(cfg *config.Config) (*Server, error) {
 		reportHandler,
 		notificationHandler,
 		invoiceHandler,
+		navHandler,
 		eventsHandler,
 		tokenManager,
 	)

@@ -14,6 +14,7 @@ import (
 	filehandler "github.com/chuuch/gorest/internal/files/handler"
 	invoicehandler "github.com/chuuch/gorest/internal/invoices/handler"
 	"github.com/chuuch/gorest/internal/middleware"
+	navhandler "github.com/chuuch/gorest/internal/nav/handler"
 	notificationhandler "github.com/chuuch/gorest/internal/notifications/handler"
 	orghandler "github.com/chuuch/gorest/internal/organization/handler"
 	projecthandler "github.com/chuuch/gorest/internal/projects/handler"
@@ -52,6 +53,7 @@ func newRouter(
 	reportHandler *reporthandler.Handler,
 	notificationHandler *notificationhandler.Handler,
 	invoiceHandler *invoicehandler.Handler,
+	navHandler *navhandler.Handler,
 	eventsHandler *eventshandler.Handler,
 	tokenManager security.TokenManager,
 ) *http.ServeMux {
@@ -76,6 +78,7 @@ func newRouter(
 		reportHandler,
 		notificationHandler,
 		invoiceHandler,
+		navHandler,
 		eventsHandler,
 		tokenManager,
 	)
@@ -102,6 +105,7 @@ func registerRoutes(
 	reportHandler *reporthandler.Handler,
 	notificationHandler *notificationhandler.Handler,
 	invoiceHandler *invoicehandler.Handler,
+	navHandler *navhandler.Handler,
 	eventsHandler *eventshandler.Handler,
 	tokenManager security.TokenManager,
 ) {
@@ -129,6 +133,7 @@ func registerRoutes(
 	mux.Handle("GET /api/v1/reports/time", staff(tokenManager, reportHandler.Time))
 	mux.Handle("GET /api/v1/notifications", staff(tokenManager, notificationHandler.List))
 	mux.Handle("PATCH /api/v1/notifications/{id}/read", staff(tokenManager, notificationHandler.MarkRead))
+	mux.Handle("GET /api/v1/nav/counts", staff(tokenManager, navHandler.Counts))
 	mux.Handle("GET /api/v1/events", staff(tokenManager, eventsHandler.Staff))
 
 	// CLIENTS
@@ -202,6 +207,7 @@ func registerRoutes(
 	mux.Handle("POST /api/v1/client-auth/tickets/{id}/comments", portal(tokenManager, ticketCommentHandler.CreatePortal))
 	mux.Handle("GET /api/v1/client-auth/notifications", portal(tokenManager, notificationHandler.List))
 	mux.Handle("PATCH /api/v1/client-auth/notifications/{id}/read", portal(tokenManager, notificationHandler.MarkRead))
+	mux.Handle("GET /api/v1/client-auth/nav/counts", portal(tokenManager, navHandler.Counts))
 	mux.Handle("PATCH /api/v1/ticket-comments/{id}", staff(tokenManager, ticketCommentHandler.Update))
 	mux.Handle("DELETE /api/v1/ticket-comments/{id}", staff(tokenManager, ticketCommentHandler.Delete))
 	mux.Handle("PATCH /api/v1/client-auth/ticket-comments/{id}", portal(tokenManager, ticketCommentHandler.UpdatePortal))

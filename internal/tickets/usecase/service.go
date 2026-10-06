@@ -19,6 +19,10 @@ type Service interface {
 		ctx context.Context,
 		organizationID, clientID uuid.UUID,
 	) ([]*ticketdomain.Ticket, error)
+	ListOrganization(
+		ctx context.Context,
+		organizationID uuid.UUID,
+	) ([]*ticketdomain.Ticket, error)
 	Create(
 		ctx context.Context,
 		organizationID, clientID, userID uuid.UUID,
@@ -73,6 +77,17 @@ func (s *service) List(
 	tickets, err := s.tickets.ListByClientID(ctx, organizationID, clientID)
 	if err != nil {
 		return nil, fmt.Errorf("list tickets: %w", err)
+	}
+	return tickets, nil
+}
+
+func (s *service) ListOrganization(
+	ctx context.Context,
+	organizationID uuid.UUID,
+) ([]*ticketdomain.Ticket, error) {
+	tickets, err := s.tickets.ListByOrganizationID(ctx, organizationID)
+	if err != nil {
+		return nil, fmt.Errorf("list organization tickets: %w", err)
 	}
 	return tickets, nil
 }

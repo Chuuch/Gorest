@@ -65,10 +65,11 @@ func withPortalSession(
 }
 
 type mockService struct {
-	listFunc   func(uuid.UUID, uuid.UUID) ([]*ticketdomain.Ticket, error)
-	createFunc func(uuid.UUID, uuid.UUID, uuid.UUID, ticketdomain.CreateTicketRequest) (*ticketdomain.Ticket, error)
-	updateFunc func(uuid.UUID, uuid.UUID, ticketdomain.UpdateTicketRequest) (*ticketdomain.Ticket, error)
-	deleteFunc func(uuid.UUID, uuid.UUID, orgdomain.Role) error
+	listFunc    func(uuid.UUID, uuid.UUID) ([]*ticketdomain.Ticket, error)
+	listOrgFunc func(uuid.UUID) ([]*ticketdomain.Ticket, error)
+	createFunc  func(uuid.UUID, uuid.UUID, uuid.UUID, ticketdomain.CreateTicketRequest) (*ticketdomain.Ticket, error)
+	updateFunc  func(uuid.UUID, uuid.UUID, ticketdomain.UpdateTicketRequest) (*ticketdomain.Ticket, error)
+	deleteFunc  func(uuid.UUID, uuid.UUID, orgdomain.Role) error
 }
 
 func (m *mockService) List(
@@ -76,6 +77,16 @@ func (m *mockService) List(
 	organizationID, clientID uuid.UUID,
 ) ([]*ticketdomain.Ticket, error) {
 	return m.listFunc(organizationID, clientID)
+}
+
+func (m *mockService) ListOrganization(
+	_ context.Context,
+	organizationID uuid.UUID,
+) ([]*ticketdomain.Ticket, error) {
+	if m.listOrgFunc == nil {
+		return nil, nil
+	}
+	return m.listOrgFunc(organizationID)
 }
 
 func (m *mockService) Create(

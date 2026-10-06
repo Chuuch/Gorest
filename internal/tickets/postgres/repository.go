@@ -226,6 +226,61 @@ func (r *Repository) ListByClientID(
 	return tickets, nil
 }
 
+func (r *Repository) ListByOrganizationID(
+	ctx context.Context,
+	organizationID uuid.UUID,
+) ([]*domain.Ticket, error) {
+	const query = `
+			SELECT
+					id,
+					organization_id,
+					client_id,
+					user_id,
+					kind,
+					status,
+					title,
+					body,
+					version,
+					created_at,
+					updated_at
+			FROM tickets
+			WHERE organization_id = $1
+			ORDER BY created_at DESC
+		`
+
+	rows, err := r.db.Query(ctx, query, organizationID)
+	if err != nil {
+		return nil, fmt.Errorf("list organization tickets: %w", err)
+	}
+	defer rows.Close()
+
+	tickets := make([]*domain.Ticket, 0)
+
+	for rows.Next() {
+		var ticket domain.Ticket
+
+		if err := rows.Scan(
+			&ticket.ID,
+			&ticket.OrganizationID,
+			&ticket.ClientID,
+			&ticket.UserID,
+			&ticket.Kind,
+			&ticket.Status,
+			&ticket.Title,
+			&ticket.Body,
+			&ticket.Version,
+			&ticket.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan ticket: %w", err)
+		}
+		tickets = append(tickets, &ticket)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list organization tickets: %w", err)
+	}
+	return tickets, nil
+}
+
 func (r *Repository) conflictOrNotFound(
 	ctx context.Context,
 	id, organizationID uuid.UUID,

@@ -43,6 +43,25 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	h.writeList(w, r, organizationID, clientID)
 }
 
+func (h *Handler) ListOrganization(w http.ResponseWriter, r *http.Request) {
+	organizationID, _, ok := h.staffSession(w, r)
+	if !ok {
+		return
+	}
+
+	tickets, err := h.service.ListOrganization(r.Context(), organizationID)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	responses := make([]ticketdomain.TicketResponse, 0, len(tickets))
+	for _, ticket := range tickets {
+		responses = append(responses, toResponse(ticket))
+	}
+	api.WriteJSON(w, http.StatusOK, responses)
+}
+
 func (h *Handler) ListPortal(w http.ResponseWriter, r *http.Request) {
 	organizationID, _, clientID, ok := h.portalSession(w, r)
 	if !ok {
