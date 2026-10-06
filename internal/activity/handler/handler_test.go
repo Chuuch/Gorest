@@ -10,6 +10,7 @@ import (
 
 	activitydomain "github.com/chuuch/gorest/internal/activity/domain"
 	activityhandler "github.com/chuuch/gorest/internal/activity/handler"
+	"github.com/chuuch/gorest/internal/pagination"
 	"github.com/chuuch/gorest/internal/requestcontext"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -20,7 +21,7 @@ func testOrganizationID() uuid.UUID {
 }
 
 type mockService struct {
-	listFn func(uuid.UUID, int) ([]*activitydomain.Event, error)
+	listFn func(uuid.UUID, int, *pagination.Cursor) ([]*activitydomain.Event, *string, error)
 }
 
 func (m *mockService) Record(context.Context, activitydomain.Event) error {
@@ -31,8 +32,9 @@ func (m *mockService) List(
 	_ context.Context,
 	organizationID uuid.UUID,
 	limit int,
-) ([]*activitydomain.Event, error) {
-	return m.listFn(organizationID, limit)
+	cursor *pagination.Cursor,
+) ([]*activitydomain.Event, *string, error) {
+	return m.listFn(organizationID, limit, cursor)
 }
 
 func TestHandler_List(t *testing.T) {
@@ -51,10 +53,11 @@ func TestHandler_List(t *testing.T) {
 	}
 
 	service := &mockService{
-		listFn: func(gotOrganizationID uuid.UUID, limit int) ([]*activitydomain.Event, error) {
+		listFn: func(gotOrganizationID uuid.UUID, limit int, cursor *pagination.Cursor) ([]*activitydomain.Event, *string, error) {
 			require.Equal(t, organizationID, gotOrganizationID)
 			require.Equal(t, 50, limit)
-			return []*activitydomain.Event{event}, nil
+			require.Nil(t, cursor)
+			return []*activitydomain.Event{event}, nil, nil
 		},
 	}
 
@@ -68,19 +71,20 @@ func TestHandler_List(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	var response []activitydomain.EventResponse
+	var response pagination.Page[activitydomain.EventResponse]
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
-	require.Len(t, response, 1)
-	require.Equal(t, event.ID, response[0].ID)
-	require.Equal(t, "ada@example.com", response[0].ActorEmail)
-	require.Equal(t, "Ada", response[0].ActorDisplayName)
-	require.Equal(t, "Draw wireframes", response[0].Summary)
+	require.Len(t, response.Items, 1)
+	require.Nil(t, response.NextCursor)
+	require.Equal(t, event.ID, response.Items[0].ID)
+	require.Equal(t, "ada@example.com", response.Items[0].ActorEmail)
+	require.Equal(t, "Ada", response.Items[0].ActorDisplayName)
+	require.Equal(t, "Draw wireframes", response.Items[0].Summary)
 }
 
 func TestHandler_List_Empty(t *testing.T) {
 	service := &mockService{
-		listFn: func(uuid.UUID, int) ([]*activitydomain.Event, error) {
-			return []*activitydomain.Event{}, nil
+		listFn: func(uuid.UUID, int, *pagination.Cursor) ([]*activitydomain.Event, *string, error) {
+			return []*activitydomain.Event{}, nil, nil
 		},
 	}
 
@@ -93,14 +97,18 @@ func TestHandler_List_Empty(t *testing.T) {
 	handler.List(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, "[]", rec.Body.String())
+
+	var response pagination.Page[activitydomain.EventResponse]
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Empty(t, response.Items)
+	require.Nil(t, response.NextCursor)
 }
 
 func TestHandler_List_Unauthorized(t *testing.T) {
 	handler := activityhandler.NewHandler(&mockService{
-		listFn: func(uuid.UUID, int) ([]*activitydomain.Event, error) {
+		listFn: func(uuid.UUID, int, *pagination.Cursor) ([]*activitydomain.Event, *string, error) {
 			t.Fatal("service should not be called")
-			return nil, nil
+			return nil, nil, nil
 		},
 	})
 
@@ -113,13 +121,30 @@ func TestHandler_List_Unauthorized(t *testing.T) {
 
 func TestHandler_List_InvalidLimit(t *testing.T) {
 	handler := activityhandler.NewHandler(&mockService{
-		listFn: func(uuid.UUID, int) ([]*activitydomain.Event, error) {
+		listFn: func(uuid.UUID, int, *pagination.Cursor) ([]*activitydomain.Event, *string, error) {
 			t.Fatal("service should not be called")
-			return nil, nil
+			return nil, nil, nil
 		},
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/activity?limit=nope", nil)
+	req = req.WithContext(requestcontext.WithOrganizationID(req.Context(), testOrganizationID()))
+
+	rec := httptest.NewRecorder()
+	handler.List(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandler_List_InvalidCursor(t *testing.T) {
+	handler := activityhandler.NewHandler(&mockService{
+		listFn: func(uuid.UUID, int, *pagination.Cursor) ([]*activitydomain.Event, *string, error) {
+			t.Fatal("service should not be called")
+			return nil, nil, nil
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/activity?cursor=not-a-cursor", nil)
 	req = req.WithContext(requestcontext.WithOrganizationID(req.Context(), testOrganizationID()))
 
 	rec := httptest.NewRecorder()

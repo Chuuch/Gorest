@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/chuuch/gorest/internal/notifications/domain"
+	"github.com/chuuch/gorest/internal/pagination"
 	"github.com/google/uuid"
 )
 
@@ -13,6 +14,7 @@ type NotificationRepository interface {
 		ctx context.Context,
 		organizationID, recipientID uuid.UUID,
 		limit int,
+		cursor *pagination.Cursor,
 	) ([]*domain.Notification, error)
 	MarkRead(
 		ctx context.Context,

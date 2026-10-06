@@ -7,13 +7,14 @@ import (
 
 	"github.com/chuuch/gorest/internal/activity/domain"
 	uc "github.com/chuuch/gorest/internal/activity/usecase"
+	"github.com/chuuch/gorest/internal/pagination"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
 type mockRepository struct {
 	createFn func(context.Context, *domain.Event) error
-	listFn   func(context.Context, uuid.UUID, int) ([]*domain.Event, error)
+	listFn   func(context.Context, uuid.UUID, int, *pagination.Cursor) ([]*domain.Event, error)
 }
 
 func (m *mockRepository) Create(ctx context.Context, event *domain.Event) error {
@@ -24,8 +25,9 @@ func (m *mockRepository) ListByOrganizationID(
 	ctx context.Context,
 	organizationID uuid.UUID,
 	limit int,
+	cursor *pagination.Cursor,
 ) ([]*domain.Event, error) {
-	return m.listFn(ctx, organizationID, limit)
+	return m.listFn(ctx, organizationID, limit, cursor)
 }
 
 func TestService_Record(t *testing.T) {
@@ -80,16 +82,18 @@ func TestService_List(t *testing.T) {
 	}
 
 	repo := &mockRepository{
-		listFn: func(_ context.Context, gotOrganizationID uuid.UUID, limit int) ([]*domain.Event, error) {
+		listFn: func(_ context.Context, gotOrganizationID uuid.UUID, limit int, cursor *pagination.Cursor) ([]*domain.Event, error) {
 			require.Equal(t, organizationID, gotOrganizationID)
-			require.Equal(t, 50, limit)
+			require.Equal(t, 51, limit)
+			require.Nil(t, cursor)
 			return []*domain.Event{expected}, nil
 		},
 	}
 
 	service := uc.NewService(repo)
 
-	events, err := service.List(context.Background(), organizationID, 50)
+	events, next, err := service.List(context.Background(), organizationID, 50, nil)
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Equal(t, []*domain.Event{expected}, events)
 }

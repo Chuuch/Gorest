@@ -6,6 +6,7 @@ import (
 
 	"github.com/chuuch/gorest/internal/database"
 	"github.com/chuuch/gorest/internal/notifications/domain"
+	"github.com/chuuch/gorest/internal/pagination"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -58,8 +59,15 @@ func (r *Repository) ListByRecipientID(
 	ctx context.Context,
 	organizationID, recipientID uuid.UUID,
 	limit int,
+	cursor *pagination.Cursor,
 ) ([]*domain.Notification, error) {
-	const query = `
+	var (
+		query string
+		args  []any
+	)
+
+	if cursor == nil {
+		query = `
 			SELECT
 				n.id,
 				n.organization_id,
@@ -76,11 +84,37 @@ func (r *Repository) ListByRecipientID(
 			FROM notifications n
 			JOIN users u ON u.id = n.actor_id
 			WHERE n.organization_id = $1 AND n.recipient_id = $2
-			ORDER BY n.created_at DESC
+			ORDER BY n.created_at DESC, n.id DESC
 			LIMIT $3
 		`
+		args = []any{organizationID, recipientID, limit}
+	} else {
+		query = `
+				SELECT
+					n.id,
+					n.organization_id,
+					n.recipient_id,
+					n.actor_id,
+					u.email,
+					u.display_name,
+					n.kind,
+					n.entity_type,
+					n.entity_id,
+					n.summary,
+					n.read_at,
+					n.created_at
+				FROM notifications n
+				JOIN users u ON u.id = n.actor_id
+				WHERE n.organization_id = $1 
+					AND n.recipient_id = $2
+					AND (n.created_at, n.id) < ($3, $4)
+				ORDER BY n.created_at DESC, n.id DESC
+				LIMIT $5
+			`
+		args = []any{organizationID, recipientID, cursor.CreatedAt, cursor.ID, limit}
+	}
 
-	rows, err := r.db.Query(ctx, query, organizationID, recipientID, limit)
+	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list notifications: %w", err)
 	}

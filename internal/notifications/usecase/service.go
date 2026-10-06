@@ -10,6 +10,7 @@ import (
 	"github.com/chuuch/gorest/internal/notifications/domain"
 	"github.com/chuuch/gorest/internal/notifications/repository"
 	orgrepository "github.com/chuuch/gorest/internal/organization/repository"
+	"github.com/chuuch/gorest/internal/pagination"
 	"github.com/chuuch/gorest/internal/requestcontext"
 	"github.com/google/uuid"
 )
@@ -20,7 +21,8 @@ type Service interface {
 		ctx context.Context,
 		organizationID, recipientID uuid.UUID,
 		limit int,
-	) ([]*domain.Notification, error)
+		cursor *pagination.Cursor,
+	) ([]*domain.Notification, *string, error)
 	MarkRead(
 		ctx context.Context,
 		organizationID, recipientID, id uuid.UUID,
@@ -123,12 +125,21 @@ func (s *service) List(
 	ctx context.Context,
 	organizationID, recipientID uuid.UUID,
 	limit int,
-) ([]*domain.Notification, error) {
-	items, err := s.notifications.ListByRecipientID(ctx, organizationID, recipientID, limit)
+	cursor *pagination.Cursor,
+) ([]*domain.Notification, *string, error) {
+	items, err := s.notifications.ListByRecipientID(ctx, organizationID, recipientID, limit+1, cursor)
 	if err != nil {
-		return nil, fmt.Errorf("list notifications: %w", err)
+		return nil, nil, fmt.Errorf("list notifications: %w", err)
 	}
-	return items, nil
+
+	page, next := pagination.NextCursor(items, limit, func(item *domain.Notification) pagination.Cursor {
+		return pagination.Cursor{
+			CreatedAt: item.CreatedAt,
+			ID:        item.ID,
+		}
+	})
+
+	return page, next, nil
 }
 
 func (s *service) MarkRead(

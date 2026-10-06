@@ -1,12 +1,14 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/chuuch/gorest/internal/activity/domain"
 	"github.com/chuuch/gorest/internal/activity/usecase"
 	"github.com/chuuch/gorest/internal/api"
+	"github.com/chuuch/gorest/internal/pagination"
 	"github.com/chuuch/gorest/internal/requestcontext"
 )
 
@@ -31,9 +33,9 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	limit := 50
-	raw := r.URL.Query().Get("limit")
-	if raw != "" {
-		parsed, err := strconv.Atoi(raw)
+	rawLimit := r.URL.Query().Get("limit")
+	if rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
 		if err != nil || parsed < 1 {
 			api.WriteError(
 				w,
@@ -49,8 +51,32 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		limit = 100
 	}
 
-	events, err := h.service.List(r.Context(), organizationID, limit)
+	var cursor *pagination.Cursor
+	if rawCursor := r.URL.Query().Get("cursor"); rawCursor != "" {
+		decoded, err := pagination.Decode(rawCursor)
+		if err != nil {
+			api.WriteError(
+				w,
+				http.StatusBadRequest,
+				"invalid_cursor",
+				"invalid cursor",
+			)
+			return
+		}
+		cursor = &decoded
+	}
+
+	events, nextCursor, err := h.service.List(r.Context(), organizationID, limit, cursor)
 	if err != nil {
+		if errors.Is(err, pagination.ErrInvalidCursor) {
+			api.WriteError(
+				w,
+				http.StatusBadRequest,
+				"invalid_cursor",
+				"invalid_cursor",
+			)
+			return
+		}
 		api.WriteError(
 			w,
 			http.StatusInternalServerError,
@@ -65,7 +91,10 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		responses = append(responses, toResponse(event))
 	}
 
-	api.WriteJSON(w, http.StatusOK, responses)
+	api.WriteJSON(w, http.StatusOK, pagination.Page[domain.EventResponse]{
+		Items:      responses,
+		NextCursor: nextCursor,
+	})
 }
 
 func toResponse(event *domain.Event) domain.EventResponse {
