@@ -12,6 +12,7 @@ import (
 	commenthandler "github.com/chuuch/gorest/internal/comments/handler"
 	eventshandler "github.com/chuuch/gorest/internal/events/handler"
 	filehandler "github.com/chuuch/gorest/internal/files/handler"
+	"github.com/chuuch/gorest/internal/idempotency"
 	invoicehandler "github.com/chuuch/gorest/internal/invoices/handler"
 	"github.com/chuuch/gorest/internal/middleware"
 	navhandler "github.com/chuuch/gorest/internal/nav/handler"
@@ -35,6 +36,22 @@ func portal(tokenManager security.TokenManager, h http.HandlerFunc) http.Handler
 	return middleware.Auth(tokenManager)(middleware.ClientPortal(h))
 }
 
+func staffIdempotent(
+	tokenManager security.TokenManager,
+	idem *idempotency.Middleware,
+	h http.HandlerFunc,
+) http.Handler {
+	return middleware.Auth(tokenManager)(middleware.Staff(idem.Handler(h)))
+}
+
+func portalIdempotent(
+	tokenManager security.TokenManager,
+	idem *idempotency.Middleware,
+	h http.HandlerFunc,
+) http.Handler {
+	return middleware.Auth(tokenManager)(middleware.ClientPortal(idem.Handler(h)))
+}
+
 func newRouter(
 	userHandler *userhandler.Handler,
 	authHandler *authhandler.Handler,
@@ -56,6 +73,7 @@ func newRouter(
 	navHandler *navhandler.Handler,
 	eventsHandler *eventshandler.Handler,
 	tokenManager security.TokenManager,
+	idem *idempotency.Middleware,
 ) *http.ServeMux {
 	mux := http.NewServeMux()
 
@@ -81,6 +99,7 @@ func newRouter(
 		navHandler,
 		eventsHandler,
 		tokenManager,
+		idem,
 	)
 
 	return mux
@@ -108,6 +127,7 @@ func registerRoutes(
 	navHandler *navhandler.Handler,
 	eventsHandler *eventshandler.Handler,
 	tokenManager security.TokenManager,
+	idem *idempotency.Middleware,
 ) {
 	loginLimiter := middleware.NewLimiter(10, 15*time.Minute)
 	refreshLimiter := middleware.NewLimiter(30, 15*time.Minute)
@@ -123,7 +143,7 @@ func registerRoutes(
 
 	// MEMBERS
 	mux.Handle("GET /api/v1/members", staff(tokenManager, orgHandler.ListMembers))
-	mux.Handle("POST /api/v1/members", staff(tokenManager, orgHandler.CreateMember))
+	mux.Handle("POST /api/v1/members", staffIdempotent(tokenManager, idem, orgHandler.CreateMember))
 	mux.Handle("PATCH /api/v1/members/{id}", staff(tokenManager, orgHandler.UpdateMember))
 	mux.Handle("DELETE /api/v1/members/{id}", staff(tokenManager, orgHandler.DeleteMember))
 	mux.Handle("PATCH /api/v1/organization", staff(tokenManager, orgHandler.Update))
@@ -138,37 +158,55 @@ func registerRoutes(
 
 	// CLIENTS
 	mux.Handle("GET /api/v1/clients", staff(tokenManager, clientHandler.List))
-	mux.Handle("POST /api/v1/clients", staff(tokenManager, clientHandler.Create))
+	mux.Handle("POST /api/v1/clients", staffIdempotent(tokenManager, idem, clientHandler.Create))
 	mux.Handle("PATCH /api/v1/clients/{id}", staff(tokenManager, clientHandler.Update))
 	mux.Handle("DELETE /api/v1/clients/{id}", staff(tokenManager, clientHandler.Delete))
 
 	// PROJECTS
 	mux.Handle("GET /api/v1/clients/{id}/projects", staff(tokenManager, projectHandler.List))
-	mux.Handle("POST /api/v1/clients/{id}/projects", staff(tokenManager, projectHandler.Create))
+	mux.Handle(
+		"POST /api/v1/clients/{id}/projects",
+		staffIdempotent(tokenManager, idem, projectHandler.Create),
+	)
 	mux.Handle("PATCH /api/v1/projects/{id}", staff(tokenManager, projectHandler.Update))
 	mux.Handle("DELETE /api/v1/projects/{id}", staff(tokenManager, projectHandler.Delete))
 
 	// CLIENT USERS
 	mux.Handle("GET /api/v1/clients/{id}/users", staff(tokenManager, clientUserHandler.List))
-	mux.Handle("POST /api/v1/clients/{id}/users", staff(tokenManager, clientUserHandler.Create))
+	mux.Handle(
+		"POST /api/v1/clients/{id}/users",
+		staffIdempotent(tokenManager, idem, clientUserHandler.Create),
+	)
 	mux.Handle("DELETE /api/v1/clients/{id}/users/{userId}", staff(tokenManager, clientUserHandler.Delete))
 
 	// INVOICES
 	mux.Handle("GET /api/v1/clients/{id}/invoices", staff(tokenManager, invoiceHandler.List))
 	mux.Handle("GET /api/v1/invoices/{id}/pdf", staff(tokenManager, invoiceHandler.PDF))
-	mux.Handle("POST /api/v1/clients/{id}/invoices", staff(tokenManager, invoiceHandler.Create))
+	mux.Handle(
+		"POST /api/v1/clients/{id}/invoices",
+		staffIdempotent(tokenManager, idem, invoiceHandler.Create),
+	)
 	mux.Handle("GET /api/v1/invoices/{id}", staff(tokenManager, invoiceHandler.Get))
 	mux.Handle("PATCH /api/v1/invoices/{id}", staff(tokenManager, invoiceHandler.Update))
 	mux.Handle("DELETE /api/v1/invoices/{id}", staff(tokenManager, invoiceHandler.Delete))
-	mux.Handle("POST /api/v1/invoices/{id}/send", staff(tokenManager, invoiceHandler.Send))
-	mux.Handle("POST /api/v1/invoices/{id}/paid", staff(tokenManager, invoiceHandler.MarkPaid))
+	mux.Handle("POST /api/v1/invoices/{id}/send", staffIdempotent(tokenManager, idem, invoiceHandler.Send))
+	mux.Handle(
+		"POST /api/v1/invoices/{id}/paid",
+		staffIdempotent(tokenManager, idem, invoiceHandler.MarkPaid),
+	)
 
 	// TASKS
 	mux.Handle("GET /api/v1/projects/{id}/tasks", staff(tokenManager, taskHandler.List))
 	mux.Handle("GET /api/v1/inbox/tasks", staff(tokenManager, taskHandler.Inbox))
-	mux.Handle("POST /api/v1/projects/{id}/tasks", staff(tokenManager, taskHandler.Create))
+	mux.Handle(
+		"POST /api/v1/projects/{id}/tasks",
+		staffIdempotent(tokenManager, idem, taskHandler.Create),
+	)
 	mux.Handle("PATCH /api/v1/tasks/{id}", staff(tokenManager, taskHandler.Update))
-	mux.Handle("POST /api/v1/tickets/{id}/convert", staff(tokenManager, taskHandler.Convert))
+	mux.Handle(
+		"POST /api/v1/tickets/{id}/convert",
+		staffIdempotent(tokenManager, idem, taskHandler.Convert),
+	)
 	mux.Handle("DELETE /api/v1/tasks/{id}", staff(tokenManager, taskHandler.Delete))
 
 	// TIME ENTRIES
@@ -180,7 +218,10 @@ func registerRoutes(
 
 	// FILES
 	mux.Handle("GET /api/v1/projects/{id}/files", staff(tokenManager, fileHandler.List))
-	mux.Handle("POST /api/v1/projects/{id}/files", staff(tokenManager, fileHandler.Create))
+	mux.Handle(
+		"POST /api/v1/projects/{id}/files",
+		staffIdempotent(tokenManager, idem, fileHandler.Create),
+	)
 	mux.Handle("DELETE /api/v1/files/{id}", staff(tokenManager, fileHandler.Delete))
 
 	// COMMENTS
@@ -194,15 +235,24 @@ func registerRoutes(
 	mux.Handle("PATCH /api/v1/tickets/{id}", staff(tokenManager, ticketHandler.Update))
 	mux.Handle("DELETE /api/v1/tickets/{id}", staff(tokenManager, ticketHandler.Delete))
 	mux.Handle("GET /api/v1/tickets/{id}/files", staff(tokenManager, ticketFileHandler.List))
-	mux.Handle("POST /api/v1/tickets/{id}/files", staff(tokenManager, ticketFileHandler.Create))
+	mux.Handle(
+		"POST /api/v1/tickets/{id}/files",
+		staffIdempotent(tokenManager, idem, ticketFileHandler.Create),
+	)
 	mux.Handle("DELETE /api/v1/ticket-files/{id}", staff(tokenManager, ticketFileHandler.Delete))
 	mux.Handle("DELETE /api/v1/client-auth/ticket-files/{id}", staff(tokenManager, ticketFileHandler.DeletePortal))
 	mux.Handle("GET /api/v1/tickets/{id}/comments", staff(tokenManager, ticketCommentHandler.List))
 	mux.Handle("POST /api/v1/tickets/{id}/comments", staff(tokenManager, ticketCommentHandler.Create))
 	mux.Handle("GET /api/v1/client-auth/tickets", portal(tokenManager, ticketHandler.ListPortal))
-	mux.Handle("POST /api/v1/client-auth/tickets", portal(tokenManager, ticketHandler.CreatePortal))
+	mux.Handle(
+		"POST /api/v1/client-auth/tickets",
+		portalIdempotent(tokenManager, idem, ticketHandler.CreatePortal),
+	)
 	mux.Handle("GET /api/v1/client-auth/tickets/{id}/files", portal(tokenManager, ticketFileHandler.ListPortal))
-	mux.Handle("POST /api/v1/client-auth/tickets/{id}/files", portal(tokenManager, ticketFileHandler.CreatePortal))
+	mux.Handle(
+		"POST /api/v1/client-auth/tickets/{id}/files",
+		portalIdempotent(tokenManager, idem, ticketFileHandler.CreatePortal),
+	)
 	mux.Handle("GET /api/v1/client-auth/tickets/{id}/comments", portal(tokenManager, ticketCommentHandler.ListPortal))
 	mux.Handle("POST /api/v1/client-auth/tickets/{id}/comments", portal(tokenManager, ticketCommentHandler.CreatePortal))
 	mux.Handle("GET /api/v1/client-auth/notifications", portal(tokenManager, notificationHandler.List))

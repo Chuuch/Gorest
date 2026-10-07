@@ -33,6 +33,7 @@ import (
 	filehandler "github.com/chuuch/gorest/internal/files/handler"
 	filepostgres "github.com/chuuch/gorest/internal/files/postgres"
 	fileusecase "github.com/chuuch/gorest/internal/files/usecase"
+	"github.com/chuuch/gorest/internal/idempotency"
 	"github.com/chuuch/gorest/internal/invites"
 	invoicehandler "github.com/chuuch/gorest/internal/invoices/handler"
 	invoicepostgres "github.com/chuuch/gorest/internal/invoices/postgres"
@@ -339,6 +340,12 @@ func New(cfg *config.Config) (*Server, error) {
 	invoiceHandler := invoicehandler.NewHandler(invoiceService)
 
 	// -------------------------------------------------------------
+	// Idempotency
+	// -------------------------------------------------------------
+	idemStore := idempotency.NewPostgresStore(db)
+	idemMiddleware := idempotency.NewMiddleware(idemStore)
+
+	// -------------------------------------------------------------
 	// HTTP Server
 	// -------------------------------------------------------------
 	router := newRouter(
@@ -362,6 +369,7 @@ func New(cfg *config.Config) (*Server, error) {
 		navHandler,
 		eventsHandler,
 		tokenManager,
+		idemMiddleware,
 	)
 
 	httpServer := &http.Server{
