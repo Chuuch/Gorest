@@ -28,7 +28,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clients, err := h.service.List(r.Context(), organizationID)
+	clients, err := h.service.List(r.Context(), organizationID, r.URL.Query().Get("q"))
 	if err != nil {
 		h.handleError(w, err)
 		return

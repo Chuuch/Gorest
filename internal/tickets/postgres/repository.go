@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/chuuch/gorest/internal/database"
+	"github.com/chuuch/gorest/internal/search"
 	"github.com/chuuch/gorest/internal/tickets/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -171,8 +172,9 @@ func (r *Repository) Delete(
 func (r *Repository) ListByClientID(
 	ctx context.Context,
 	organizationID, clientID uuid.UUID,
+	query string,
 ) ([]*domain.Ticket, error) {
-	const query = `
+	const listSQL = `
 			SELECT
 				id,
 				organization_id,
@@ -187,10 +189,16 @@ func (r *Repository) ListByClientID(
 				updated_at
 			FROM tickets
 			WHERE organization_id = $1 AND client_id = $2
+				AND (
+					$3 = ''
+					OR title ILIKE $3 ESCAPE '\'
+					OR body ILIKE $3 ESCAPE '\'
+				)
 			ORDER BY created_at DESC
 		`
+	pattern := search.LikePattern(query)
 
-	rows, err := r.db.Query(ctx, query, organizationID, clientID)
+	rows, err := r.db.Query(ctx, listSQL, organizationID, clientID, pattern)
 	if err != nil {
 		return nil, fmt.Errorf("list tickets: %w", err)
 	}
@@ -229,8 +237,9 @@ func (r *Repository) ListByClientID(
 func (r *Repository) ListByOrganizationID(
 	ctx context.Context,
 	organizationID uuid.UUID,
+	query string,
 ) ([]*domain.Ticket, error) {
-	const query = `
+	const listSQL = `
 			SELECT
 					id,
 					organization_id,
@@ -245,10 +254,17 @@ func (r *Repository) ListByOrganizationID(
 					updated_at
 			FROM tickets
 			WHERE organization_id = $1
+				AND (
+					$2 = ''
+					OR title ILIKE $2 ESCAPE '\'
+					OR body ILIKE $2 ESCAPE '\'
+				)
 			ORDER BY created_at DESC
 		`
 
-	rows, err := r.db.Query(ctx, query, organizationID)
+	pattern := search.LikePattern(query)
+
+	rows, err := r.db.Query(ctx, listSQL, organizationID, pattern)
 	if err != nil {
 		return nil, fmt.Errorf("list organization tickets: %w", err)
 	}
@@ -270,6 +286,7 @@ func (r *Repository) ListByOrganizationID(
 			&ticket.Body,
 			&ticket.Version,
 			&ticket.CreatedAt,
+			&ticket.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan ticket: %w", err)
 		}

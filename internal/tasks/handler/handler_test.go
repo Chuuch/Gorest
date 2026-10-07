@@ -52,7 +52,7 @@ func withSession(req *http.Request, organizationID uuid.UUID, role string) *http
 }
 
 type mockService struct {
-	listFunc    func(uuid.UUID, uuid.UUID) ([]*taskdomain.Task, error)
+	listFunc    func(uuid.UUID, uuid.UUID, string) ([]*taskdomain.Task, error)
 	createFunc  func(uuid.UUID, uuid.UUID, orgdomain.Role, taskdomain.CreateTaskRequest) (*taskdomain.Task, error)
 	updateFunc  func(uuid.UUID, uuid.UUID, taskdomain.UpdateTaskRequest) (*taskdomain.Task, error)
 	deleteFunc  func(uuid.UUID, uuid.UUID, orgdomain.Role) error
@@ -63,8 +63,17 @@ func (m *mockService) List(
 	_ context.Context,
 	organizationID uuid.UUID,
 	projectID uuid.UUID,
+	query string,
 ) ([]*taskdomain.Task, error) {
-	return m.listFunc(organizationID, projectID)
+	return m.listFunc(organizationID, projectID, query)
+}
+
+func (m *mockService) Inbox(
+	_ context.Context,
+	organizationID, userID uuid.UUID,
+	query string,
+) ([]*taskdomain.Task, error) {
+	return nil, nil
 }
 
 func (m *mockService) Create(
@@ -110,7 +119,7 @@ func TestHandler_List(t *testing.T) {
 	task := testTask()
 
 	service := &mockService{
-		listFunc: func(gotOrganizationID uuid.UUID, gotProjectID uuid.UUID) ([]*taskdomain.Task, error) {
+		listFunc: func(gotOrganizationID uuid.UUID, gotProjectID uuid.UUID, query string) ([]*taskdomain.Task, error) {
 			require.Equal(t, organizationID, gotOrganizationID)
 			require.Equal(t, projectID, gotProjectID)
 			return []*taskdomain.Task{task}, nil
@@ -142,7 +151,7 @@ func TestHandler_List(t *testing.T) {
 
 func TestHandler_List_ProjectNotFound(t *testing.T) {
 	service := &mockService{
-		listFunc: func(uuid.UUID, uuid.UUID) ([]*taskdomain.Task, error) {
+		listFunc: func(uuid.UUID, uuid.UUID, string) ([]*taskdomain.Task, error) {
 			return nil, projectdomain.ErrProjectNotFound
 		},
 	}
@@ -684,4 +693,39 @@ func TestHandler_Delete_NotFound(t *testing.T) {
 	handler.Delete(rec, req)
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestHandler_List_SearchQuery(t *testing.T) {
+	organizationID := testOrganizationID()
+	projectID := testProjectID()
+	task := testTask()
+
+	service := &mockService{
+		listFunc: func(gotOrganizationID uuid.UUID, gotProjectID uuid.UUID, query string) ([]*taskdomain.Task, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, projectID, gotProjectID)
+			require.Equal(t, "login", query)
+			return []*taskdomain.Task{task}, nil
+		},
+	}
+
+	handler := taskhandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/projects/"+projectID.String()+"/tasks?q=login",
+		nil,
+	)
+	req.SetPathValue("id", projectID.String())
+	req = withSession(req, organizationID, "member")
+
+	rec := httptest.NewRecorder()
+	handler.List(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response []taskdomain.TaskResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Len(t, response, 1)
+	require.Equal(t, "Fix login", response[0].Title)
 }

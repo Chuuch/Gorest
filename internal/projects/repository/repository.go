@@ -12,5 +12,5 @@ type ProjectRepository interface {
 	GetByID(ctx context.Context, id, organizationID uuid.UUID) (*domain.Project, error)
 	Update(ctx context.Context, project *domain.Project) error
 	Delete(ctx context.Context, id, organizationID uuid.UUID) error
-	ListByClientID(ctx context.Context, organizationID, clientID uuid.UUID) ([]*domain.Project, error)
+	ListByClientID(ctx context.Context, organizationID, clientID uuid.UUID, query string) ([]*domain.Project, error)
 }

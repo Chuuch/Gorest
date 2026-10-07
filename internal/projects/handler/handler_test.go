@@ -45,7 +45,7 @@ func withSession(req *http.Request, organizationID uuid.UUID, role string) *http
 }
 
 type mockService struct {
-	listFunc   func(uuid.UUID, uuid.UUID) ([]*projectdomain.Project, error)
+	listFunc   func(uuid.UUID, uuid.UUID, string) ([]*projectdomain.Project, error)
 	createFunc func(uuid.UUID, uuid.UUID, orgdomain.Role, projectdomain.CreateProjectRequest) (*projectdomain.Project, error)
 	updateFunc func(uuid.UUID, uuid.UUID, orgdomain.Role, projectdomain.UpdateProjectRequest) (*projectdomain.Project, error)
 	deleteFunc func(uuid.UUID, uuid.UUID, orgdomain.Role) error
@@ -55,8 +55,9 @@ func (m *mockService) List(
 	_ context.Context,
 	organizationID uuid.UUID,
 	clientID uuid.UUID,
+	query string,
 ) ([]*projectdomain.Project, error) {
-	return m.listFunc(organizationID, clientID)
+	return m.listFunc(organizationID, clientID, query)
 }
 
 func (m *mockService) Create(
@@ -92,7 +93,7 @@ func TestHandler_List(t *testing.T) {
 	project := testProject()
 
 	service := &mockService{
-		listFunc: func(gotOrganizationID uuid.UUID, gotClientID uuid.UUID) ([]*projectdomain.Project, error) {
+		listFunc: func(gotOrganizationID uuid.UUID, gotClientID uuid.UUID, query string) ([]*projectdomain.Project, error) {
 			require.Equal(t, organizationID, gotOrganizationID)
 			require.Equal(t, clientID, gotClientID)
 			return []*projectdomain.Project{project}, nil
@@ -122,7 +123,7 @@ func TestHandler_List(t *testing.T) {
 
 func TestHandler_List_ClientNotFound(t *testing.T) {
 	service := &mockService{
-		listFunc: func(uuid.UUID, uuid.UUID) ([]*projectdomain.Project, error) {
+		listFunc: func(uuid.UUID, uuid.UUID, string) ([]*projectdomain.Project, error) {
 			return nil, clientdomain.ErrClientNotFound
 		},
 	}
@@ -418,4 +419,39 @@ func TestHandler_Delete_NotFound(t *testing.T) {
 	handler.Delete(rec, req)
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestHandler_List_SearchQuery(t *testing.T) {
+	organizationID := testOrganizationID()
+	clientID := testClientID()
+	project := testProject()
+
+	service := &mockService{
+		listFunc: func(gotOrganizationID uuid.UUID, gotClientID uuid.UUID, query string) ([]*projectdomain.Project, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, clientID, gotClientID)
+			require.Equal(t, "web", query)
+			return []*projectdomain.Project{project}, nil
+		},
+	}
+
+	handler := projecthandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/clients/"+clientID.String()+"/projects?q=web",
+		nil,
+	)
+	req.SetPathValue("id", clientID.String())
+	req = withSession(req, organizationID, "member")
+
+	rec := httptest.NewRecorder()
+	handler.List(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response []projectdomain.ProjectResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Len(t, response, 1)
+	require.Equal(t, "Website", response[0].Name)
 }

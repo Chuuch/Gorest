@@ -83,7 +83,7 @@ func withStaffSession(req *http.Request, role string) *http.Request {
 }
 
 type mockService struct {
-	listFunc       func(uuid.UUID, uuid.UUID) ([]*invoicedomain.Invoice, error)
+	listFunc       func(uuid.UUID, uuid.UUID, string) ([]*invoicedomain.Invoice, error)
 	getFunc        func(uuid.UUID, uuid.UUID) (*invoicedomain.Invoice, error)
 	createFunc     func(uuid.UUID, uuid.UUID, orgdomain.Role, time.Time, time.Time) (*invoicedomain.Invoice, error)
 	updateFunc     func(uuid.UUID, uuid.UUID, orgdomain.Role, time.Time, time.Time) (*invoicedomain.Invoice, error)
@@ -91,13 +91,17 @@ type mockService struct {
 	sendFunc       func(uuid.UUID, uuid.UUID, orgdomain.Role) (*invoicedomain.Invoice, error)
 	markPaidFunc   func(uuid.UUID, uuid.UUID, orgdomain.Role) (*invoicedomain.Invoice, error)
 	pdfFunc        func(uuid.UUID, uuid.UUID) ([]byte, string, error)
-	listPortalFunc func(uuid.UUID, uuid.UUID) ([]*invoicedomain.Invoice, error)
+	listPortalFunc func(uuid.UUID, uuid.UUID, string) ([]*invoicedomain.Invoice, error)
 	getPortalFunc  func(uuid.UUID, uuid.UUID, uuid.UUID) (*invoicedomain.Invoice, error)
 	pdfPortalFunc  func(uuid.UUID, uuid.UUID, uuid.UUID) ([]byte, string, error)
 }
 
-func (m *mockService) List(_ context.Context, organizationID, clientID uuid.UUID) ([]*invoicedomain.Invoice, error) {
-	return m.listFunc(organizationID, clientID)
+func (m *mockService) List(
+	_ context.Context,
+	organizationID, clientID uuid.UUID,
+	query string,
+) ([]*invoicedomain.Invoice, error) {
+	return m.listFunc(organizationID, clientID, query)
 }
 
 func (m *mockService) Get(_ context.Context, organizationID, invoiceID uuid.UUID) (*invoicedomain.Invoice, error) {
@@ -156,8 +160,9 @@ func (m *mockService) PDF(
 func (m *mockService) ListPortal(
 	_ context.Context,
 	organizationID, clientID uuid.UUID,
+	query string,
 ) ([]*invoicedomain.Invoice, error) {
-	return m.listPortalFunc(organizationID, clientID)
+	return m.listPortalFunc(organizationID, clientID, query)
 }
 
 func (m *mockService) GetPortal(
@@ -177,7 +182,7 @@ func (m *mockService) PDFPortal(
 func TestHandler_List(t *testing.T) {
 	invoice := testInvoice()
 	service := &mockService{
-		listFunc: func(organizationID, clientID uuid.UUID) ([]*invoicedomain.Invoice, error) {
+		listFunc: func(organizationID, clientID uuid.UUID, query string) ([]*invoicedomain.Invoice, error) {
 			require.Equal(t, testOrganizationID(), organizationID)
 			require.Equal(t, testClientID(), clientID)
 			return []*invoicedomain.Invoice{invoice}, nil
@@ -203,7 +208,7 @@ func TestHandler_List(t *testing.T) {
 
 func TestHandler_List_ClientNotFound(t *testing.T) {
 	service := &mockService{
-		listFunc: func(uuid.UUID, uuid.UUID) ([]*invoicedomain.Invoice, error) {
+		listFunc: func(uuid.UUID, uuid.UUID, string) ([]*invoicedomain.Invoice, error) {
 			return nil, clientdomain.ErrClientNotFound
 		},
 	}
@@ -314,7 +319,7 @@ func TestHandler_ListPortal(t *testing.T) {
 	invoice := testInvoice()
 	invoice.Status = invoicedomain.StatusSent
 	service := &mockService{
-		listPortalFunc: func(organizationID, clientID uuid.UUID) ([]*invoicedomain.Invoice, error) {
+		listPortalFunc: func(organizationID, clientID uuid.UUID, query string) ([]*invoicedomain.Invoice, error) {
 			require.Equal(t, testOrganizationID(), organizationID)
 			require.Equal(t, testClientID(), clientID)
 			return []*invoicedomain.Invoice{invoice}, nil
@@ -363,4 +368,48 @@ func TestHandler_Send_BillingIncomplete(t *testing.T) {
 	invoicehandler.NewHandler(service).Send(rec, req)
 
 	require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+}
+
+func TestHandler_List_SearchQuery(t *testing.T) {
+	invoice := testInvoice()
+	service := &mockService{
+		listFunc: func(organizationID, clientID uuid.UUID, query string) ([]*invoicedomain.Invoice, error) {
+			require.Equal(t, testOrganizationID(), organizationID)
+			require.Equal(t, testClientID(), clientID)
+			require.Equal(t, "2026", query)
+			return []*invoicedomain.Invoice{invoice}, nil
+		},
+	}
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/clients/"+testClientID().String()+"/invoices?q=2026",
+		nil,
+	)
+	req.SetPathValue("id", testClientID().String())
+	req = withStaffSession(req, "member")
+	rec := httptest.NewRecorder()
+	invoicehandler.NewHandler(service).List(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestHandler_ListPortal_SearchQuery(t *testing.T) {
+	invoice := testInvoice()
+	invoice.Status = invoicedomain.StatusSent
+	service := &mockService{
+		listPortalFunc: func(organizationID, clientID uuid.UUID, query string) ([]*invoicedomain.Invoice, error) {
+			require.Equal(t, testOrganizationID(), organizationID)
+			require.Equal(t, testClientID(), clientID)
+			require.Equal(t, "paid", query)
+			return []*invoicedomain.Invoice{invoice}, nil
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/client-auth/invoices?q=paid", nil)
+	req = withPortalSession(req)
+	rec := httptest.NewRecorder()
+	invoicehandler.NewHandler(service).ListPortal(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
 }

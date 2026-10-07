@@ -37,7 +37,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	views, err := h.service.List(r.Context(), organizationID, projectID)
+	views, err := h.service.List(r.Context(), organizationID, projectID, r.URL.Query().Get("q"))
 	if err != nil {
 		h.handleError(w, err)
 		return

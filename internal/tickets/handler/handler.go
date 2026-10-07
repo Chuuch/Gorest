@@ -49,7 +49,7 @@ func (h *Handler) ListOrganization(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tickets, err := h.service.ListOrganization(r.Context(), organizationID)
+	tickets, err := h.service.ListOrganization(r.Context(), organizationID, r.URL.Query().Get("q"))
 	if err != nil {
 		h.handleError(w, err)
 		return
@@ -208,7 +208,7 @@ func (h *Handler) writeList(
 	r *http.Request,
 	organizationID, clientID uuid.UUID,
 ) {
-	tickets, err := h.service.List(r.Context(), organizationID, clientID)
+	tickets, err := h.service.List(r.Context(), organizationID, clientID, r.URL.Query().Get("q"))
 	if err != nil {
 		h.handleError(w, err)
 		return

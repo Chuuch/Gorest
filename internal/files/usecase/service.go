@@ -10,6 +10,7 @@ import (
 	filerepository "github.com/chuuch/gorest/internal/files/repository"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	projectrepository "github.com/chuuch/gorest/internal/projects/repository"
+	"github.com/chuuch/gorest/internal/search"
 	"github.com/chuuch/gorest/internal/storage"
 	"github.com/google/uuid"
 )
@@ -18,6 +19,7 @@ type Service interface {
 	List(
 		ctx context.Context,
 		organizationID, projectID uuid.UUID,
+		query string,
 	) ([]*filedomain.FileView, error)
 	Create(
 		ctx context.Context,
@@ -53,12 +55,13 @@ func NewService(
 func (s *service) List(
 	ctx context.Context,
 	organizationID, projectID uuid.UUID,
+	query string,
 ) ([]*filedomain.FileView, error) {
 	if _, err := s.projects.GetByID(ctx, projectID, organizationID); err != nil {
 		return nil, err
 	}
 
-	files, err := s.files.ListByProjectID(ctx, organizationID, projectID)
+	files, err := s.files.ListByProjectID(ctx, organizationID, projectID, search.Normalize(query))
 	if err != nil {
 		return nil, fmt.Errorf("list files: %w", err)
 	}

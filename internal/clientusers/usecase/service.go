@@ -17,6 +17,7 @@ import (
 	"github.com/chuuch/gorest/internal/invites"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	orgrepository "github.com/chuuch/gorest/internal/organization/repository"
+	"github.com/chuuch/gorest/internal/search"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
 	userusecase "github.com/chuuch/gorest/internal/user/usecase"
 	"github.com/chuuch/gorest/pkg/password"
@@ -42,7 +43,7 @@ type AuthResult struct {
 }
 
 type Service interface {
-	List(ctx context.Context, organizationID, clientID uuid.UUID) ([]Member, error)
+	List(ctx context.Context, organizationID, clientID uuid.UUID, query string) ([]Member, error)
 	Create(
 		ctx context.Context,
 		organizationID, clientID uuid.UUID,
@@ -106,6 +107,7 @@ func NewService(
 func (s *service) List(
 	ctx context.Context,
 	organizationID, clientID uuid.UUID,
+	query string,
 ) ([]Member, error) {
 	if _, err := s.clients.GetByID(ctx, clientID, organizationID); err != nil {
 		return nil, err
@@ -116,12 +118,17 @@ func (s *service) List(
 		return nil, fmt.Errorf("list client users: %w", err)
 	}
 
+	q := search.Normalize(query)
 	members := make([]Member, 0, len(rows))
 
 	for _, row := range rows {
 		user, err := s.users.GetByID(ctx, row.UserID)
 		if err != nil {
 			return nil, fmt.Errorf("get client user: %w", err)
+		}
+
+		if !search.Matches(user.Email, q) {
+			continue
 		}
 
 		members = append(members, Member{

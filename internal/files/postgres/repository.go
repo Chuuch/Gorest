@@ -7,6 +7,7 @@ import (
 
 	"github.com/chuuch/gorest/internal/database"
 	"github.com/chuuch/gorest/internal/files/domain"
+	"github.com/chuuch/gorest/internal/search"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -113,8 +114,9 @@ func (r *Repository) GetByID(
 func (r *Repository) ListByProjectID(
 	ctx context.Context,
 	organizationID, projectID uuid.UUID,
+	query string,
 ) ([]*domain.File, error) {
-	const query = `
+	const listSQL = `
 			SELECT
 				id,
 				organization_id,
@@ -128,10 +130,16 @@ func (r *Repository) ListByProjectID(
 				updated_at
 			FROM files
 			WHERE organization_id = $1 AND project_id = $2
+				AND (
+					$3 = ''
+					OR filename ILIKE $3 ESCAPE '\'
+				)
 			ORDER BY created_at DESC
 		`
 
-	rows, err := r.db.Query(ctx, query, organizationID, projectID)
+	pattern := search.LikePattern(query)
+
+	rows, err := r.db.Query(ctx, listSQL, organizationID, projectID, pattern)
 	if err != nil {
 		return nil, fmt.Errorf("list files: %w", err)
 	}

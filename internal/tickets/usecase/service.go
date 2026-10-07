@@ -9,6 +9,7 @@ import (
 	"github.com/chuuch/gorest/internal/notifications"
 	notificationdomain "github.com/chuuch/gorest/internal/notifications/domain"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	"github.com/chuuch/gorest/internal/search"
 	ticketdomain "github.com/chuuch/gorest/internal/tickets/domain"
 	ticketrepository "github.com/chuuch/gorest/internal/tickets/repository"
 	"github.com/google/uuid"
@@ -18,10 +19,12 @@ type Service interface {
 	List(
 		ctx context.Context,
 		organizationID, clientID uuid.UUID,
+		query string,
 	) ([]*ticketdomain.Ticket, error)
 	ListOrganization(
 		ctx context.Context,
 		organizationID uuid.UUID,
+		query string,
 	) ([]*ticketdomain.Ticket, error)
 	Create(
 		ctx context.Context,
@@ -69,12 +72,13 @@ func EnableNotifications(s Service, pub notifications.Publisher) Service {
 func (s *service) List(
 	ctx context.Context,
 	organizationID, clientID uuid.UUID,
+	query string,
 ) ([]*ticketdomain.Ticket, error) {
 	if _, err := s.clients.GetByID(ctx, clientID, organizationID); err != nil {
 		return nil, err
 	}
 
-	tickets, err := s.tickets.ListByClientID(ctx, organizationID, clientID)
+	tickets, err := s.tickets.ListByClientID(ctx, organizationID, clientID, search.Normalize(query))
 	if err != nil {
 		return nil, fmt.Errorf("list tickets: %w", err)
 	}
@@ -84,8 +88,9 @@ func (s *service) List(
 func (s *service) ListOrganization(
 	ctx context.Context,
 	organizationID uuid.UUID,
+	query string,
 ) ([]*ticketdomain.Ticket, error) {
-	tickets, err := s.tickets.ListByOrganizationID(ctx, organizationID)
+	tickets, err := s.tickets.ListByOrganizationID(ctx, organizationID, search.Normalize(query))
 	if err != nil {
 		return nil, fmt.Errorf("list organization tickets: %w", err)
 	}

@@ -60,7 +60,7 @@ func withSession(
 }
 
 type mockService struct {
-	listFunc   func(uuid.UUID, uuid.UUID) ([]*filedomain.FileView, error)
+	listFunc   func(uuid.UUID, uuid.UUID, string) ([]*filedomain.FileView, error)
 	createFunc func(uuid.UUID, uuid.UUID, uuid.UUID, orgdomain.Role, filedomain.CreateFileRequest) (*filedomain.FileView, error)
 	deleteFunc func(uuid.UUID, uuid.UUID, uuid.UUID, orgdomain.Role) error
 }
@@ -68,8 +68,9 @@ type mockService struct {
 func (m *mockService) List(
 	_ context.Context,
 	organizationID, projectID uuid.UUID,
+	query string,
 ) ([]*filedomain.FileView, error) {
-	return m.listFunc(organizationID, projectID)
+	return m.listFunc(organizationID, projectID, query)
 }
 
 func (m *mockService) Create(
@@ -95,7 +96,7 @@ func TestHandler_List(t *testing.T) {
 	view := testFileView()
 
 	service := &mockService{
-		listFunc: func(gotOrganizationID, gotProjectID uuid.UUID) ([]*filedomain.FileView, error) {
+		listFunc: func(gotOrganizationID, gotProjectID uuid.UUID, query string) ([]*filedomain.FileView, error) {
 			require.Equal(t, organizationID, gotOrganizationID)
 			require.Equal(t, projectID, gotProjectID)
 			return []*filedomain.FileView{view}, nil
@@ -126,7 +127,7 @@ func TestHandler_List(t *testing.T) {
 
 func TestHandler_List_ProjectNotFound(t *testing.T) {
 	service := &mockService{
-		listFunc: func(uuid.UUID, uuid.UUID) ([]*filedomain.FileView, error) {
+		listFunc: func(uuid.UUID, uuid.UUID, string) ([]*filedomain.FileView, error) {
 			return nil, projectdomain.ErrProjectNotFound
 		},
 	}
@@ -337,4 +338,34 @@ func TestHandler_Delete_NotFound(t *testing.T) {
 	handler.Delete(rec, req)
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestHandler_List_SearchQuery(t *testing.T) {
+	organizationID := testOrganizationID()
+	projectID := testProjectID()
+	view := testFileView()
+
+	service := &mockService{
+		listFunc: func(gotOrganizationID, gotProjectID uuid.UUID, query string) ([]*filedomain.FileView, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, projectID, gotProjectID)
+			require.Equal(t, "spec", query)
+			return []*filedomain.FileView{view}, nil
+		},
+	}
+
+	handler := filehandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/projects/"+projectID.String()+"/files?q=spec",
+		nil,
+	)
+	req.SetPathValue("id", projectID.String())
+	req = withSession(req, organizationID, testUserID(), "member")
+
+	rec := httptest.NewRecorder()
+	handler.List(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
 }

@@ -132,12 +132,12 @@ func TestClientService_CreateAndList(t *testing.T) {
 	require.Equal(t, "Northwind", client.Name)
 	require.Equal(t, organizationID, client.OrganizationID)
 
-	own, err := service.List(context.Background(), organizationID)
+	own, err := service.List(context.Background(), organizationID, "")
 	require.NoError(t, err)
 	require.Len(t, own, 1)
 	require.Equal(t, "Northwind", own[0].Name)
 
-	other, err := service.List(context.Background(), otherOrganizationID)
+	other, err := service.List(context.Background(), otherOrganizationID, "")
 	require.NoError(t, err)
 	require.Empty(t, other)
 }
@@ -340,7 +340,7 @@ func TestClientService_Delete(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	clients, err := service.List(context.Background(), organizationID)
+	clients, err := service.List(context.Background(), organizationID, "")
 	require.NoError(t, err)
 	require.Empty(t, clients)
 }
@@ -385,4 +385,38 @@ func TestClientService_Delete_NotFound(t *testing.T) {
 	)
 
 	require.ErrorIs(t, err, clientdomain.ErrClientNotFound)
+}
+
+func TestClientService_List_Search(t *testing.T) {
+	db, cleanup := setupClientTestDatabase(t)
+	defer cleanup()
+
+	service := clientusecase.NewService(clientpostgres.NewRepository(db))
+	organizationID := seedOrganization(t, db, "Acme")
+
+	_, err := service.Create(context.Background(), organizationID, orgdomain.RoleOwner, clientdomain.CreateClientRequest{
+		Name:  "Northwind",
+		Notes: "Retail",
+	})
+	require.NoError(t, err)
+
+	_, err = service.Create(context.Background(), organizationID, orgdomain.RoleOwner, clientdomain.CreateClientRequest{
+		Name:  "Contoso",
+		Notes: "Software",
+	})
+	require.NoError(t, err)
+
+	matched, err := service.List(context.Background(), organizationID, "north")
+	require.NoError(t, err)
+	require.Len(t, matched, 1)
+	require.Equal(t, "Northwind", matched[0].Name)
+
+	byNotes, err := service.List(context.Background(), organizationID, "software")
+	require.NoError(t, err)
+	require.Len(t, byNotes, 1)
+	require.Equal(t, "Contoso", byNotes[0].Name)
+
+	none, err := service.List(context.Background(), organizationID, "zzz")
+	require.NoError(t, err)
+	require.Empty(t, none)
 }

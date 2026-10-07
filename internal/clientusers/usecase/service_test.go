@@ -342,11 +342,11 @@ func TestClientUserService_CreateAndList(t *testing.T) {
 	require.Equal(t, "Northwind", deps.inviter.calls[0].ClientName)
 	require.Equal(t, invites.KindPortal, deps.inviter.calls[0].Kind)
 
-	own, err := deps.service.List(context.Background(), organizationID, clientID)
+	own, err := deps.service.List(context.Background(), organizationID, clientID, "")
 	require.NoError(t, err)
 	require.Len(t, own, 1)
 
-	other, err := deps.service.List(context.Background(), otherOrganizationID, otherClientID)
+	other, err := deps.service.List(context.Background(), otherOrganizationID, otherClientID, "")
 	require.NoError(t, err)
 	require.Empty(t, other)
 }
@@ -479,7 +479,7 @@ func TestClientUserService_Delete(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	listed, err := deps.service.List(context.Background(), organizationID, clientID)
+	listed, err := deps.service.List(context.Background(), organizationID, clientID, "")
 	require.NoError(t, err)
 	require.Empty(t, listed)
 

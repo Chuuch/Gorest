@@ -9,12 +9,17 @@ import (
 	clientdomain "github.com/chuuch/gorest/internal/client/domain"
 	clientrepository "github.com/chuuch/gorest/internal/client/repository"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	"github.com/chuuch/gorest/internal/search"
 	"github.com/chuuch/gorest/internal/taxid"
 	"github.com/google/uuid"
 )
 
 type Service interface {
-	List(ctx context.Context, organizationID uuid.UUID) ([]*clientdomain.Client, error)
+	List(
+		ctx context.Context,
+		organizationID uuid.UUID,
+		query string,
+	) ([]*clientdomain.Client, error)
 	Create(
 		ctx context.Context,
 		organizationID uuid.UUID,
@@ -47,8 +52,9 @@ func NewService(clients clientrepository.ClientRepository) Service {
 func (s *service) List(
 	ctx context.Context,
 	organizationID uuid.UUID,
+	query string,
 ) ([]*clientdomain.Client, error) {
-	clients, err := s.clients.ListByOrganizationID(ctx, organizationID)
+	clients, err := s.clients.ListByOrganizationID(ctx, organizationID, search.Normalize(query))
 	if err != nil {
 		return nil, fmt.Errorf("list clients: %w", err)
 	}

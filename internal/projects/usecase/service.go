@@ -9,6 +9,7 @@ import (
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
 	projectrepository "github.com/chuuch/gorest/internal/projects/repository"
+	"github.com/chuuch/gorest/internal/search"
 	"github.com/google/uuid"
 )
 
@@ -17,6 +18,7 @@ type Service interface {
 		ctx context.Context,
 		organizationID,
 		clientID uuid.UUID,
+		query string,
 	) ([]*projectdomain.Project, error)
 	Create(
 		ctx context.Context,
@@ -56,12 +58,13 @@ func NewService(
 func (s *service) List(
 	ctx context.Context,
 	organizationID, clientID uuid.UUID,
+	query string,
 ) ([]*projectdomain.Project, error) {
 	if _, err := s.clients.GetByID(ctx, clientID, organizationID); err != nil {
 		return nil, err
 	}
 
-	projects, err := s.projects.ListByClientID(ctx, organizationID, clientID)
+	projects, err := s.projects.ListByClientID(ctx, organizationID, clientID, search.Normalize(query))
 	if err != nil {
 		return nil, fmt.Errorf("list projects: %w", err)
 	}

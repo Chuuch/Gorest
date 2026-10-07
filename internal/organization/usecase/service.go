@@ -11,6 +11,7 @@ import (
 	"github.com/chuuch/gorest/internal/invites"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	orgrepository "github.com/chuuch/gorest/internal/organization/repository"
+	"github.com/chuuch/gorest/internal/search"
 	"github.com/chuuch/gorest/internal/taxid"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
 	userusecase "github.com/chuuch/gorest/internal/user/usecase"
@@ -36,6 +37,7 @@ type Service interface {
 	ListMembers(
 		ctx context.Context,
 		organizationID uuid.UUID,
+		query string,
 	) ([]Member, error)
 	CreateMember(
 		ctx context.Context,
@@ -125,18 +127,24 @@ func (s *service) Update(
 func (s *service) ListMembers(
 	ctx context.Context,
 	organizationID uuid.UUID,
+	query string,
 ) ([]Member, error) {
 	memberships, err := s.memberships.ListByOrganizationID(ctx, organizationID)
 	if err != nil {
 		return nil, fmt.Errorf("list memberships: %w", err)
 	}
 
+	q := search.Normalize(query)
 	members := make([]Member, 0, len(memberships))
 
 	for _, membership := range memberships {
 		user, err := s.users.GetByID(ctx, membership.UserID)
 		if err != nil {
 			return nil, fmt.Errorf("get member user: %w", err)
+		}
+
+		if !search.Matches(user.Email, q) && !search.Matches(user.DisplayName, q) {
+			continue
 		}
 
 		members = append(members, Member{

@@ -11,7 +11,7 @@ import (
 type InvoiceRepository interface {
 	Create(ctx context.Context, invoice *domain.Invoice) error
 	GetByID(ctx context.Context, id, organizationID uuid.UUID) (*domain.Invoice, error)
-	ListByClientID(ctx context.Context, organizationID, clientID uuid.UUID) ([]*domain.Invoice, error)
+	ListByClientID(ctx context.Context, organizationID, clientID uuid.UUID, query string) ([]*domain.Invoice, error)
 	Update(ctx context.Context, invoice *domain.Invoice) error
 	ReplaceLines(ctx context.Context, invoice *domain.Invoice) error
 	Delete(ctx context.Context, id, organizationID uuid.UUID) error
