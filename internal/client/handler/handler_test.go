@@ -39,7 +39,7 @@ func withSession(req *http.Request, organizationID uuid.UUID, role string) *http
 }
 
 type mockService struct {
-	listFunc   func(uuid.UUID) ([]*clientdomain.Client, error)
+	listFunc   func(uuid.UUID, string) ([]*clientdomain.Client, error)
 	createFunc func(uuid.UUID, orgdomain.Role, clientdomain.CreateClientRequest) (*clientdomain.Client, error)
 	updateFunc func(uuid.UUID, uuid.UUID, orgdomain.Role, clientdomain.UpdateClientRequest) (*clientdomain.Client, error)
 	deleteFunc func(uuid.UUID, uuid.UUID, orgdomain.Role) error
@@ -48,8 +48,9 @@ type mockService struct {
 func (m *mockService) List(
 	_ context.Context,
 	organizationID uuid.UUID,
+	query string,
 ) ([]*clientdomain.Client, error) {
-	return m.listFunc(organizationID)
+	return m.listFunc(organizationID, query)
 }
 
 func (m *mockService) Create(
@@ -83,7 +84,7 @@ func TestHandler_List(t *testing.T) {
 	client := testClient()
 
 	service := &mockService{
-		listFunc: func(gotOrganizationID uuid.UUID) ([]*clientdomain.Client, error) {
+		listFunc: func(gotOrganizationID uuid.UUID, query string) ([]*clientdomain.Client, error) {
 			require.Equal(t, organizationID, gotOrganizationID)
 			return []*clientdomain.Client{client}, nil
 		},
@@ -108,7 +109,7 @@ func TestHandler_List(t *testing.T) {
 
 func TestHandler_List_Empty(t *testing.T) {
 	service := &mockService{
-		listFunc: func(uuid.UUID) ([]*clientdomain.Client, error) {
+		listFunc: func(uuid.UUID, string) ([]*clientdomain.Client, error) {
 			return []*clientdomain.Client{}, nil
 		},
 	}
@@ -127,7 +128,7 @@ func TestHandler_List_Empty(t *testing.T) {
 
 func TestHandler_List_Unauthorized(t *testing.T) {
 	service := &mockService{
-		listFunc: func(uuid.UUID) ([]*clientdomain.Client, error) {
+		listFunc: func(uuid.UUID, string) ([]*clientdomain.Client, error) {
 			t.Fatal("service should not be called")
 			return nil, nil
 		},
@@ -474,4 +475,32 @@ func TestHandler_Delete_NotFound(t *testing.T) {
 	handler.Delete(rec, req)
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestHandler_List_SearchQuery(t *testing.T) {
+	organizationID := testOrganizationID()
+	client := testClient()
+
+	service := &mockService{
+		listFunc: func(gotOrganizationID uuid.UUID, query string) ([]*clientdomain.Client, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, "north", query)
+			return []*clientdomain.Client{client}, nil
+		},
+	}
+
+	handler := clienthandler.NewHandler(service)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/clients?q=north", nil)
+	req = withSession(req, organizationID, "member")
+
+	rec := httptest.NewRecorder()
+	handler.List(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response []clientdomain.ClientResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Len(t, response, 1)
+	require.Equal(t, client.Name, response[0].Name)
 }

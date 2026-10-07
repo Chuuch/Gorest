@@ -27,7 +27,7 @@ func (h *Handler) ListMembers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	members, err := h.service.ListMembers(r.Context(), organizationID)
+	members, err := h.service.ListMembers(r.Context(), organizationID, r.URL.Query().Get("q"))
 	if err != nil {
 		h.handleError(w, err)
 		return

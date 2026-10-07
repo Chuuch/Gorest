@@ -348,15 +348,15 @@ func TestTaskService_CreateAndList(t *testing.T) {
 	require.Equal(t, projectID, task.ProjectID)
 	require.Equal(t, 1, task.Version)
 
-	own, err := service.List(context.Background(), organizationID, projectID)
+	own, err := service.List(context.Background(), organizationID, projectID, "")
 	require.NoError(t, err)
 	require.Len(t, own, 1)
 	require.Equal(t, 1, own[0].Version)
 
-	_, err = service.List(context.Background(), otherOrganizationID, projectID)
+	_, err = service.List(context.Background(), otherOrganizationID, projectID, "")
 	require.ErrorIs(t, err, projectdomain.ErrProjectNotFound)
 
-	other, err := service.List(context.Background(), otherOrganizationID, otherProjectID)
+	other, err := service.List(context.Background(), otherOrganizationID, otherProjectID, "")
 	require.NoError(t, err)
 	require.Empty(t, other)
 }
@@ -598,7 +598,7 @@ func TestTaskService_Update_DoneTwiceKeepsCompletedAt(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	own, err := service.List(context.Background(), organizationID, projectID)
+	own, err := service.List(context.Background(), organizationID, projectID, "")
 	require.NoError(t, err)
 	require.NotNil(t, own[0].CompletedAt)
 	firstCompletedAt := *own[0].CompletedAt
@@ -817,7 +817,7 @@ func TestTaskService_Delete(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	listed, err := service.List(context.Background(), organizationID, projectID)
+	listed, err := service.List(context.Background(), organizationID, projectID, "")
 	require.NoError(t, err)
 	require.Empty(t, listed)
 }
@@ -897,4 +897,46 @@ func TestTaskService_Delete_NotFound(t *testing.T) {
 		orgdomain.RoleOwner,
 	)
 	require.ErrorIs(t, err, taskdomain.ErrTaskNotFound)
+}
+
+func TestTaskService_List_Search(t *testing.T) {
+	db, cleanup := setupTaskTestDatabase(t)
+	defer cleanup()
+
+	service := setupTaskService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+
+	_, err := service.Create(
+		context.Background(),
+		organizationID,
+		projectID,
+		orgdomain.RoleOwner,
+		taskdomain.CreateTaskRequest{Title: "Fix login", Notes: "OAuth", Status: "todo"},
+	)
+	require.NoError(t, err)
+
+	_, err = service.Create(
+		context.Background(),
+		organizationID,
+		projectID,
+		orgdomain.RoleOwner,
+		taskdomain.CreateTaskRequest{Title: "Ship billing", Notes: "Stripe", Status: "todo"},
+	)
+	require.NoError(t, err)
+
+	matched, err := service.List(context.Background(), organizationID, projectID, "login")
+	require.NoError(t, err)
+	require.Len(t, matched, 1)
+	require.Equal(t, "Fix login", matched[0].Title)
+
+	byNotes, err := service.List(context.Background(), organizationID, projectID, "stripe")
+	require.NoError(t, err)
+	require.Len(t, byNotes, 1)
+	require.Equal(t, "Ship billing", byNotes[0].Title)
+
+	none, err := service.List(context.Background(), organizationID, projectID, "zzz")
+	require.NoError(t, err)
+	require.Empty(t, none)
 }

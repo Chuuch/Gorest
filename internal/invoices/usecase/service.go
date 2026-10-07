@@ -18,6 +18,7 @@ import (
 	"github.com/chuuch/gorest/internal/mailer"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	orgrepository "github.com/chuuch/gorest/internal/organization/repository"
+	"github.com/chuuch/gorest/internal/search"
 	"github.com/chuuch/gorest/internal/taxid"
 	userrepository "github.com/chuuch/gorest/internal/user/repository"
 	"github.com/google/uuid"
@@ -25,7 +26,7 @@ import (
 )
 
 type Service interface {
-	List(ctx context.Context, organizationID, clientID uuid.UUID) ([]*domain.Invoice, error)
+	List(ctx context.Context, organizationID, clientID uuid.UUID, query string) ([]*domain.Invoice, error)
 	Get(ctx context.Context, organizationID, invoiceID uuid.UUID) (*domain.Invoice, error)
 	Create(ctx context.Context, organizationID, clientID uuid.UUID, actorRole orgdomain.Role, from, to time.Time) (*domain.Invoice, error)
 	Update(ctx context.Context, organizationID, invoiceID uuid.UUID, actorRole orgdomain.Role, from, to time.Time) (*domain.Invoice, error)
@@ -33,7 +34,7 @@ type Service interface {
 	Send(ctx context.Context, organizationID, invoiceID uuid.UUID, actorRole orgdomain.Role) (*domain.Invoice, error)
 	MarkPaid(ctx context.Context, organizationID, invoiceID uuid.UUID, actorRole orgdomain.Role) (*domain.Invoice, error)
 	PDF(ctx context.Context, organizationID, invoiceID uuid.UUID) ([]byte, string, error)
-	ListPortal(ctx context.Context, organizationID, clientID uuid.UUID) ([]*domain.Invoice, error)
+	ListPortal(ctx context.Context, organizationID, clientID uuid.UUID, query string) ([]*domain.Invoice, error)
 	GetPortal(ctx context.Context, organizationID, clientID, invoiceID uuid.UUID) (*domain.Invoice, error)
 	PDFPortal(ctx context.Context, organizationID, clientID, invoiceID uuid.UUID) ([]byte, string, error)
 }
@@ -74,12 +75,13 @@ func NewService(
 func (s *service) List(
 	ctx context.Context,
 	organizationID, clientID uuid.UUID,
+	query string,
 ) ([]*domain.Invoice, error) {
 	if _, err := s.clients.GetByID(ctx, clientID, organizationID); err != nil {
 		return nil, err
 	}
 
-	invoices, err := s.invoices.ListByClientID(ctx, organizationID, clientID)
+	invoices, err := s.invoices.ListByClientID(ctx, organizationID, clientID, search.Normalize(query))
 	if err != nil {
 		return nil, fmt.Errorf("list invoices: %w", err)
 	}
@@ -335,8 +337,9 @@ func (s *service) PDF(
 func (s *service) ListPortal(
 	ctx context.Context,
 	organizationID, clientID uuid.UUID,
+	query string,
 ) ([]*domain.Invoice, error) {
-	invoices, err := s.invoices.ListByClientID(ctx, organizationID, clientID)
+	invoices, err := s.invoices.ListByClientID(ctx, organizationID, clientID, search.Normalize(query))
 	if err != nil {
 		return nil, fmt.Errorf("list portal invoices: %w", err)
 	}

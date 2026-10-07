@@ -8,6 +8,7 @@ import (
 
 	"github.com/chuuch/gorest/internal/database"
 	"github.com/chuuch/gorest/internal/invoices/domain"
+	"github.com/chuuch/gorest/internal/search"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -204,8 +205,9 @@ func (r *Repository) GetByID(
 func (r *Repository) ListByClientID(
 	ctx context.Context,
 	organizationID, clientID uuid.UUID,
+	query string,
 ) ([]*domain.Invoice, error) {
-	const query = `
+	const listSQL = `
 			SELECT
 				id,
 				organization_id,
@@ -250,10 +252,17 @@ func (r *Repository) ListByClientID(
 				updated_at
 			FROM invoices
 			WHERE organization_id = $1 AND client_id = $2
+				AND (
+					$3 = ''
+					OR number ILIKE $3 ESCAPE '\'
+					OR client_name ILIKE $3 ESCAPE '\'
+					OR status ILIKE $3 ESCAPE '\'
+				)
 			ORDER BY created_at DESC
 		`
+	pattern := search.LikePattern(query)
 
-	rows, err := r.db.Query(ctx, query, organizationID, clientID)
+	rows, err := r.db.Query(ctx, listSQL, organizationID, clientID, pattern)
 	if err != nil {
 		return nil, fmt.Errorf("list invoices: %w", err)
 	}

@@ -47,7 +47,7 @@ func (h *Handler) Inbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tasks, err := h.service.Inbox(r.Context(), organizationID, userID)
+	tasks, err := h.service.Inbox(r.Context(), organizationID, userID, r.URL.Query().Get("q"))
 	if err != nil {
 		h.handleError(w, err)
 		return
@@ -72,7 +72,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tasks, err := h.service.List(r.Context(), organizationID, projectID)
+	tasks, err := h.service.List(r.Context(), organizationID, projectID, r.URL.Query().Get("q"))
 	if err != nil {
 		h.handleError(w, err)
 		return

@@ -7,6 +7,7 @@ import (
 
 	"github.com/chuuch/gorest/internal/database"
 	"github.com/chuuch/gorest/internal/projects/domain"
+	"github.com/chuuch/gorest/internal/search"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -108,8 +109,9 @@ func (r *Repository) GetByID(
 func (r *Repository) ListByClientID(
 	ctx context.Context,
 	organizationID, clientID uuid.UUID,
+	query string,
 ) ([]*domain.Project, error) {
-	const query = `
+	const listSQL = `
 			SELECT
 				id,
 				organization_id,
@@ -122,11 +124,18 @@ func (r *Repository) ListByClientID(
 				projects
 			WHERE
 				organization_id = $1 AND client_id = $2
+				AND (
+						$3 = ''
+						OR name ILIKE $3 ESCAPE '\'
+						OR notes ILIKE $3 ESCAPE '\'
+				)
 			ORDER BY
 				name ASC
 		`
 
-	rows, err := r.db.Query(ctx, query, organizationID, clientID)
+	pattern := search.LikePattern(query)
+
+	rows, err := r.db.Query(ctx, listSQL, organizationID, clientID, pattern)
 	if err != nil {
 		return nil, fmt.Errorf("list projects: %w", err)
 	}

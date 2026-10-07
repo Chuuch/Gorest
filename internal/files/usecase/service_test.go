@@ -279,15 +279,15 @@ func TestFileService_CreateAndList(t *testing.T) {
 	require.Equal(t, "spec.pdf", view.File.Filename)
 	require.Equal(t, "http://minio/put", view.UploadURL)
 
-	own, err := service.List(context.Background(), organizationID, projectID)
+	own, err := service.List(context.Background(), organizationID, projectID, "")
 	require.NoError(t, err)
 	require.Len(t, own, 1)
 	require.Equal(t, "http://minio/get", own[0].DownloadURL)
 
-	_, err = service.List(context.Background(), otherOrganizationID, projectID)
+	_, err = service.List(context.Background(), otherOrganizationID, projectID, "")
 	require.ErrorIs(t, err, projectdomain.ErrProjectNotFound)
 
-	other, err := service.List(context.Background(), otherOrganizationID, otherProjectID)
+	other, err := service.List(context.Background(), otherOrganizationID, otherProjectID, "")
 	require.NoError(t, err)
 	require.Empty(t, other)
 }
@@ -428,7 +428,7 @@ func TestFileService_Delete(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{view.File.ObjectKey}, store.deleted)
 
-	listed, err := service.List(context.Background(), organizationID, projectID)
+	listed, err := service.List(context.Background(), organizationID, projectID, "")
 	require.NoError(t, err)
 	require.Empty(t, listed)
 }

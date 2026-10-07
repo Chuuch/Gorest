@@ -49,7 +49,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	members, err := h.service.List(r.Context(), organizationID, clientID)
+	members, err := h.service.List(r.Context(), organizationID, clientID, r.URL.Query().Get("q"))
 	if err != nil {
 		h.handleError(w, err)
 		return

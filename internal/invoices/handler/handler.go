@@ -35,7 +35,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	invoices, err := h.service.List(r.Context(), organizationID, clientID)
+	invoices, err := h.service.List(r.Context(), organizationID, clientID, r.URL.Query().Get("q"))
 	if err != nil {
 		h.handleError(w, err)
 		return
@@ -205,7 +205,7 @@ func (h *Handler) ListPortal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	invoices, err := h.service.ListPortal(r.Context(), organizationID, clientID)
+	invoices, err := h.service.ListPortal(r.Context(), organizationID, clientID, r.URL.Query().Get("q"))
 	if err != nil {
 		h.handleError(w, err)
 		return

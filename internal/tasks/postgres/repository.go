@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/chuuch/gorest/internal/database"
+	"github.com/chuuch/gorest/internal/search"
 	"github.com/chuuch/gorest/internal/tasks/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -209,33 +210,45 @@ func (r *Repository) Delete(
 func (r *Repository) ListByProjectID(
 	ctx context.Context,
 	organizationID, projectID uuid.UUID,
+	query string,
 ) ([]*domain.Task, error) {
-	const query = `
+	const listSQL = `
 			SELECT ` + taskColumns + `
 			FROM tasks
 			WHERE organization_id = $1 AND project_id = $2
+				AND (
+					$3 = ''
+					OR title ILIKE $3 ESCAPE '\'
+					OR notes ILIKE $3 ESCAPE '\'
+				)
 			ORDER BY created_at ASC, title ASC
 		`
 
-	return r.list(ctx, query, organizationID, projectID)
+	return r.list(ctx, listSQL, organizationID, projectID, search.LikePattern(query))
 }
 
 func (r *Repository) ListInbox(
 	ctx context.Context,
 	organizationID, userID uuid.UUID,
+	query string,
 ) ([]*domain.Task, error) {
-	query := `
+	listSQL := `
 		SELECT ` + taskColumns + `
 		FROM tasks
 		WHERE organization_id = $1
 			AND (assignee_id = $2 OR assignee_id IS NULL)
+			AND (
+					$3 = ''
+					OR title ILIKE $3 ESCAPE '\'
+					OR notes ILIKE $3 ESCAPE '\'
+			)
 		ORDER BY
 			CASE WHEN assignee_id = $2 THEN 0 ELSE 1 END,
 			created_at ASC,
 			title ASC
 	`
 
-	return r.list(ctx, query, organizationID, userID)
+	return r.list(ctx, listSQL, organizationID, userID, search.LikePattern(query))
 }
 
 func (r *Repository) list(

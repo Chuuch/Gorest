@@ -7,6 +7,7 @@ import (
 
 	"github.com/chuuch/gorest/internal/client/domain"
 	"github.com/chuuch/gorest/internal/database"
+	"github.com/chuuch/gorest/internal/search"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -209,8 +210,9 @@ func (r *Repository) Delete(
 func (r *Repository) ListByOrganizationID(
 	ctx context.Context,
 	organizationID uuid.UUID,
+	query string,
 ) ([]*domain.Client, error) {
-	const query = `
+	const listSQL = `
 			SELECT
 				id,
 				organization_id,
@@ -227,10 +229,17 @@ func (r *Repository) ListByOrganizationID(
 				updated_at
 			FROM clients
 			WHERE organization_id = $1
+				AND (
+					$2 = ''
+					OR name ILIKE $2 ESCAPE '\'
+					OR notes ILIKE $2 ESCAPE '\'
+				)
 			ORDER BY name ASC
 		`
 
-	rows, err := r.db.Query(ctx, query, organizationID)
+	pattern := search.LikePattern(query)
+
+	rows, err := r.db.Query(ctx, listSQL, organizationID, pattern)
 	if err != nil {
 		return nil, fmt.Errorf("list clients: %w", err)
 	}

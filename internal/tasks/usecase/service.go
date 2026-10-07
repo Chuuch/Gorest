@@ -13,6 +13,7 @@ import (
 	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
 	projectrepository "github.com/chuuch/gorest/internal/projects/repository"
 	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/search"
 	taskdomain "github.com/chuuch/gorest/internal/tasks/domain"
 	taskrepository "github.com/chuuch/gorest/internal/tasks/repository"
 	ticketrepository "github.com/chuuch/gorest/internal/tickets/repository"
@@ -23,10 +24,12 @@ type Service interface {
 	List(
 		ctx context.Context,
 		organizationID, projectID uuid.UUID,
+		query string,
 	) ([]*taskdomain.Task, error)
 	Inbox(
 		ctx context.Context,
 		organizationID, userID uuid.UUID,
+		query string,
 	) ([]*taskdomain.Task, error)
 	Create(
 		ctx context.Context,
@@ -87,12 +90,13 @@ func EnableNotifications(s Service, pub notifications.Publisher) Service {
 func (s *service) List(
 	ctx context.Context,
 	organizationID, projectID uuid.UUID,
+	query string,
 ) ([]*taskdomain.Task, error) {
 	if _, err := s.projects.GetByID(ctx, projectID, organizationID); err != nil {
 		return nil, err
 	}
 
-	tasks, err := s.tasks.ListByProjectID(ctx, organizationID, projectID)
+	tasks, err := s.tasks.ListByProjectID(ctx, organizationID, projectID, search.Normalize(query))
 	if err != nil {
 		return nil, fmt.Errorf("list tasks: %w", err)
 	}
@@ -103,8 +107,9 @@ func (s *service) List(
 func (s *service) Inbox(
 	ctx context.Context,
 	organizationID, userID uuid.UUID,
+	query string,
 ) ([]*taskdomain.Task, error) {
-	tasks, err := s.tasks.ListInbox(ctx, organizationID, userID)
+	tasks, err := s.tasks.ListInbox(ctx, organizationID, userID, search.Normalize(query))
 	if err != nil {
 		return nil, fmt.Errorf("list inbox: %w", err)
 	}
@@ -243,7 +248,7 @@ func (s *service) Convert(
 		return nil, projectdomain.ErrProjectNotFound
 	}
 
-	existing, err := s.tasks.ListByProjectID(ctx, organizationID, project.ID)
+	existing, err := s.tasks.ListByProjectID(ctx, organizationID, project.ID, "")
 	if err != nil {
 		return nil, fmt.Errorf("list tasks: %w", err)
 	}

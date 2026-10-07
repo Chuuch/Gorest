@@ -45,14 +45,14 @@ func withStaffSession(req *http.Request, organizationID uuid.UUID, role string) 
 }
 
 type mockService struct {
-	listFunc   func(uuid.UUID, uuid.UUID) ([]clientuserusecase.Member, error)
+	listFunc   func(uuid.UUID, uuid.UUID, string) ([]clientuserusecase.Member, error)
 	createFunc func(uuid.UUID, uuid.UUID, orgdomain.Role, clientuserdomain.CreateClientUserRequest) (*clientuserusecase.Member, error)
 	deleteFunc func(uuid.UUID, uuid.UUID, uuid.UUID, orgdomain.Role) error
 	loginFunc  func(clientuserdomain.LoginRequest) (*clientuserusecase.AuthResult, error)
 }
 
-func (m *mockService) List(_ context.Context, organizationID, clientID uuid.UUID) ([]clientuserusecase.Member, error) {
-	return m.listFunc(organizationID, clientID)
+func (m *mockService) List(_ context.Context, organizationID, clientID uuid.UUID, query string) ([]clientuserusecase.Member, error) {
+	return m.listFunc(organizationID, clientID, query)
 }
 
 func (m *mockService) Create(
@@ -94,7 +94,7 @@ func TestHandler_List(t *testing.T) {
 	member := testMember()
 
 	service := &mockService{
-		listFunc: func(gotOrganizationID, gotClientID uuid.UUID) ([]clientuserusecase.Member, error) {
+		listFunc: func(gotOrganizationID, gotClientID uuid.UUID, query string) ([]clientuserusecase.Member, error) {
 			require.Equal(t, organizationID, gotOrganizationID)
 			require.Equal(t, clientID, gotClientID)
 			return []clientuserusecase.Member{member}, nil
@@ -326,4 +326,45 @@ func TestHandler_Delete_NotFound(t *testing.T) {
 	handler.Delete(rec, req)
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestHandler_List_SearchQuery(t *testing.T) {
+	organizationID := testOrganizationID()
+	clientID := testClientID()
+	member := clientuserusecase.Member{
+		UserID:         uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		Email:          "pat@northwind.test",
+		OrganizationID: organizationID,
+		ClientID:       clientID,
+		CreatedAt:      time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+	}
+
+	service := &mockService{
+		listFunc: func(gotOrganizationID, gotClientID uuid.UUID, query string) ([]clientuserusecase.Member, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, clientID, gotClientID)
+			require.Equal(t, "pat", query)
+			return []clientuserusecase.Member{member}, nil
+		},
+	}
+
+	handler := clientuserhandler.NewHandler(service, time.Hour, false)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/clients/"+clientID.String()+"/users?q=pat",
+		nil,
+	)
+	req.SetPathValue("id", clientID.String())
+	req = withStaffSession(req, organizationID, "owner")
+
+	rec := httptest.NewRecorder()
+	handler.List(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response []clientuserdomain.ClientUserResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Len(t, response, 1)
+	require.Equal(t, "pat@northwind.test", response[0].Email)
 }

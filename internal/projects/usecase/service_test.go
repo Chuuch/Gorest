@@ -193,14 +193,14 @@ func TestProjectService_CreateAndList(t *testing.T) {
 	require.Equal(t, "Website", project.Name)
 	require.Equal(t, clientID, project.ClientID)
 
-	own, err := service.List(context.Background(), organizationID, clientID)
+	own, err := service.List(context.Background(), organizationID, clientID, "")
 	require.NoError(t, err)
 	require.Len(t, own, 1)
 
-	_, err = service.List(context.Background(), otherOrganizationID, clientID)
+	_, err = service.List(context.Background(), otherOrganizationID, clientID, "")
 	require.ErrorIs(t, err, clientdomain.ErrClientNotFound)
 
-	other, err := service.List(context.Background(), otherOrganizationID, otherClientID)
+	other, err := service.List(context.Background(), otherOrganizationID, otherClientID, "")
 	require.NoError(t, err)
 	require.Empty(t, other)
 }
@@ -439,7 +439,7 @@ func TestProjectService_Delete(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	projects, err := service.List(context.Background(), organizationID, clientID)
+	projects, err := service.List(context.Background(), organizationID, clientID, "")
 	require.NoError(t, err)
 	require.Empty(t, projects)
 }
@@ -486,4 +486,45 @@ func TestProjectService_Delete_NotFound(t *testing.T) {
 	)
 
 	require.ErrorIs(t, err, projectdomain.ErrProjectNotFound)
+}
+
+func TestProjectService_List_Search(t *testing.T) {
+	db, cleanup := setupProjectTestDatabase(t)
+	defer cleanup()
+
+	service := setupProjectService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+
+	_, err := service.Create(
+		context.Background(),
+		organizationID,
+		clientID,
+		orgdomain.RoleOwner,
+		projectdomain.CreateProjectRequest{Name: "Website", Notes: "Launch"},
+	)
+	require.NoError(t, err)
+
+	_, err = service.Create(
+		context.Background(),
+		organizationID,
+		clientID,
+		orgdomain.RoleOwner,
+		projectdomain.CreateProjectRequest{Name: "Mobile", Notes: "iOS app"},
+	)
+	require.NoError(t, err)
+
+	matched, err := service.List(context.Background(), organizationID, clientID, "web")
+	require.NoError(t, err)
+	require.Len(t, matched, 1)
+	require.Equal(t, "Website", matched[0].Name)
+
+	byNotes, err := service.List(context.Background(), organizationID, clientID, "ios")
+	require.NoError(t, err)
+	require.Len(t, byNotes, 1)
+	require.Equal(t, "Mobile", byNotes[0].Name)
+
+	none, err := service.List(context.Background(), organizationID, clientID, "zzz")
+	require.NoError(t, err)
+	require.Empty(t, none)
 }

@@ -19,23 +19,17 @@ func testUserID() uuid.UUID {
 	return uuid.MustParse("11111111-1111-1111-1111-111111111111")
 }
 
-func (m *mockService) Inbox(
-	_ context.Context,
-	organizationID, userID uuid.UUID,
-) ([]*taskdomain.Task, error) {
-	return nil, nil
-}
-
 type inboxService struct {
 	mockService
-	fn func(uuid.UUID, uuid.UUID) ([]*taskdomain.Task, error)
+	fn func(uuid.UUID, uuid.UUID, string) ([]*taskdomain.Task, error)
 }
 
 func (s *inboxService) Inbox(
 	_ context.Context,
 	organizationID, userID uuid.UUID,
+	query string,
 ) ([]*taskdomain.Task, error) {
-	return s.fn(organizationID, userID)
+	return s.fn(organizationID, userID, query)
 }
 
 func withActor(req *http.Request, organizationID, userID uuid.UUID, role string) *http.Request {
@@ -49,9 +43,10 @@ func TestHandler_Inbox(t *testing.T) {
 	task := testTask()
 
 	service := &inboxService{
-		fn: func(gotOrganizationID, gotUserID uuid.UUID) ([]*taskdomain.Task, error) {
+		fn: func(gotOrganizationID, gotUserID uuid.UUID, query string) ([]*taskdomain.Task, error) {
 			require.Equal(t, organizationID, gotOrganizationID)
 			require.Equal(t, userID, gotUserID)
+			require.Equal(t, "", query)
 			return []*taskdomain.Task{task}, nil
 		},
 	}
@@ -82,6 +77,36 @@ func TestHandler_Inbox_Unauthorized(t *testing.T) {
 	handler.Inbox(rec, req)
 
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestHandler_Inbox_SearchQuery(t *testing.T) {
+	organizationID := testOrganizationID()
+	userID := testUserID()
+	task := testTask()
+
+	service := &inboxService{
+		fn: func(gotOrganizationID, gotUserID uuid.UUID, query string) ([]*taskdomain.Task, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, userID, gotUserID)
+			require.Equal(t, "login", query)
+			return []*taskdomain.Task{task}, nil
+		},
+	}
+
+	handler := taskhandler.NewHandler(service)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/inbox/tasks?q=login", nil)
+	req = withActor(req, organizationID, userID, "member")
+
+	rec := httptest.NewRecorder()
+	handler.Inbox(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response []taskdomain.TaskResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Len(t, response, 1)
+	require.Equal(t, "Fix login", response[0].Title)
 }
 
 func TestHandler_Update_TitleAndAssignee(t *testing.T) {
