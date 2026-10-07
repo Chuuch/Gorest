@@ -370,7 +370,6 @@ func TestHandler_Send_BillingIncomplete(t *testing.T) {
 	require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 }
 
-
 func TestHandler_List_SearchQuery(t *testing.T) {
 	invoice := testInvoice()
 	service := &mockService{

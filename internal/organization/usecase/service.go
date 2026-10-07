@@ -133,7 +133,7 @@ func (s *service) ListMembers(
 	if err != nil {
 		return nil, fmt.Errorf("list memberships: %w", err)
 	}
-	
+
 	q := search.Normalize(query)
 	members := make([]Member, 0, len(memberships))
 
