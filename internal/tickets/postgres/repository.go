@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/chuuch/gorest/internal/platform/database"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/chuuch/gorest/internal/platform/search"
 	"github.com/chuuch/gorest/internal/tickets/domain"
 	"github.com/google/uuid"
@@ -172,9 +173,19 @@ func (r *Repository) Delete(
 func (r *Repository) ListByClientID(
 	ctx context.Context,
 	organizationID, clientID uuid.UUID,
+	limit int,
+	cursor *pagination.Cursor,
 	query string,
 ) ([]*domain.Ticket, error) {
-	const listSQL = `
+	pattern := search.LikePattern(query)
+
+	var (
+		listSQL string
+		args    []any
+	)
+
+	if cursor == nil {
+		listSQL = `
 			SELECT
 				id,
 				organization_id,
@@ -194,11 +205,39 @@ func (r *Repository) ListByClientID(
 					OR title ILIKE $3 ESCAPE '\'
 					OR body ILIKE $3 ESCAPE '\'
 				)
-			ORDER BY created_at DESC
+			ORDER BY created_at DESC, id DESC
+			LIMIT $4
 		`
-	pattern := search.LikePattern(query)
+		args = []any{organizationID, clientID, pattern, limit}
+	} else {
+		listSQL = `
+			SELECT
+				id,
+				organization_id,
+				client_id,
+				user_id,
+				kind,
+				status,
+				title,
+				body,
+				version,
+				created_at,
+				updated_at
+			FROM tickets
+			WHERE organization_id = $1 AND client_id = $2
+				AND (
+					$3 = ''
+					OR title ILIKE $3 ESCAPE '\'
+					OR body ILIKE $3 ESCAPE '\'
+				)
+				AND (created_at, id) < ($4, $5)
+			ORDER BY created_at DESC, id DESC
+			LIMIT $6
+		`
+		args = []any{organizationID, clientID, pattern, cursor.CreatedAt, cursor.ID, limit}
+	}
 
-	rows, err := r.db.Query(ctx, listSQL, organizationID, clientID, pattern)
+	rows, err := r.db.Query(ctx, listSQL, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list tickets: %w", err)
 	}
@@ -237,9 +276,19 @@ func (r *Repository) ListByClientID(
 func (r *Repository) ListByOrganizationID(
 	ctx context.Context,
 	organizationID uuid.UUID,
+	limit int,
+	cursor *pagination.Cursor,
 	query string,
 ) ([]*domain.Ticket, error) {
-	const listSQL = `
+	pattern := search.LikePattern(query)
+
+	var (
+		listSQL string
+		args    []any
+	)
+
+	if cursor == nil {
+		listSQL = `
 			SELECT
 					id,
 					organization_id,
@@ -259,12 +308,39 @@ func (r *Repository) ListByOrganizationID(
 					OR title ILIKE $2 ESCAPE '\'
 					OR body ILIKE $2 ESCAPE '\'
 				)
-			ORDER BY created_at DESC
+			ORDER BY created_at DESC, id DESC
+			LIMIT $3
 		`
+		args = []any{organizationID, pattern, limit}
+	} else {
+		listSQL = `
+			SELECT
+					id,
+					organization_id,
+					client_id,
+					user_id,
+					kind,
+					status,
+					title,
+					body,
+					version,
+					created_at,
+					updated_at
+			FROM tickets
+			WHERE organization_id = $1
+				AND (
+					$2 = ''
+					OR title ILIKE $2 ESCAPE '\'
+					OR body ILIKE $2 ESCAPE '\'
+				)
+				AND (created_at, id) < ($3, $4)
+			ORDER BY created_at DESC, id DESC
+			LIMIT $5
+		`
+		args = []any{organizationID, pattern, cursor.CreatedAt, cursor.ID, limit}
+	}
 
-	pattern := search.LikePattern(query)
-
-	rows, err := r.db.Query(ctx, listSQL, organizationID, pattern)
+	rows, err := r.db.Query(ctx, listSQL, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list organization tickets: %w", err)
 	}

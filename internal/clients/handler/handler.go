@@ -4,11 +4,13 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"net/http"
+	"strconv"
 
 	clientdomain "github.com/chuuch/gorest/internal/clients/domain"
 	"github.com/chuuch/gorest/internal/clients/usecase"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	"github.com/chuuch/gorest/internal/platform/api"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	"github.com/chuuch/gorest/internal/platform/validation"
 	"github.com/google/uuid"
@@ -28,7 +30,47 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clients, err := h.service.List(r.Context(), organizationID, r.URL.Query().Get("q"))
+	limit := 50
+	rawLimit := r.URL.Query().Get("limit")
+	if rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
+		if err != nil || parsed < 1 {
+			api.WriteError(
+				w,
+				http.StatusBadRequest,
+				"invalid_limit",
+				"invalid limit",
+			)
+			return
+		}
+		limit = parsed
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	var cursor *pagination.Cursor
+	if rawCursor := r.URL.Query().Get("cursor"); rawCursor != "" {
+		decoded, err := pagination.Decode(rawCursor)
+		if err != nil {
+			api.WriteError(
+				w,
+				http.StatusBadRequest,
+				"invalid_cursor",
+				"invalid cursor",
+			)
+			return
+		}
+		cursor = &decoded
+	}
+
+	clients, nextCursor, err := h.service.List(
+		r.Context(),
+		organizationID,
+		limit,
+		cursor,
+		r.URL.Query().Get("q"),
+	)
 	if err != nil {
 		h.handleError(w, err)
 		return
@@ -39,7 +81,10 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		responses = append(responses, toResponse(client))
 	}
 
-	api.WriteJSON(w, http.StatusOK, responses)
+	api.WriteJSON(w, http.StatusOK, pagination.Page[clientdomain.ClientResponse]{
+		Items:      responses,
+		NextCursor: nextCursor,
+	})
 }
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/chuuch/gorest/internal/platform/database"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/chuuch/gorest/internal/platform/search"
 	"github.com/chuuch/gorest/internal/tasks/domain"
 	"github.com/google/uuid"
@@ -210,9 +211,19 @@ func (r *Repository) Delete(
 func (r *Repository) ListByProjectID(
 	ctx context.Context,
 	organizationID, projectID uuid.UUID,
+	limit int,
+	cursor *pagination.Cursor,
 	query string,
 ) ([]*domain.Task, error) {
-	const listSQL = `
+	pattern := search.LikePattern(query)
+
+	var (
+		listSQL string
+		args    []any
+	)
+
+	if cursor == nil {
+		listSQL = `
 			SELECT ` + taskColumns + `
 			FROM tasks
 			WHERE organization_id = $1 AND project_id = $2
@@ -221,34 +232,78 @@ func (r *Repository) ListByProjectID(
 					OR title ILIKE $3 ESCAPE '\'
 					OR notes ILIKE $3 ESCAPE '\'
 				)
-			ORDER BY created_at ASC, title ASC
+			ORDER BY created_at DESC, id DESC
+			LIMIT $4
 		`
+		args = []any{organizationID, projectID, pattern, limit}
+	} else {
+		listSQL = `
+			SELECT ` + taskColumns + `
+			FROM tasks
+			WHERE organization_id = $1 AND project_id = $2
+				AND (
+					$3 = ''
+					OR title ILIKE $3 ESCAPE '\'
+					OR notes ILIKE $3 ESCAPE '\'
+				)
+				AND (created_at, id) < ($4, $5)
+			ORDER BY created_at DESC, id DESC
+			LIMIT $6
+		`
+		args = []any{organizationID, projectID, pattern, cursor.CreatedAt, cursor.ID, limit}
+	}
 
-	return r.list(ctx, listSQL, organizationID, projectID, search.LikePattern(query))
+	return r.list(ctx, listSQL, args...)
 }
 
 func (r *Repository) ListInbox(
 	ctx context.Context,
 	organizationID, userID uuid.UUID,
+	limit int,
+	cursor *pagination.Cursor,
 	query string,
 ) ([]*domain.Task, error) {
-	listSQL := `
-		SELECT ` + taskColumns + `
-		FROM tasks
-		WHERE organization_id = $1
-			AND (assignee_id = $2 OR assignee_id IS NULL)
-			AND (
+	pattern := search.LikePattern(query)
+
+	var (
+		listSQL string
+		args    []any
+	)
+
+	if cursor == nil {
+		listSQL = `
+			SELECT ` + taskColumns + `
+			FROM tasks
+			WHERE organization_id = $1
+				AND (assignee_id = $2 OR assignee_id IS NULL)
+				AND (
 					$3 = ''
 					OR title ILIKE $3 ESCAPE '\'
 					OR notes ILIKE $3 ESCAPE '\'
-			)
-		ORDER BY
-			CASE WHEN assignee_id = $2 THEN 0 ELSE 1 END,
-			created_at ASC,
-			title ASC
-	`
+				)
+			ORDER BY created_at DESC, id DESC
+			LIMIT $4
+		`
+		args = []any{organizationID, userID, pattern, limit}
+	} else {
+		listSQL = `
+			SELECT ` + taskColumns + `
+			FROM tasks
+			WHERE organization_id = $1
+				AND (assignee_id = $2 OR assignee_id IS NULL)
+				AND (
+					$3 = ''
+					OR title ILIKE $3 ESCAPE '\'
+					OR notes ILIKE $3 ESCAPE '\'
+				)
+				AND (created_at, id) < ($4, $5)
+			ORDER BY created_at DESC, id DESC
+			LIMIT $6
+		`
+		args = []any{organizationID, userID, pattern, cursor.CreatedAt, cursor.ID, limit}
+	}
 
-	return r.list(ctx, listSQL, organizationID, userID, search.LikePattern(query))
+	return r.list(ctx, listSQL, args...)
 }
 
 func (r *Repository) list(

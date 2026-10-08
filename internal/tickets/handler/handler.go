@@ -10,6 +10,7 @@ import (
 	clientdomain "github.com/chuuch/gorest/internal/clients/domain"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	"github.com/chuuch/gorest/internal/platform/api"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	"github.com/chuuch/gorest/internal/platform/validation"
 	ticketdomain "github.com/chuuch/gorest/internal/tickets/domain"
@@ -49,7 +50,18 @@ func (h *Handler) ListOrganization(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tickets, err := h.service.ListOrganization(r.Context(), organizationID, r.URL.Query().Get("q"))
+	limit, cursor, ok := pagination.LimitAndCursor(w, r, api.WriteError)
+	if !ok {
+		return
+	}
+
+	tickets, nextCursor, err := h.service.ListOrganization(
+		r.Context(),
+		organizationID,
+		limit,
+		cursor,
+		r.URL.Query().Get("q"),
+	)
 	if err != nil {
 		h.handleError(w, err)
 		return
@@ -59,7 +71,10 @@ func (h *Handler) ListOrganization(w http.ResponseWriter, r *http.Request) {
 	for _, ticket := range tickets {
 		responses = append(responses, toResponse(ticket))
 	}
-	api.WriteJSON(w, http.StatusOK, responses)
+	api.WriteJSON(w, http.StatusOK, pagination.Page[ticketdomain.TicketResponse]{
+		Items:      responses,
+		NextCursor: nextCursor,
+	})
 }
 
 func (h *Handler) ListPortal(w http.ResponseWriter, r *http.Request) {
@@ -208,7 +223,19 @@ func (h *Handler) writeList(
 	r *http.Request,
 	organizationID, clientID uuid.UUID,
 ) {
-	tickets, err := h.service.List(r.Context(), organizationID, clientID, r.URL.Query().Get("q"))
+	limit, cursor, ok := pagination.LimitAndCursor(w, r, api.WriteError)
+	if !ok {
+		return
+	}
+
+	tickets, nextCursor, err := h.service.List(
+		r.Context(),
+		organizationID,
+		clientID,
+		limit,
+		cursor,
+		r.URL.Query().Get("q"),
+	)
 	if err != nil {
 		h.handleError(w, err)
 		return
@@ -218,7 +245,10 @@ func (h *Handler) writeList(
 	for _, ticket := range tickets {
 		responses = append(responses, toResponse(ticket))
 	}
-	api.WriteJSON(w, http.StatusOK, responses)
+	api.WriteJSON(w, http.StatusOK, pagination.Page[ticketdomain.TicketResponse]{
+		Items:      responses,
+		NextCursor: nextCursor,
+	})
 }
 
 func (h *Handler) clientID(

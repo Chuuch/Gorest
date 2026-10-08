@@ -7,6 +7,7 @@ import (
 
 	clientrepository "github.com/chuuch/gorest/internal/clients/repository"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/chuuch/gorest/internal/platform/search"
 	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
 	projectrepository "github.com/chuuch/gorest/internal/projects/repository"
@@ -18,8 +19,10 @@ type Service interface {
 		ctx context.Context,
 		organizationID,
 		clientID uuid.UUID,
+		limit int,
+		cursor *pagination.Cursor,
 		query string,
-	) ([]*projectdomain.Project, error)
+	) ([]*projectdomain.Project, *string, error)
 	Create(
 		ctx context.Context,
 		organizationID,
@@ -58,18 +61,33 @@ func NewService(
 func (s *service) List(
 	ctx context.Context,
 	organizationID, clientID uuid.UUID,
+	limit int,
+	cursor *pagination.Cursor,
 	query string,
-) ([]*projectdomain.Project, error) {
+) ([]*projectdomain.Project, *string, error) {
 	if _, err := s.clients.GetByID(ctx, clientID, organizationID); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	projects, err := s.projects.ListByClientID(ctx, organizationID, clientID, search.Normalize(query))
+	projects, err := s.projects.ListByClientID(
+		ctx,
+		organizationID,
+		clientID,
+		limit+1,
+		cursor,
+		search.Normalize(query),
+	)
 	if err != nil {
-		return nil, fmt.Errorf("list projects: %w", err)
+		return nil, nil, fmt.Errorf("list projects: %w", err)
 	}
 
-	return projects, nil
+	page, next := pagination.NextCursor(projects, limit, func(project *projectdomain.Project) pagination.Cursor {
+		return pagination.Cursor{
+			CreatedAt: project.CreatedAt,
+			ID:        project.ID,
+		}
+	})
+	return page, next, nil
 }
 
 func (s *service) Create(

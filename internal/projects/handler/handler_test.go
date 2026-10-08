@@ -11,6 +11,7 @@ import (
 
 	clientdomain "github.com/chuuch/gorest/internal/clients/domain"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
 	projecthandler "github.com/chuuch/gorest/internal/projects/handler"
@@ -45,7 +46,7 @@ func withSession(req *http.Request, organizationID uuid.UUID, role string) *http
 }
 
 type mockService struct {
-	listFunc   func(uuid.UUID, uuid.UUID, string) ([]*projectdomain.Project, error)
+	listFunc   func(uuid.UUID, uuid.UUID, int, *pagination.Cursor, string) ([]*projectdomain.Project, *string, error)
 	createFunc func(uuid.UUID, uuid.UUID, orgdomain.Role, projectdomain.CreateProjectRequest) (*projectdomain.Project, error)
 	updateFunc func(uuid.UUID, uuid.UUID, orgdomain.Role, projectdomain.UpdateProjectRequest) (*projectdomain.Project, error)
 	deleteFunc func(uuid.UUID, uuid.UUID, orgdomain.Role) error
@@ -55,9 +56,11 @@ func (m *mockService) List(
 	_ context.Context,
 	organizationID uuid.UUID,
 	clientID uuid.UUID,
+	limit int,
+	cursor *pagination.Cursor,
 	query string,
-) ([]*projectdomain.Project, error) {
-	return m.listFunc(organizationID, clientID, query)
+) ([]*projectdomain.Project, *string, error) {
+	return m.listFunc(organizationID, clientID, limit, cursor, query)
 }
 
 func (m *mockService) Create(
@@ -93,10 +96,13 @@ func TestHandler_List(t *testing.T) {
 	project := testProject()
 
 	service := &mockService{
-		listFunc: func(gotOrganizationID uuid.UUID, gotClientID uuid.UUID, query string) ([]*projectdomain.Project, error) {
+		listFunc: func(gotOrganizationID uuid.UUID, gotClientID uuid.UUID, limit int, cursor *pagination.Cursor, query string) ([]*projectdomain.Project, *string, error) {
 			require.Equal(t, organizationID, gotOrganizationID)
 			require.Equal(t, clientID, gotClientID)
-			return []*projectdomain.Project{project}, nil
+			require.Equal(t, 50, limit)
+			require.Nil(t, cursor)
+			require.Empty(t, query)
+			return []*projectdomain.Project{project}, nil, nil
 		},
 	}
 
@@ -115,16 +121,17 @@ func TestHandler_List(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	var response []projectdomain.ProjectResponse
+	var response pagination.Page[projectdomain.ProjectResponse]
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
-	require.Len(t, response, 1)
-	require.Equal(t, "Website", response[0].Name)
+	require.Len(t, response.Items, 1)
+	require.Nil(t, response.NextCursor)
+	require.Equal(t, "Website", response.Items[0].Name)
 }
 
 func TestHandler_List_ClientNotFound(t *testing.T) {
 	service := &mockService{
-		listFunc: func(uuid.UUID, uuid.UUID, string) ([]*projectdomain.Project, error) {
-			return nil, clientdomain.ErrClientNotFound
+		listFunc: func(uuid.UUID, uuid.UUID, int, *pagination.Cursor, string) ([]*projectdomain.Project, *string, error) {
+			return nil, nil, clientdomain.ErrClientNotFound
 		},
 	}
 
@@ -427,11 +434,13 @@ func TestHandler_List_SearchQuery(t *testing.T) {
 	project := testProject()
 
 	service := &mockService{
-		listFunc: func(gotOrganizationID uuid.UUID, gotClientID uuid.UUID, query string) ([]*projectdomain.Project, error) {
+		listFunc: func(gotOrganizationID uuid.UUID, gotClientID uuid.UUID, limit int, cursor *pagination.Cursor, query string) ([]*projectdomain.Project, *string, error) {
 			require.Equal(t, organizationID, gotOrganizationID)
 			require.Equal(t, clientID, gotClientID)
+			require.Equal(t, 50, limit)
+			require.Nil(t, cursor)
 			require.Equal(t, "web", query)
-			return []*projectdomain.Project{project}, nil
+			return []*projectdomain.Project{project}, nil, nil
 		},
 	}
 
@@ -450,8 +459,9 @@ func TestHandler_List_SearchQuery(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	var response []projectdomain.ProjectResponse
+	var response pagination.Page[projectdomain.ProjectResponse]
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
-	require.Len(t, response, 1)
-	require.Equal(t, "Website", response[0].Name)
+	require.Len(t, response.Items, 1)
+	require.Nil(t, response.NextCursor)
+	require.Equal(t, "Website", response.Items[0].Name)
 }

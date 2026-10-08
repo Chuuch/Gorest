@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/chuuch/gorest/internal/tasks/domain"
 	"github.com/google/uuid"
 )
@@ -12,6 +13,18 @@ type TaskRepository interface {
 	GetByID(ctx context.Context, id, organizationID uuid.UUID) (*domain.Task, error)
 	Update(ctx context.Context, task *domain.Task) error
 	Delete(ctx context.Context, id, organizationID uuid.UUID) error
-	ListByProjectID(ctx context.Context, organizationID, projectID uuid.UUID, query string) ([]*domain.Task, error)
-	ListInbox(ctx context.Context, organizationID, userID uuid.UUID, query string) ([]*domain.Task, error)
+	ListByProjectID(
+		ctx context.Context,
+		organizationID, projectID uuid.UUID,
+		limit int,
+		cursor *pagination.Cursor,
+		query string,
+	) ([]*domain.Task, error)
+	ListInbox(
+		ctx context.Context,
+		organizationID, userID uuid.UUID,
+		limit int,
+		cursor *pagination.Cursor,
+		query string,
+	) ([]*domain.Task, error)
 }

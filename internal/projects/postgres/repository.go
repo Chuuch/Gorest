@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/chuuch/gorest/internal/platform/database"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/chuuch/gorest/internal/platform/search"
 	"github.com/chuuch/gorest/internal/projects/domain"
 	"github.com/google/uuid"
@@ -109,9 +110,19 @@ func (r *Repository) GetByID(
 func (r *Repository) ListByClientID(
 	ctx context.Context,
 	organizationID, clientID uuid.UUID,
+	limit int,
+	cursor *pagination.Cursor,
 	query string,
 ) ([]*domain.Project, error) {
-	const listSQL = `
+	pattern := search.LikePattern(query)
+
+	var (
+		listSQL string
+		args    []any
+	)
+
+	if cursor == nil {
+		listSQL = `
 			SELECT
 				id,
 				organization_id,
@@ -120,22 +131,42 @@ func (r *Repository) ListByClientID(
 				notes,
 				created_at,
 				updated_at
-			FROM
-				projects
-			WHERE
-				organization_id = $1 AND client_id = $2
+			FROM projects
+			WHERE organization_id = $1 AND client_id = $2
 				AND (
-						$3 = ''
-						OR name ILIKE $3 ESCAPE '\'
-						OR notes ILIKE $3 ESCAPE '\'
+					$3 = ''
+					OR name ILIKE $3 ESCAPE '\'
+					OR notes ILIKE $3 ESCAPE '\'
 				)
-			ORDER BY
-				name ASC
+			ORDER BY created_at DESC, id DESC
+			LIMIT $4
 		`
+		args = []any{organizationID, clientID, pattern, limit}
+	} else {
+		listSQL = `
+			SELECT
+				id,
+				organization_id,
+				client_id,
+				name,
+				notes,
+				created_at,
+				updated_at
+			FROM projects
+			WHERE organization_id = $1 AND client_id = $2
+				AND (
+					$3 = ''
+					OR name ILIKE $3 ESCAPE '\'
+					OR notes ILIKE $3 ESCAPE '\'
+				)
+				AND (created_at, id) < ($4, $5)
+			ORDER BY created_at DESC, id DESC
+			LIMIT $6
+		`
+		args = []any{organizationID, clientID, pattern, cursor.CreatedAt, cursor.ID, limit}
+	}
 
-	pattern := search.LikePattern(query)
-
-	rows, err := r.db.Query(ctx, listSQL, organizationID, clientID, pattern)
+	rows, err := r.db.Query(ctx, listSQL, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list projects: %w", err)
 	}

@@ -223,9 +223,10 @@ func TestTaskService_Inbox(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	inbox, err := service.Inbox(context.Background(), organizationID, me, "")
+	inbox, next, err := service.Inbox(context.Background(), organizationID, me, 50, nil, "")
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Len(t, inbox, 2)
-	require.Equal(t, mine.ID, inbox[0].ID)
-	require.Equal(t, open.ID, inbox[1].ID)
+	require.Equal(t, open.ID, inbox[0].ID)
+	require.Equal(t, mine.ID, inbox[1].ID)
 }
