@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/chuuch/gorest/internal/notifications/domain"
-	"github.com/chuuch/gorest/internal/pagination"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/google/uuid"
 )
 

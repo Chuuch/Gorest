@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/chuuch/gorest/internal/database"
-	"github.com/chuuch/gorest/internal/search"
+	"github.com/chuuch/gorest/internal/platform/database"
+	"github.com/chuuch/gorest/internal/platform/search"
 	"github.com/chuuch/gorest/internal/tasks/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"

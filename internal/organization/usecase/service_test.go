@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chuuch/gorest/internal/invites"
+	"github.com/chuuch/gorest/internal/auth/invites"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	orgpostgres "github.com/chuuch/gorest/internal/organization/postgres"
 	orgusecase "github.com/chuuch/gorest/internal/organization/usecase"

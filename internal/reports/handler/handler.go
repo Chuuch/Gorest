@@ -4,11 +4,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/chuuch/gorest/internal/api"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	"github.com/chuuch/gorest/internal/platform/api"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	reportsdomain "github.com/chuuch/gorest/internal/reports/domain"
 	usecase "github.com/chuuch/gorest/internal/reports/usecase"
-	"github.com/chuuch/gorest/internal/requestcontext"
 	"github.com/google/uuid"
 )
 

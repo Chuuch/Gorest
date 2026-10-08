@@ -7,7 +7,7 @@ import (
 
 	activitydomain "github.com/chuuch/gorest/internal/activity/domain"
 	activitypostgres "github.com/chuuch/gorest/internal/activity/postgres"
-	"github.com/chuuch/gorest/internal/pagination"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"

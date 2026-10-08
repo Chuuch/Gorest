@@ -7,8 +7,8 @@ import (
 
 	"github.com/chuuch/gorest/internal/activity/domain"
 	"github.com/chuuch/gorest/internal/activity/repository"
-	"github.com/chuuch/gorest/internal/events"
-	"github.com/chuuch/gorest/internal/pagination"
+	"github.com/chuuch/gorest/internal/platform/events"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/google/uuid"
 )
 

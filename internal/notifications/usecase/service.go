@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/chuuch/gorest/internal/events"
 	"github.com/chuuch/gorest/internal/notifications"
 	"github.com/chuuch/gorest/internal/notifications/domain"
 	"github.com/chuuch/gorest/internal/notifications/repository"
 	orgrepository "github.com/chuuch/gorest/internal/organization/repository"
-	"github.com/chuuch/gorest/internal/pagination"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/events"
+	"github.com/chuuch/gorest/internal/platform/pagination"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	"github.com/google/uuid"
 )
 

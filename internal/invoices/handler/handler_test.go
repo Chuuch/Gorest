@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	clientdomain "github.com/chuuch/gorest/internal/client/domain"
+	clientdomain "github.com/chuuch/gorest/internal/clients/domain"
 	invoicedomain "github.com/chuuch/gorest/internal/invoices/domain"
 	invoicehandler "github.com/chuuch/gorest/internal/invoices/handler"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )

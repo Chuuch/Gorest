@@ -12,10 +12,10 @@ import (
 
 	"github.com/chuuch/gorest/internal/auth/domain"
 	authhandler "github.com/chuuch/gorest/internal/auth/handler"
+	"github.com/chuuch/gorest/internal/auth/invites"
 	authusecase "github.com/chuuch/gorest/internal/auth/usecase"
-	"github.com/chuuch/gorest/internal/invites"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"

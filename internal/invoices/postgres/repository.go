@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/chuuch/gorest/internal/database"
 	"github.com/chuuch/gorest/internal/invoices/domain"
-	"github.com/chuuch/gorest/internal/search"
+	"github.com/chuuch/gorest/internal/platform/database"
+	"github.com/chuuch/gorest/internal/platform/search"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"

@@ -7,12 +7,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/chuuch/gorest/internal/api"
-	clientdomain "github.com/chuuch/gorest/internal/client/domain"
+	clientdomain "github.com/chuuch/gorest/internal/clients/domain"
 	invoicedomain "github.com/chuuch/gorest/internal/invoices/domain"
 	"github.com/chuuch/gorest/internal/invoices/usecase"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/api"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	"github.com/google/uuid"
 )
 

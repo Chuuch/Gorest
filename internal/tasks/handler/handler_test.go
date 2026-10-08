@@ -10,8 +10,8 @@ import (
 	"time"
 
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
-	"github.com/chuuch/gorest/internal/requestcontext"
 	taskdomain "github.com/chuuch/gorest/internal/tasks/domain"
 	taskhandler "github.com/chuuch/gorest/internal/tasks/handler"
 	ticketdomain "github.com/chuuch/gorest/internal/tickets/domain"

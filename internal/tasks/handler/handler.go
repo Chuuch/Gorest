@@ -7,14 +7,14 @@ import (
 
 	"github.com/chuuch/gorest/internal/activity"
 	activitydomain "github.com/chuuch/gorest/internal/activity/domain"
-	"github.com/chuuch/gorest/internal/api"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	"github.com/chuuch/gorest/internal/platform/api"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/validation"
 	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
-	"github.com/chuuch/gorest/internal/requestcontext"
 	taskdomain "github.com/chuuch/gorest/internal/tasks/domain"
 	"github.com/chuuch/gorest/internal/tasks/usecase"
 	ticketdomain "github.com/chuuch/gorest/internal/tickets/domain"
-	"github.com/chuuch/gorest/internal/validation"
 	"github.com/google/uuid"
 )
 

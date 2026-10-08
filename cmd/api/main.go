@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/chuuch/gorest/internal/config"
+	"github.com/chuuch/gorest/internal/platform/config"
 	"github.com/chuuch/gorest/internal/server"
 	"github.com/chuuch/gorest/pkg/logger"
 )

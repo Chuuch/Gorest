@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/chuuch/gorest/internal/activity/domain"
-	"github.com/chuuch/gorest/internal/database"
-	"github.com/chuuch/gorest/internal/pagination"
+	"github.com/chuuch/gorest/internal/platform/database"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )

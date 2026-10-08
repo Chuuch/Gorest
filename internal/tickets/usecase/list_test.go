@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	clientpostgres "github.com/chuuch/gorest/internal/client/postgres"
+	clientpostgres "github.com/chuuch/gorest/internal/clients/postgres"
 	ticketpostgres "github.com/chuuch/gorest/internal/tickets/postgres"
 	ticketusecase "github.com/chuuch/gorest/internal/tickets/usecase"
 	"github.com/google/uuid"

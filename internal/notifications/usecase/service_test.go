@@ -10,7 +10,7 @@ import (
 	notificationpostgres "github.com/chuuch/gorest/internal/notifications/postgres"
 	notificationsusecase "github.com/chuuch/gorest/internal/notifications/usecase"
 	orgpostgres "github.com/chuuch/gorest/internal/organization/postgres"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"

@@ -10,8 +10,8 @@ import (
 
 	activitydomain "github.com/chuuch/gorest/internal/activity/domain"
 	activityhandler "github.com/chuuch/gorest/internal/activity/handler"
-	"github.com/chuuch/gorest/internal/pagination"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/pagination"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
