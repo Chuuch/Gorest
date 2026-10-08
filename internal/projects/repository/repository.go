@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/chuuch/gorest/internal/projects/domain"
 	"github.com/google/uuid"
 )
@@ -12,5 +13,11 @@ type ProjectRepository interface {
 	GetByID(ctx context.Context, id, organizationID uuid.UUID) (*domain.Project, error)
 	Update(ctx context.Context, project *domain.Project) error
 	Delete(ctx context.Context, id, organizationID uuid.UUID) error
-	ListByClientID(ctx context.Context, organizationID, clientID uuid.UUID) ([]*domain.Project, error)
+	ListByClientID(
+		ctx context.Context,
+		organizationID, clientID uuid.UUID,
+		limit int,
+		cursor *pagination.Cursor,
+		query string,
+	) ([]*domain.Project, error)
 }

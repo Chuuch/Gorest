@@ -1,0 +1,23 @@
+package repository
+
+import (
+	"context"
+
+	"github.com/chuuch/gorest/internal/clients/domain"
+	"github.com/chuuch/gorest/internal/platform/pagination"
+	"github.com/google/uuid"
+)
+
+type ClientRepository interface {
+	Create(ctx context.Context, client *domain.Client) error
+	GetByID(ctx context.Context, id, organizationID uuid.UUID) (*domain.Client, error)
+	Update(ctx context.Context, client *domain.Client) error
+	Delete(ctx context.Context, id, organizationID uuid.UUID) error
+	ListByOrganizationID(
+		ctx context.Context,
+		organizationID uuid.UUID,
+		limit int,
+		cursor *pagination.Cursor,
+		query string,
+	) ([]*domain.Client, error)
+}

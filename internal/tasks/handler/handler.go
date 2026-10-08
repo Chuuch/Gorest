@@ -7,14 +7,15 @@ import (
 
 	"github.com/chuuch/gorest/internal/activity"
 	activitydomain "github.com/chuuch/gorest/internal/activity/domain"
-	"github.com/chuuch/gorest/internal/api"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	"github.com/chuuch/gorest/internal/platform/api"
+	"github.com/chuuch/gorest/internal/platform/pagination"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/validation"
 	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
-	"github.com/chuuch/gorest/internal/requestcontext"
 	taskdomain "github.com/chuuch/gorest/internal/tasks/domain"
 	"github.com/chuuch/gorest/internal/tasks/usecase"
 	ticketdomain "github.com/chuuch/gorest/internal/tickets/domain"
-	"github.com/chuuch/gorest/internal/validation"
 	"github.com/google/uuid"
 )
 
@@ -47,7 +48,19 @@ func (h *Handler) Inbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tasks, err := h.service.Inbox(r.Context(), organizationID, userID)
+	limit, cursor, ok := pagination.LimitAndCursor(w, r, api.WriteError)
+	if !ok {
+		return
+	}
+
+	tasks, nextCursor, err := h.service.Inbox(
+		r.Context(),
+		organizationID,
+		userID,
+		limit,
+		cursor,
+		r.URL.Query().Get("q"),
+	)
 	if err != nil {
 		h.handleError(w, err)
 		return
@@ -58,7 +71,10 @@ func (h *Handler) Inbox(w http.ResponseWriter, r *http.Request) {
 		responses = append(responses, toResponse(task))
 	}
 
-	api.WriteJSON(w, http.StatusOK, responses)
+	api.WriteJSON(w, http.StatusOK, pagination.Page[taskdomain.TaskResponse]{
+		Items:      responses,
+		NextCursor: nextCursor,
+	})
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +88,19 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tasks, err := h.service.List(r.Context(), organizationID, projectID)
+	limit, cursor, ok := pagination.LimitAndCursor(w, r, api.WriteError)
+	if !ok {
+		return
+	}
+
+	tasks, nextCursor, err := h.service.List(
+		r.Context(),
+		organizationID,
+		projectID,
+		limit,
+		cursor,
+		r.URL.Query().Get("q"),
+	)
 	if err != nil {
 		h.handleError(w, err)
 		return
@@ -83,7 +111,10 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		responses = append(responses, toResponse(task))
 	}
 
-	api.WriteJSON(w, http.StatusOK, responses)
+	api.WriteJSON(w, http.StatusOK, pagination.Page[taskdomain.TaskResponse]{
+		Items:      responses,
+		NextCursor: nextCursor,
+	})
 }
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {

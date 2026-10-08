@@ -7,13 +7,14 @@ import (
 
 	"github.com/chuuch/gorest/internal/activity"
 	activitydomain "github.com/chuuch/gorest/internal/activity/domain"
-	"github.com/chuuch/gorest/internal/api"
-	clientdomain "github.com/chuuch/gorest/internal/client/domain"
+	clientdomain "github.com/chuuch/gorest/internal/clients/domain"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/api"
+	"github.com/chuuch/gorest/internal/platform/pagination"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/validation"
 	ticketdomain "github.com/chuuch/gorest/internal/tickets/domain"
 	"github.com/chuuch/gorest/internal/tickets/usecase"
-	"github.com/chuuch/gorest/internal/validation"
 	"github.com/google/uuid"
 )
 
@@ -41,6 +42,39 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.writeList(w, r, organizationID, clientID)
+}
+
+func (h *Handler) ListOrganization(w http.ResponseWriter, r *http.Request) {
+	organizationID, _, ok := h.staffSession(w, r)
+	if !ok {
+		return
+	}
+
+	limit, cursor, ok := pagination.LimitAndCursor(w, r, api.WriteError)
+	if !ok {
+		return
+	}
+
+	tickets, nextCursor, err := h.service.ListOrganization(
+		r.Context(),
+		organizationID,
+		limit,
+		cursor,
+		r.URL.Query().Get("q"),
+	)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	responses := make([]ticketdomain.TicketResponse, 0, len(tickets))
+	for _, ticket := range tickets {
+		responses = append(responses, toResponse(ticket))
+	}
+	api.WriteJSON(w, http.StatusOK, pagination.Page[ticketdomain.TicketResponse]{
+		Items:      responses,
+		NextCursor: nextCursor,
+	})
 }
 
 func (h *Handler) ListPortal(w http.ResponseWriter, r *http.Request) {
@@ -189,7 +223,19 @@ func (h *Handler) writeList(
 	r *http.Request,
 	organizationID, clientID uuid.UUID,
 ) {
-	tickets, err := h.service.List(r.Context(), organizationID, clientID)
+	limit, cursor, ok := pagination.LimitAndCursor(w, r, api.WriteError)
+	if !ok {
+		return
+	}
+
+	tickets, nextCursor, err := h.service.List(
+		r.Context(),
+		organizationID,
+		clientID,
+		limit,
+		cursor,
+		r.URL.Query().Get("q"),
+	)
 	if err != nil {
 		h.handleError(w, err)
 		return
@@ -199,7 +245,10 @@ func (h *Handler) writeList(
 	for _, ticket := range tickets {
 		responses = append(responses, toResponse(ticket))
 	}
-	api.WriteJSON(w, http.StatusOK, responses)
+	api.WriteJSON(w, http.StatusOK, pagination.Page[ticketdomain.TicketResponse]{
+		Items:      responses,
+		NextCursor: nextCursor,
+	})
 }
 
 func (h *Handler) clientID(

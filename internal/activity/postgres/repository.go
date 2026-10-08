@@ -5,7 +5,8 @@ import (
 	"fmt"
 
 	"github.com/chuuch/gorest/internal/activity/domain"
-	"github.com/chuuch/gorest/internal/database"
+	"github.com/chuuch/gorest/internal/platform/database"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -61,8 +62,15 @@ func (r *Repository) ListByOrganizationID(
 	ctx context.Context,
 	organizationID uuid.UUID,
 	limit int,
+	cursor *pagination.Cursor,
 ) ([]*domain.Event, error) {
-	const query = `
+	var (
+		query string
+		args  []any
+	)
+
+	if cursor == nil {
+		query = `
 			SELECT
 				e.id,
 				e.organization_id,
@@ -77,11 +85,34 @@ func (r *Repository) ListByOrganizationID(
 			FROM activity_events e
 			JOIN users u ON u.id = e.actor_id
 			WHERE e.organization_id = $1
-			ORDER BY e.created_at DESC
+			ORDER BY e.created_at DESC, e.id DESC
 			LIMIT $2
 		`
+		args = []any{organizationID, limit}
+	} else {
+		query = `
+			SELECT
+				e.id,
+				e.organization_id,
+				e.actor_id,
+				u.email,
+				u.display_name,
+				e.action,
+				e.entity_type,
+				e.entity_id,
+				e.summary,
+				e.created_at
+			FROM activity_events e
+			JOIN users u ON u.id = e.actor_id
+			WHERE e.organization_id = $1
+				AND (e.created_at, e.id) < ($2, $3)
+			ORDER BY e.created_at DESC, e.id DESC
+			LIMIT $4
+		`
+		args = []any{organizationID, cursor.CreatedAt, cursor.ID, limit}
+	}
 
-	rows, err := r.db.Query(ctx, query, organizationID, limit)
+	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list activity events: %w", err)
 	}

@@ -10,8 +10,9 @@ import (
 	"time"
 
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	"github.com/chuuch/gorest/internal/platform/pagination"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
-	"github.com/chuuch/gorest/internal/requestcontext"
 	taskdomain "github.com/chuuch/gorest/internal/tasks/domain"
 	taskhandler "github.com/chuuch/gorest/internal/tasks/handler"
 	ticketdomain "github.com/chuuch/gorest/internal/tickets/domain"
@@ -52,7 +53,7 @@ func withSession(req *http.Request, organizationID uuid.UUID, role string) *http
 }
 
 type mockService struct {
-	listFunc    func(uuid.UUID, uuid.UUID) ([]*taskdomain.Task, error)
+	listFunc    func(uuid.UUID, uuid.UUID, int, *pagination.Cursor, string) ([]*taskdomain.Task, *string, error)
 	createFunc  func(uuid.UUID, uuid.UUID, orgdomain.Role, taskdomain.CreateTaskRequest) (*taskdomain.Task, error)
 	updateFunc  func(uuid.UUID, uuid.UUID, taskdomain.UpdateTaskRequest) (*taskdomain.Task, error)
 	deleteFunc  func(uuid.UUID, uuid.UUID, orgdomain.Role) error
@@ -63,8 +64,21 @@ func (m *mockService) List(
 	_ context.Context,
 	organizationID uuid.UUID,
 	projectID uuid.UUID,
-) ([]*taskdomain.Task, error) {
-	return m.listFunc(organizationID, projectID)
+	limit int,
+	cursor *pagination.Cursor,
+	query string,
+) ([]*taskdomain.Task, *string, error) {
+	return m.listFunc(organizationID, projectID, limit, cursor, query)
+}
+
+func (m *mockService) Inbox(
+	_ context.Context,
+	organizationID, userID uuid.UUID,
+	limit int,
+	cursor *pagination.Cursor,
+	query string,
+) ([]*taskdomain.Task, *string, error) {
+	return nil, nil, nil
 }
 
 func (m *mockService) Create(
@@ -110,10 +124,12 @@ func TestHandler_List(t *testing.T) {
 	task := testTask()
 
 	service := &mockService{
-		listFunc: func(gotOrganizationID uuid.UUID, gotProjectID uuid.UUID) ([]*taskdomain.Task, error) {
+		listFunc: func(gotOrganizationID uuid.UUID, gotProjectID uuid.UUID, limit int, cursor *pagination.Cursor, query string) ([]*taskdomain.Task, *string, error) {
 			require.Equal(t, organizationID, gotOrganizationID)
 			require.Equal(t, projectID, gotProjectID)
-			return []*taskdomain.Task{task}, nil
+			require.Equal(t, 50, limit)
+			require.Nil(t, cursor)
+			return []*taskdomain.Task{task}, nil, nil
 		},
 	}
 
@@ -132,18 +148,19 @@ func TestHandler_List(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	var response []taskdomain.TaskResponse
+	var response pagination.Page[taskdomain.TaskResponse]
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
-	require.Len(t, response, 1)
-	require.Equal(t, "Fix login", response[0].Title)
-	require.Equal(t, taskdomain.StatusTodo, response[0].Status)
-	require.Equal(t, 1, response[0].Version)
+	require.Len(t, response.Items, 1)
+	require.Nil(t, response.NextCursor)
+	require.Equal(t, "Fix login", response.Items[0].Title)
+	require.Equal(t, taskdomain.StatusTodo, response.Items[0].Status)
+	require.Equal(t, 1, response.Items[0].Version)
 }
 
 func TestHandler_List_ProjectNotFound(t *testing.T) {
 	service := &mockService{
-		listFunc: func(uuid.UUID, uuid.UUID) ([]*taskdomain.Task, error) {
-			return nil, projectdomain.ErrProjectNotFound
+		listFunc: func(uuid.UUID, uuid.UUID, int, *pagination.Cursor, string) ([]*taskdomain.Task, *string, error) {
+			return nil, nil, projectdomain.ErrProjectNotFound
 		},
 	}
 
@@ -684,4 +701,41 @@ func TestHandler_Delete_NotFound(t *testing.T) {
 	handler.Delete(rec, req)
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestHandler_List_SearchQuery(t *testing.T) {
+	organizationID := testOrganizationID()
+	projectID := testProjectID()
+	task := testTask()
+
+	service := &mockService{
+		listFunc: func(gotOrganizationID uuid.UUID, gotProjectID uuid.UUID, limit int, cursor *pagination.Cursor, query string) ([]*taskdomain.Task, *string, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, projectID, gotProjectID)
+			require.Equal(t, 50, limit)
+			require.Nil(t, cursor)
+			require.Equal(t, "login", query)
+			return []*taskdomain.Task{task}, nil, nil
+		},
+	}
+
+	handler := taskhandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/projects/"+projectID.String()+"/tasks?q=login",
+		nil,
+	)
+	req.SetPathValue("id", projectID.String())
+	req = withSession(req, organizationID, "member")
+
+	rec := httptest.NewRecorder()
+	handler.List(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response pagination.Page[taskdomain.TaskResponse]
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Len(t, response.Items, 1)
+	require.Equal(t, "Fix login", response.Items[0].Title)
 }

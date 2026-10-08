@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/chuuch/gorest/internal/database"
+	"github.com/chuuch/gorest/internal/platform/database"
+	"github.com/chuuch/gorest/internal/platform/pagination"
+	"github.com/chuuch/gorest/internal/platform/search"
 	"github.com/chuuch/gorest/internal/tickets/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -171,8 +173,19 @@ func (r *Repository) Delete(
 func (r *Repository) ListByClientID(
 	ctx context.Context,
 	organizationID, clientID uuid.UUID,
+	limit int,
+	cursor *pagination.Cursor,
+	query string,
 ) ([]*domain.Ticket, error) {
-	const query = `
+	pattern := search.LikePattern(query)
+
+	var (
+		listSQL string
+		args    []any
+	)
+
+	if cursor == nil {
+		listSQL = `
 			SELECT
 				id,
 				organization_id,
@@ -187,10 +200,44 @@ func (r *Repository) ListByClientID(
 				updated_at
 			FROM tickets
 			WHERE organization_id = $1 AND client_id = $2
-			ORDER BY created_at DESC
+				AND (
+					$3 = ''
+					OR title ILIKE $3 ESCAPE '\'
+					OR body ILIKE $3 ESCAPE '\'
+				)
+			ORDER BY created_at DESC, id DESC
+			LIMIT $4
 		`
+		args = []any{organizationID, clientID, pattern, limit}
+	} else {
+		listSQL = `
+			SELECT
+				id,
+				organization_id,
+				client_id,
+				user_id,
+				kind,
+				status,
+				title,
+				body,
+				version,
+				created_at,
+				updated_at
+			FROM tickets
+			WHERE organization_id = $1 AND client_id = $2
+				AND (
+					$3 = ''
+					OR title ILIKE $3 ESCAPE '\'
+					OR body ILIKE $3 ESCAPE '\'
+				)
+				AND (created_at, id) < ($4, $5)
+			ORDER BY created_at DESC, id DESC
+			LIMIT $6
+		`
+		args = []any{organizationID, clientID, pattern, cursor.CreatedAt, cursor.ID, limit}
+	}
 
-	rows, err := r.db.Query(ctx, query, organizationID, clientID)
+	rows, err := r.db.Query(ctx, listSQL, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list tickets: %w", err)
 	}
@@ -222,6 +269,107 @@ func (r *Repository) ListByClientID(
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("list tickets: %w", err)
+	}
+	return tickets, nil
+}
+
+func (r *Repository) ListByOrganizationID(
+	ctx context.Context,
+	organizationID uuid.UUID,
+	limit int,
+	cursor *pagination.Cursor,
+	query string,
+) ([]*domain.Ticket, error) {
+	pattern := search.LikePattern(query)
+
+	var (
+		listSQL string
+		args    []any
+	)
+
+	if cursor == nil {
+		listSQL = `
+			SELECT
+					id,
+					organization_id,
+					client_id,
+					user_id,
+					kind,
+					status,
+					title,
+					body,
+					version,
+					created_at,
+					updated_at
+			FROM tickets
+			WHERE organization_id = $1
+				AND (
+					$2 = ''
+					OR title ILIKE $2 ESCAPE '\'
+					OR body ILIKE $2 ESCAPE '\'
+				)
+			ORDER BY created_at DESC, id DESC
+			LIMIT $3
+		`
+		args = []any{organizationID, pattern, limit}
+	} else {
+		listSQL = `
+			SELECT
+					id,
+					organization_id,
+					client_id,
+					user_id,
+					kind,
+					status,
+					title,
+					body,
+					version,
+					created_at,
+					updated_at
+			FROM tickets
+			WHERE organization_id = $1
+				AND (
+					$2 = ''
+					OR title ILIKE $2 ESCAPE '\'
+					OR body ILIKE $2 ESCAPE '\'
+				)
+				AND (created_at, id) < ($3, $4)
+			ORDER BY created_at DESC, id DESC
+			LIMIT $5
+		`
+		args = []any{organizationID, pattern, cursor.CreatedAt, cursor.ID, limit}
+	}
+
+	rows, err := r.db.Query(ctx, listSQL, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list organization tickets: %w", err)
+	}
+	defer rows.Close()
+
+	tickets := make([]*domain.Ticket, 0)
+
+	for rows.Next() {
+		var ticket domain.Ticket
+
+		if err := rows.Scan(
+			&ticket.ID,
+			&ticket.OrganizationID,
+			&ticket.ClientID,
+			&ticket.UserID,
+			&ticket.Kind,
+			&ticket.Status,
+			&ticket.Title,
+			&ticket.Body,
+			&ticket.Version,
+			&ticket.CreatedAt,
+			&ticket.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan ticket: %w", err)
+		}
+		tickets = append(tickets, &ticket)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list organization tickets: %w", err)
 	}
 	return tickets, nil
 }

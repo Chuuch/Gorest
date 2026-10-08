@@ -13,7 +13,7 @@ import (
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	orghandler "github.com/chuuch/gorest/internal/organization/handler"
 	orgusecase "github.com/chuuch/gorest/internal/organization/usecase"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
@@ -38,7 +38,7 @@ func withSession(req *http.Request, organizationID uuid.UUID, role string) *http
 }
 
 type mockService struct {
-	listFunc      func(uuid.UUID) ([]orgusecase.Member, error)
+	listFunc      func(uuid.UUID, string) ([]orgusecase.Member, error)
 	createFunc    func(uuid.UUID, orgdomain.Role, orgdomain.CreateMemberRequest) (*orgusecase.Member, error)
 	updateFunc    func(uuid.UUID, uuid.UUID, orgdomain.Role, orgdomain.UpdateMemberRequest) (*orgusecase.Member, error)
 	deleteFunc    func(uuid.UUID, uuid.UUID, orgdomain.Role) error
@@ -48,8 +48,9 @@ type mockService struct {
 func (m *mockService) ListMembers(
 	_ context.Context,
 	organizationID uuid.UUID,
+	query string,
 ) ([]orgusecase.Member, error) {
-	return m.listFunc(organizationID)
+	return m.listFunc(organizationID, query)
 }
 
 func (m *mockService) CreateMember(
@@ -92,7 +93,7 @@ func TestHandler_ListMembers(t *testing.T) {
 	member := testMember()
 
 	service := &mockService{
-		listFunc: func(gotOrganizationID uuid.UUID) ([]orgusecase.Member, error) {
+		listFunc: func(gotOrganizationID uuid.UUID, query string) ([]orgusecase.Member, error) {
 			require.Equal(t, organizationID, gotOrganizationID)
 
 			return []orgusecase.Member{*member}, nil
@@ -127,7 +128,7 @@ func TestHandler_ListMembers(t *testing.T) {
 
 func TestHandler_ListMembers_Empty(t *testing.T) {
 	service := &mockService{
-		listFunc: func(uuid.UUID) ([]orgusecase.Member, error) {
+		listFunc: func(uuid.UUID, string) ([]orgusecase.Member, error) {
 			return []orgusecase.Member{}, nil
 		},
 	}
@@ -151,7 +152,7 @@ func TestHandler_ListMembers_Empty(t *testing.T) {
 
 func TestHandler_ListMembers_Unauthorized(t *testing.T) {
 	service := &mockService{
-		listFunc: func(uuid.UUID) ([]orgusecase.Member, error) {
+		listFunc: func(uuid.UUID, string) ([]orgusecase.Member, error) {
 			t.Fatal("service should not be called")
 			return nil, nil
 		},
@@ -174,7 +175,7 @@ func TestHandler_ListMembers_Unauthorized(t *testing.T) {
 
 func TestHandler_ListMembers_InternalError(t *testing.T) {
 	service := &mockService{
-		listFunc: func(uuid.UUID) ([]orgusecase.Member, error) {
+		listFunc: func(uuid.UUID, string) ([]orgusecase.Member, error) {
 			return nil, errors.New("database failure")
 		},
 	}
@@ -700,4 +701,38 @@ func TestHandler_Update_NameTooShort(t *testing.T) {
 	handler.Update(rec, req)
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandler_ListMembers_SearchQuery(t *testing.T) {
+	organizationID := testOrganizationID()
+	member := orgusecase.Member{
+		UserID:      uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		Email:       "ada@example.com",
+		DisplayName: "Ada",
+		Role:        orgdomain.RoleOwner,
+		CreatedAt:   time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+	}
+
+	service := &mockService{
+		listFunc: func(gotOrganizationID uuid.UUID, query string) ([]orgusecase.Member, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, "ada", query)
+			return []orgusecase.Member{member}, nil
+		},
+	}
+
+	handler := orghandler.NewHandler(service)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/members?q=ada", nil)
+	req = withSession(req, organizationID, "owner")
+
+	rec := httptest.NewRecorder()
+	handler.ListMembers(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response []orgdomain.MemberResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Len(t, response, 1)
+	require.Equal(t, "ada@example.com", response[0].Email)
 }

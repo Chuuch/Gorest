@@ -7,6 +7,7 @@ import (
 
 	activitydomain "github.com/chuuch/gorest/internal/activity/domain"
 	activitypostgres "github.com/chuuch/gorest/internal/activity/postgres"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
@@ -140,7 +141,7 @@ func TestActivityRepository_CreateAndList(t *testing.T) {
 
 	require.NoError(t, repo.Create(ctx, event))
 
-	listed, err := repo.ListByOrganizationID(ctx, organizationID, 50)
+	listed, err := repo.ListByOrganizationID(ctx, organizationID, 50, nil)
 	require.NoError(t, err)
 	require.Len(t, listed, 1)
 	require.Equal(t, event.ID, listed[0].ID)
@@ -156,7 +157,61 @@ func TestActivityRepository_ListEmpty(t *testing.T) {
 	_, organizationID := seedUserAndOrg(t, db)
 	repo := activitypostgres.NewRepository(db)
 
-	listed, err := repo.ListByOrganizationID(context.Background(), organizationID, 50)
+	listed, err := repo.ListByOrganizationID(context.Background(), organizationID, 50, nil)
 	require.NoError(t, err)
 	require.Empty(t, listed)
+}
+
+func TestActivityRepository_ListKeyset(t *testing.T) {
+	db, cleanup := setupTestDatabase(t)
+	defer cleanup()
+
+	userID, organizationID := seedUserAndOrg(t, db)
+	repo := activitypostgres.NewRepository(db)
+	ctx := context.Background()
+
+	newer := &activitydomain.Event{
+		ID:             uuid.MustParse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+		OrganizationID: organizationID,
+		ActorID:        userID,
+		Action:         activitydomain.ActionCreated,
+		EntityType:     activitydomain.EntityTask,
+		EntityID:       uuid.New(),
+		Summary:        "Newer",
+		CreatedAt:      time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC),
+	}
+	older := &activitydomain.Event{
+		ID:             uuid.MustParse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
+		OrganizationID: organizationID,
+		ActorID:        userID,
+		Action:         activitydomain.ActionUpdated,
+		EntityType:     activitydomain.EntityTask,
+		EntityID:       uuid.New(),
+		Summary:        "Older",
+		CreatedAt:      time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+
+	require.NoError(t, repo.Create(ctx, newer))
+	require.NoError(t, repo.Create(ctx, older))
+
+	page1, err := repo.ListByOrganizationID(ctx, organizationID, 1, nil)
+	require.NoError(t, err)
+	require.Len(t, page1, 1)
+	require.Equal(t, newer.ID, page1[0].ID)
+
+	cursor := &pagination.Cursor{
+		CreatedAt: page1[0].CreatedAt,
+		ID:        page1[0].ID,
+	}
+	page2, err := repo.ListByOrganizationID(ctx, organizationID, 1, cursor)
+	require.NoError(t, err)
+	require.Len(t, page2, 1)
+	require.Equal(t, older.ID, page2[0].ID)
+
+	page3, err := repo.ListByOrganizationID(ctx, organizationID, 1, &pagination.Cursor{
+		CreatedAt: page2[0].CreatedAt,
+		ID:        page2[0].ID,
+	})
+	require.NoError(t, err)
+	require.Empty(t, page3)
 }

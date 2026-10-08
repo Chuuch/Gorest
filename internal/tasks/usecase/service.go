@@ -10,9 +10,11 @@ import (
 	notificationdomain "github.com/chuuch/gorest/internal/notifications/domain"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	orgrepository "github.com/chuuch/gorest/internal/organization/repository"
+	"github.com/chuuch/gorest/internal/platform/pagination"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/search"
 	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
 	projectrepository "github.com/chuuch/gorest/internal/projects/repository"
-	"github.com/chuuch/gorest/internal/requestcontext"
 	taskdomain "github.com/chuuch/gorest/internal/tasks/domain"
 	taskrepository "github.com/chuuch/gorest/internal/tasks/repository"
 	ticketrepository "github.com/chuuch/gorest/internal/tickets/repository"
@@ -23,11 +25,17 @@ type Service interface {
 	List(
 		ctx context.Context,
 		organizationID, projectID uuid.UUID,
-	) ([]*taskdomain.Task, error)
+		limit int,
+		cursor *pagination.Cursor,
+		query string,
+	) ([]*taskdomain.Task, *string, error)
 	Inbox(
 		ctx context.Context,
 		organizationID, userID uuid.UUID,
-	) ([]*taskdomain.Task, error)
+		limit int,
+		cursor *pagination.Cursor,
+		query string,
+	) ([]*taskdomain.Task, *string, error)
 	Create(
 		ctx context.Context,
 		organizationID, projectID uuid.UUID,
@@ -87,28 +95,61 @@ func EnableNotifications(s Service, pub notifications.Publisher) Service {
 func (s *service) List(
 	ctx context.Context,
 	organizationID, projectID uuid.UUID,
-) ([]*taskdomain.Task, error) {
+	limit int,
+	cursor *pagination.Cursor,
+	query string,
+) ([]*taskdomain.Task, *string, error) {
 	if _, err := s.projects.GetByID(ctx, projectID, organizationID); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	tasks, err := s.tasks.ListByProjectID(ctx, organizationID, projectID)
+	tasks, err := s.tasks.ListByProjectID(
+		ctx,
+		organizationID,
+		projectID,
+		limit+1,
+		cursor,
+		search.Normalize(query),
+	)
 	if err != nil {
-		return nil, fmt.Errorf("list tasks: %w", err)
+		return nil, nil, fmt.Errorf("list tasks: %w", err)
 	}
 
-	return tasks, nil
+	page, next := pagination.NextCursor(tasks, limit, func(task *taskdomain.Task) pagination.Cursor {
+		return pagination.Cursor{
+			CreatedAt: task.CreatedAt,
+			ID:        task.ID,
+		}
+	})
+	return page, next, nil
 }
 
 func (s *service) Inbox(
 	ctx context.Context,
 	organizationID, userID uuid.UUID,
-) ([]*taskdomain.Task, error) {
-	tasks, err := s.tasks.ListInbox(ctx, organizationID, userID)
+	limit int,
+	cursor *pagination.Cursor,
+	query string,
+) ([]*taskdomain.Task, *string, error) {
+	tasks, err := s.tasks.ListInbox(
+		ctx,
+		organizationID,
+		userID,
+		limit+1,
+		cursor,
+		search.Normalize(query),
+	)
 	if err != nil {
-		return nil, fmt.Errorf("list inbox: %w", err)
+		return nil, nil, fmt.Errorf("list inbox: %w", err)
 	}
-	return tasks, nil
+
+	page, next := pagination.NextCursor(tasks, limit, func(task *taskdomain.Task) pagination.Cursor {
+		return pagination.Cursor{
+			CreatedAt: task.CreatedAt,
+			ID:        task.ID,
+		}
+	})
+	return page, next, nil
 }
 
 func (s *service) Create(
@@ -243,7 +284,14 @@ func (s *service) Convert(
 		return nil, projectdomain.ErrProjectNotFound
 	}
 
-	existing, err := s.tasks.ListByProjectID(ctx, organizationID, project.ID)
+	existing, err := s.tasks.ListByProjectID(
+		ctx,
+		organizationID,
+		project.ID,
+		pagination.MaxLimit,
+		nil,
+		"",
+	)
 	if err != nil {
 		return nil, fmt.Errorf("list tasks: %w", err)
 	}

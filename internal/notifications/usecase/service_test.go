@@ -10,7 +10,7 @@ import (
 	notificationpostgres "github.com/chuuch/gorest/internal/notifications/postgres"
 	notificationsusecase "github.com/chuuch/gorest/internal/notifications/usecase"
 	orgpostgres "github.com/chuuch/gorest/internal/organization/postgres"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
@@ -196,8 +196,9 @@ func TestPublish_StaffSkipsActor(t *testing.T) {
 		Staff:          true,
 	}))
 
-	items, err := service.List(ctx, organizationID, benID, 50)
+	items, next, err := service.List(ctx, organizationID, benID, 50, nil)
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Len(t, items, 1)
 	require.Equal(t, benID, items[0].RecipientID)
 	require.Equal(t, adaID, items[0].ActorID)
@@ -207,8 +208,9 @@ func TestPublish_StaffSkipsActor(t *testing.T) {
 	require.Equal(t, "Login broken", items[0].Summary)
 	require.Nil(t, items[0].ReadAt)
 
-	own, err := service.List(ctx, organizationID, adaID, 50)
+	own, next, err := service.List(ctx, organizationID, adaID, 50, nil)
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Empty(t, own)
 }
 
@@ -230,8 +232,9 @@ func TestPublish_UserSkipsActor(t *testing.T) {
 		RecipientUserID: patID,
 	}))
 
-	items, err := service.List(ctx, organizationID, patID, 50)
+	items, next, err := service.List(ctx, organizationID, patID, 50, nil)
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Empty(t, items)
 }
 
@@ -255,15 +258,17 @@ func TestPublish_UserNotifiesRecipient(t *testing.T) {
 		RecipientUserID: patID,
 	}))
 
-	items, err := service.List(ctx, organizationID, patID, 50)
+	items, next, err := service.List(ctx, organizationID, patID, 50, nil)
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Len(t, items, 1)
 	require.Equal(t, patID, items[0].RecipientID)
 	require.Equal(t, adaID, items[0].ActorID)
 	require.Equal(t, domain.KindTicketStaffComment, items[0].Kind)
 
-	own, err := service.List(ctx, organizationID, adaID, 50)
+	own, next, err := service.List(ctx, organizationID, adaID, 50, nil)
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Empty(t, own)
 }
 
@@ -288,15 +293,17 @@ func TestMarkRead(t *testing.T) {
 		Staff:          true,
 	}))
 
-	items, err := service.List(ctx, organizationID, benID, 50)
+	items, next, err := service.List(ctx, organizationID, benID, 50, nil)
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Len(t, items, 1)
 	require.Nil(t, items[0].ReadAt)
 
 	require.NoError(t, service.MarkRead(ctx, organizationID, benID, items[0].ID))
 
-	read, err := service.List(ctx, organizationID, benID, 50)
+	read, next, err := service.List(ctx, organizationID, benID, 50, nil)
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Len(t, read, 1)
 	require.NotNil(t, read[0].ReadAt)
 }

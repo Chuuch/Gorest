@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chuuch/gorest/internal/invites"
+	"github.com/chuuch/gorest/internal/auth/invites"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	orgpostgres "github.com/chuuch/gorest/internal/organization/postgres"
 	orgusecase "github.com/chuuch/gorest/internal/organization/usecase"
@@ -231,6 +231,7 @@ func TestOrganizationService_ListMembers(t *testing.T) {
 	members, err := deps.service.ListMembers(
 		context.Background(),
 		organizationID,
+		"",
 	)
 
 	require.NoError(t, err)
@@ -279,6 +280,7 @@ func TestOrganizationService_CreateMember(t *testing.T) {
 	members, err := deps.service.ListMembers(
 		context.Background(),
 		organizationID,
+		"",
 	)
 
 	require.NoError(t, err)
@@ -570,7 +572,7 @@ func TestOrganizationService_DeleteMember(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	members, err := deps.service.ListMembers(context.Background(), organizationID)
+	members, err := deps.service.ListMembers(context.Background(), organizationID, "")
 	require.NoError(t, err)
 	require.Len(t, members, 1)
 	require.Equal(t, orgdomain.RoleOwner, members[0].Role)

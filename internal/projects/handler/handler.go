@@ -5,13 +5,14 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/chuuch/gorest/internal/api"
-	clientdomain "github.com/chuuch/gorest/internal/client/domain"
+	clientdomain "github.com/chuuch/gorest/internal/clients/domain"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	"github.com/chuuch/gorest/internal/platform/api"
+	"github.com/chuuch/gorest/internal/platform/pagination"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/validation"
 	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
 	"github.com/chuuch/gorest/internal/projects/usecase"
-	"github.com/chuuch/gorest/internal/requestcontext"
-	"github.com/chuuch/gorest/internal/validation"
 	"github.com/google/uuid"
 )
 
@@ -34,7 +35,19 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	projects, err := h.service.List(r.Context(), organizationID, clientID)
+	limit, cursor, ok := pagination.LimitAndCursor(w, r, api.WriteError)
+	if !ok {
+		return
+	}
+
+	projects, nextCursor, err := h.service.List(
+		r.Context(),
+		organizationID,
+		clientID,
+		limit,
+		cursor,
+		r.URL.Query().Get("q"),
+	)
 	if err != nil {
 		h.handleError(w, err)
 		return
@@ -45,7 +58,10 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		responses = append(responses, toResponse(project))
 	}
 
-	api.WriteJSON(w, http.StatusOK, responses)
+	api.WriteJSON(w, http.StatusOK, pagination.Page[projectdomain.ProjectResponse]{
+		Items:      responses,
+		NextCursor: nextCursor,
+	})
 }
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {

@@ -11,7 +11,7 @@ import (
 	"github.com/chuuch/gorest/internal/auth/domain"
 	authhandler "github.com/chuuch/gorest/internal/auth/handler"
 	authusecase "github.com/chuuch/gorest/internal/auth/usecase"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )

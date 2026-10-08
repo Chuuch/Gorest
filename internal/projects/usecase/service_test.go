@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
-	clientdomain "github.com/chuuch/gorest/internal/client/domain"
-	clientpostgres "github.com/chuuch/gorest/internal/client/postgres"
+	clientdomain "github.com/chuuch/gorest/internal/clients/domain"
+	clientpostgres "github.com/chuuch/gorest/internal/clients/postgres"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
 	projectpostgres "github.com/chuuch/gorest/internal/projects/postgres"
 	projectusecase "github.com/chuuch/gorest/internal/projects/usecase"
@@ -193,15 +194,17 @@ func TestProjectService_CreateAndList(t *testing.T) {
 	require.Equal(t, "Website", project.Name)
 	require.Equal(t, clientID, project.ClientID)
 
-	own, err := service.List(context.Background(), organizationID, clientID)
+	own, next, err := service.List(context.Background(), organizationID, clientID, 50, nil, "")
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Len(t, own, 1)
 
-	_, err = service.List(context.Background(), otherOrganizationID, clientID)
+	_, _, err = service.List(context.Background(), otherOrganizationID, clientID, 50, nil, "")
 	require.ErrorIs(t, err, clientdomain.ErrClientNotFound)
 
-	other, err := service.List(context.Background(), otherOrganizationID, otherClientID)
+	other, next, err := service.List(context.Background(), otherOrganizationID, otherClientID, 50, nil, "")
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Empty(t, other)
 }
 
@@ -439,8 +442,9 @@ func TestProjectService_Delete(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	projects, err := service.List(context.Background(), organizationID, clientID)
+	projects, next, err := service.List(context.Background(), organizationID, clientID, 50, nil, "")
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Empty(t, projects)
 }
 
@@ -486,4 +490,90 @@ func TestProjectService_Delete_NotFound(t *testing.T) {
 	)
 
 	require.ErrorIs(t, err, projectdomain.ErrProjectNotFound)
+}
+
+func TestProjectService_List_Search(t *testing.T) {
+	db, cleanup := setupProjectTestDatabase(t)
+	defer cleanup()
+
+	service := setupProjectService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+
+	_, err := service.Create(
+		context.Background(),
+		organizationID,
+		clientID,
+		orgdomain.RoleOwner,
+		projectdomain.CreateProjectRequest{Name: "Website", Notes: "Launch"},
+	)
+	require.NoError(t, err)
+
+	_, err = service.Create(
+		context.Background(),
+		organizationID,
+		clientID,
+		orgdomain.RoleOwner,
+		projectdomain.CreateProjectRequest{Name: "Mobile", Notes: "iOS app"},
+	)
+	require.NoError(t, err)
+
+	matched, next, err := service.List(context.Background(), organizationID, clientID, 50, nil, "web")
+	require.NoError(t, err)
+	require.Nil(t, next)
+	require.Len(t, matched, 1)
+	require.Equal(t, "Website", matched[0].Name)
+
+	byNotes, next, err := service.List(context.Background(), organizationID, clientID, 50, nil, "ios")
+	require.NoError(t, err)
+	require.Nil(t, next)
+	require.Len(t, byNotes, 1)
+	require.Equal(t, "Mobile", byNotes[0].Name)
+
+	none, next, err := service.List(context.Background(), organizationID, clientID, 50, nil, "zzz")
+	require.NoError(t, err)
+	require.Nil(t, next)
+	require.Empty(t, none)
+}
+
+func TestProjectService_List_Pagination(t *testing.T) {
+	db, cleanup := setupProjectTestDatabase(t)
+	defer cleanup()
+
+	service := setupProjectService(db)
+	organizationID := seedOrganization(t, db, "Acme")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+
+	first, err := service.Create(
+		context.Background(),
+		organizationID,
+		clientID,
+		orgdomain.RoleOwner,
+		projectdomain.CreateProjectRequest{Name: "Alpha Project"},
+	)
+	require.NoError(t, err)
+
+	second, err := service.Create(
+		context.Background(),
+		organizationID,
+		clientID,
+		orgdomain.RoleOwner,
+		projectdomain.CreateProjectRequest{Name: "Beta Project"},
+	)
+	require.NoError(t, err)
+
+	page1, next, err := service.List(context.Background(), organizationID, clientID, 1, nil, "")
+	require.NoError(t, err)
+	require.NotNil(t, next)
+	require.Len(t, page1, 1)
+	require.Equal(t, second.ID, page1[0].ID)
+
+	cursor, err := pagination.Decode(*next)
+	require.NoError(t, err)
+
+	page2, next, err := service.List(context.Background(), organizationID, clientID, 1, &cursor, "")
+	require.NoError(t, err)
+	require.Nil(t, next)
+	require.Len(t, page2, 1)
+	require.Equal(t, first.ID, page2[0].ID)
 }

@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	clientrepository "github.com/chuuch/gorest/internal/client/repository"
+	clientrepository "github.com/chuuch/gorest/internal/clients/repository"
 	"github.com/chuuch/gorest/internal/notifications"
 	notificationdomain "github.com/chuuch/gorest/internal/notifications/domain"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	"github.com/chuuch/gorest/internal/platform/pagination"
+	"github.com/chuuch/gorest/internal/platform/search"
 	ticketdomain "github.com/chuuch/gorest/internal/tickets/domain"
 	ticketrepository "github.com/chuuch/gorest/internal/tickets/repository"
 	"github.com/google/uuid"
@@ -18,7 +20,17 @@ type Service interface {
 	List(
 		ctx context.Context,
 		organizationID, clientID uuid.UUID,
-	) ([]*ticketdomain.Ticket, error)
+		limit int,
+		cursor *pagination.Cursor,
+		query string,
+	) ([]*ticketdomain.Ticket, *string, error)
+	ListOrganization(
+		ctx context.Context,
+		organizationID uuid.UUID,
+		limit int,
+		cursor *pagination.Cursor,
+		query string,
+	) ([]*ticketdomain.Ticket, *string, error)
 	Create(
 		ctx context.Context,
 		organizationID, clientID, userID uuid.UUID,
@@ -65,16 +77,60 @@ func EnableNotifications(s Service, pub notifications.Publisher) Service {
 func (s *service) List(
 	ctx context.Context,
 	organizationID, clientID uuid.UUID,
-) ([]*ticketdomain.Ticket, error) {
+	limit int,
+	cursor *pagination.Cursor,
+	query string,
+) ([]*ticketdomain.Ticket, *string, error) {
 	if _, err := s.clients.GetByID(ctx, clientID, organizationID); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	tickets, err := s.tickets.ListByClientID(ctx, organizationID, clientID)
+	tickets, err := s.tickets.ListByClientID(
+		ctx,
+		organizationID,
+		clientID,
+		limit+1,
+		cursor,
+		search.Normalize(query),
+	)
 	if err != nil {
-		return nil, fmt.Errorf("list tickets: %w", err)
+		return nil, nil, fmt.Errorf("list tickets: %w", err)
 	}
-	return tickets, nil
+
+	page, next := pagination.NextCursor(tickets, limit, func(ticket *ticketdomain.Ticket) pagination.Cursor {
+		return pagination.Cursor{
+			CreatedAt: ticket.CreatedAt,
+			ID:        ticket.ID,
+		}
+	})
+	return page, next, nil
+}
+
+func (s *service) ListOrganization(
+	ctx context.Context,
+	organizationID uuid.UUID,
+	limit int,
+	cursor *pagination.Cursor,
+	query string,
+) ([]*ticketdomain.Ticket, *string, error) {
+	tickets, err := s.tickets.ListByOrganizationID(
+		ctx,
+		organizationID,
+		limit+1,
+		cursor,
+		search.Normalize(query),
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list organization tickets: %w", err)
+	}
+
+	page, next := pagination.NextCursor(tickets, limit, func(ticket *ticketdomain.Ticket) pagination.Cursor {
+		return pagination.Cursor{
+			CreatedAt: ticket.CreatedAt,
+			ID:        ticket.ID,
+		}
+	})
+	return page, next, nil
 }
 
 func (s *service) Create(

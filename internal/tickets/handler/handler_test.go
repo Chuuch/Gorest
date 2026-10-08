@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
-	clientdomain "github.com/chuuch/gorest/internal/client/domain"
+	clientdomain "github.com/chuuch/gorest/internal/clients/domain"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/pagination"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	ticketdomain "github.com/chuuch/gorest/internal/tickets/domain"
 	tickethandler "github.com/chuuch/gorest/internal/tickets/handler"
 	"github.com/google/uuid"
@@ -65,17 +66,34 @@ func withPortalSession(
 }
 
 type mockService struct {
-	listFunc   func(uuid.UUID, uuid.UUID) ([]*ticketdomain.Ticket, error)
-	createFunc func(uuid.UUID, uuid.UUID, uuid.UUID, ticketdomain.CreateTicketRequest) (*ticketdomain.Ticket, error)
-	updateFunc func(uuid.UUID, uuid.UUID, ticketdomain.UpdateTicketRequest) (*ticketdomain.Ticket, error)
-	deleteFunc func(uuid.UUID, uuid.UUID, orgdomain.Role) error
+	listFunc    func(uuid.UUID, uuid.UUID, int, *pagination.Cursor, string) ([]*ticketdomain.Ticket, *string, error)
+	listOrgFunc func(uuid.UUID, int, *pagination.Cursor, string) ([]*ticketdomain.Ticket, *string, error)
+	createFunc  func(uuid.UUID, uuid.UUID, uuid.UUID, ticketdomain.CreateTicketRequest) (*ticketdomain.Ticket, error)
+	updateFunc  func(uuid.UUID, uuid.UUID, ticketdomain.UpdateTicketRequest) (*ticketdomain.Ticket, error)
+	deleteFunc  func(uuid.UUID, uuid.UUID, orgdomain.Role) error
 }
 
 func (m *mockService) List(
 	_ context.Context,
 	organizationID, clientID uuid.UUID,
-) ([]*ticketdomain.Ticket, error) {
-	return m.listFunc(organizationID, clientID)
+	limit int,
+	cursor *pagination.Cursor,
+	query string,
+) ([]*ticketdomain.Ticket, *string, error) {
+	return m.listFunc(organizationID, clientID, limit, cursor, query)
+}
+
+func (m *mockService) ListOrganization(
+	_ context.Context,
+	organizationID uuid.UUID,
+	limit int,
+	cursor *pagination.Cursor,
+	query string,
+) ([]*ticketdomain.Ticket, *string, error) {
+	if m.listOrgFunc == nil {
+		return nil, nil, nil
+	}
+	return m.listOrgFunc(organizationID, limit, cursor, query)
 }
 
 func (m *mockService) Create(
@@ -108,10 +126,12 @@ func TestHandler_List(t *testing.T) {
 	ticket := testTicket()
 
 	service := &mockService{
-		listFunc: func(gotOrganizationID, gotClientID uuid.UUID) ([]*ticketdomain.Ticket, error) {
+		listFunc: func(gotOrganizationID, gotClientID uuid.UUID, limit int, cursor *pagination.Cursor, query string) ([]*ticketdomain.Ticket, *string, error) {
 			require.Equal(t, organizationID, gotOrganizationID)
 			require.Equal(t, clientID, gotClientID)
-			return []*ticketdomain.Ticket{ticket}, nil
+			require.Equal(t, 50, limit)
+			require.Nil(t, cursor)
+			return []*ticketdomain.Ticket{ticket}, nil, nil
 		},
 	}
 
@@ -126,18 +146,19 @@ func TestHandler_List(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	var response []ticketdomain.TicketResponse
+	var response pagination.Page[ticketdomain.TicketResponse]
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
-	require.Len(t, response, 1)
-	require.Equal(t, ticketdomain.KindBug, response[0].Kind)
-	require.Equal(t, "Login button broken", response[0].Title)
-	require.Equal(t, 1, response[0].Version)
+	require.Len(t, response.Items, 1)
+	require.Nil(t, response.NextCursor)
+	require.Equal(t, ticketdomain.KindBug, response.Items[0].Kind)
+	require.Equal(t, "Login button broken", response.Items[0].Title)
+	require.Equal(t, 1, response.Items[0].Version)
 }
 
 func TestHandler_List_ClientNotFound(t *testing.T) {
 	service := &mockService{
-		listFunc: func(uuid.UUID, uuid.UUID) ([]*ticketdomain.Ticket, error) {
-			return nil, clientdomain.ErrClientNotFound
+		listFunc: func(uuid.UUID, uuid.UUID, int, *pagination.Cursor, string) ([]*ticketdomain.Ticket, *string, error) {
+			return nil, nil, clientdomain.ErrClientNotFound
 		},
 	}
 
@@ -161,10 +182,12 @@ func TestHandler_ListPortal(t *testing.T) {
 	ticket := testTicket()
 
 	service := &mockService{
-		listFunc: func(gotOrganizationID, gotClientID uuid.UUID) ([]*ticketdomain.Ticket, error) {
+		listFunc: func(gotOrganizationID, gotClientID uuid.UUID, limit int, cursor *pagination.Cursor, query string) ([]*ticketdomain.Ticket, *string, error) {
 			require.Equal(t, organizationID, gotOrganizationID)
 			require.Equal(t, clientID, gotClientID)
-			return []*ticketdomain.Ticket{ticket}, nil
+			require.Equal(t, 50, limit)
+			require.Nil(t, cursor)
+			return []*ticketdomain.Ticket{ticket}, nil, nil
 		},
 	}
 
@@ -178,10 +201,10 @@ func TestHandler_ListPortal(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	var response []ticketdomain.TicketResponse
+	var response pagination.Page[ticketdomain.TicketResponse]
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
-	require.Equal(t, ticketdomain.StatusOpen, response[0].Status)
-	require.Equal(t, 1, response[0].Version)
+	require.Equal(t, ticketdomain.StatusOpen, response.Items[0].Status)
+	require.Equal(t, 1, response.Items[0].Version)
 }
 
 func TestHandler_CreatePortal(t *testing.T) {
@@ -440,4 +463,98 @@ func TestHandler_Delete_NotFound(t *testing.T) {
 	handler.Delete(rec, req)
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestHandler_List_SearchQuery(t *testing.T) {
+	organizationID := testOrganizationID()
+	clientID := testClientID()
+	ticket := testTicket()
+
+	service := &mockService{
+		listFunc: func(gotOrganizationID, gotClientID uuid.UUID, limit int, cursor *pagination.Cursor, query string) ([]*ticketdomain.Ticket, *string, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, clientID, gotClientID)
+			require.Equal(t, "login", query)
+			return []*ticketdomain.Ticket{ticket}, nil, nil
+		},
+	}
+
+	handler := tickethandler.NewHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/clients/"+clientID.String()+"/tickets?q=login",
+		nil,
+	)
+	req.SetPathValue("id", clientID.String())
+	req = withStaffSession(req, organizationID, "member")
+
+	rec := httptest.NewRecorder()
+	handler.List(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response pagination.Page[ticketdomain.TicketResponse]
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Len(t, response.Items, 1)
+	require.Equal(t, "Login button broken", response.Items[0].Title)
+}
+
+func TestHandler_ListPortal_SearchQuery(t *testing.T) {
+	organizationID := testOrganizationID()
+	clientID := testClientID()
+	userID := testUserID()
+	ticket := testTicket()
+
+	service := &mockService{
+		listFunc: func(gotOrganizationID, gotClientID uuid.UUID, limit int, cursor *pagination.Cursor, query string) ([]*ticketdomain.Ticket, *string, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, clientID, gotClientID)
+			require.Equal(t, "mobile", query)
+			return []*ticketdomain.Ticket{ticket}, nil, nil
+		},
+	}
+
+	handler := tickethandler.NewHandler(service)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/client-auth/tickets?q=mobile", nil)
+	req = withPortalSession(req, organizationID, userID, clientID)
+
+	rec := httptest.NewRecorder()
+	handler.ListPortal(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response pagination.Page[ticketdomain.TicketResponse]
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Len(t, response.Items, 1)
+	require.Equal(t, "Login button broken", response.Items[0].Title)
+}
+
+func TestHandler_ListOrganization_SearchQuery(t *testing.T) {
+	organizationID := testOrganizationID()
+	ticket := testTicket()
+
+	service := &mockService{
+		listOrgFunc: func(gotOrganizationID uuid.UUID, limit int, cursor *pagination.Cursor, query string) ([]*ticketdomain.Ticket, *string, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, "login", query)
+			return []*ticketdomain.Ticket{ticket}, nil, nil
+		},
+	}
+
+	handler := tickethandler.NewHandler(service)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/tickets?q=login", nil)
+	req = withStaffSession(req, organizationID, "member")
+
+	rec := httptest.NewRecorder()
+	handler.ListOrganization(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response pagination.Page[ticketdomain.TicketResponse]
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Len(t, response.Items, 1)
+	require.Equal(t, "Login button broken", response.Items[0].Title)
 }

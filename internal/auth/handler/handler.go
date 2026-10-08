@@ -6,14 +6,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/chuuch/gorest/internal/api"
 	"github.com/chuuch/gorest/internal/auth/domain"
+	"github.com/chuuch/gorest/internal/auth/invites"
 	"github.com/chuuch/gorest/internal/auth/usecase"
-	"github.com/chuuch/gorest/internal/invites"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/api"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/validation"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
-	"github.com/chuuch/gorest/internal/validation"
 )
 
 const refreshTokenCookieName = "refresh_token"

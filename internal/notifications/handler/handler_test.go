@@ -11,7 +11,8 @@ import (
 	"github.com/chuuch/gorest/internal/notifications"
 	"github.com/chuuch/gorest/internal/notifications/domain"
 	notificationhandler "github.com/chuuch/gorest/internal/notifications/handler"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/pagination"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
@@ -31,7 +32,7 @@ func withSession(req *http.Request, organizationID, userID uuid.UUID) *http.Requ
 }
 
 type mockService struct {
-	listFunc     func(uuid.UUID, uuid.UUID, int) ([]*domain.Notification, error)
+	listFunc     func(uuid.UUID, uuid.UUID, int, *pagination.Cursor) ([]*domain.Notification, *string, error)
 	markReadFunc func(uuid.UUID, uuid.UUID, uuid.UUID) error
 }
 
@@ -43,8 +44,9 @@ func (m *mockService) List(
 	_ context.Context,
 	organizationID, recipientID uuid.UUID,
 	limit int,
-) ([]*domain.Notification, error) {
-	return m.listFunc(organizationID, recipientID, limit)
+	cursor *pagination.Cursor,
+) ([]*domain.Notification, *string, error) {
+	return m.listFunc(organizationID, recipientID, limit, cursor)
 }
 
 func (m *mockService) MarkRead(
@@ -60,10 +62,11 @@ func TestHandler_List(t *testing.T) {
 	itemID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
 
 	service := &mockService{
-		listFunc: func(gotOrg, gotUser uuid.UUID, limit int) ([]*domain.Notification, error) {
+		listFunc: func(gotOrg, gotUser uuid.UUID, limit int, cursor *pagination.Cursor) ([]*domain.Notification, *string, error) {
 			require.Equal(t, organizationID, gotOrg)
 			require.Equal(t, userID, gotUser)
 			require.Equal(t, 50, limit)
+			require.Nil(t, cursor)
 			return []*domain.Notification{{
 				ID:             itemID,
 				OrganizationID: organizationID,
@@ -75,7 +78,7 @@ func TestHandler_List(t *testing.T) {
 				EntityID:       uuid.MustParse("77777777-7777-7777-7777-777777777777"),
 				Summary:        "Login broken",
 				CreatedAt:      time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC),
-			}}, nil
+			}}, nil, nil
 		},
 	}
 
@@ -87,11 +90,28 @@ func TestHandler_List(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	var response []domain.NotificationResponse
+	var response pagination.Page[domain.NotificationResponse]
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
-	require.Len(t, response, 1)
-	require.Equal(t, domain.KindTicketOpened, response[0].Kind)
-	require.Equal(t, "Login broken", response[0].Summary)
+	require.Len(t, response.Items, 1)
+	require.Nil(t, response.NextCursor)
+	require.Equal(t, domain.KindTicketOpened, response.Items[0].Kind)
+	require.Equal(t, "Login broken", response.Items[0].Summary)
+}
+
+func TestHandler_List_InvalidCursor(t *testing.T) {
+	handler := notificationhandler.NewHandler(&mockService{
+		listFunc: func(uuid.UUID, uuid.UUID, int, *pagination.Cursor) ([]*domain.Notification, *string, error) {
+			t.Fatal("service should not be called")
+			return nil, nil, nil
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications?cursor=not-a-cursor", nil)
+	req = withSession(req, testOrganizationID(), testUserID())
+	rec := httptest.NewRecorder()
+	handler.List(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
 func TestHandler_MarkRead_NotFound(t *testing.T) {

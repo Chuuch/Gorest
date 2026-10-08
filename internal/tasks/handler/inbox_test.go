@@ -8,7 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/pagination"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	taskdomain "github.com/chuuch/gorest/internal/tasks/domain"
 	taskhandler "github.com/chuuch/gorest/internal/tasks/handler"
 	"github.com/google/uuid"
@@ -19,23 +20,19 @@ func testUserID() uuid.UUID {
 	return uuid.MustParse("11111111-1111-1111-1111-111111111111")
 }
 
-func (m *mockService) Inbox(
-	_ context.Context,
-	organizationID, userID uuid.UUID,
-) ([]*taskdomain.Task, error) {
-	return nil, nil
-}
-
 type inboxService struct {
 	mockService
-	fn func(uuid.UUID, uuid.UUID) ([]*taskdomain.Task, error)
+	fn func(uuid.UUID, uuid.UUID, int, *pagination.Cursor, string) ([]*taskdomain.Task, *string, error)
 }
 
 func (s *inboxService) Inbox(
 	_ context.Context,
 	organizationID, userID uuid.UUID,
-) ([]*taskdomain.Task, error) {
-	return s.fn(organizationID, userID)
+	limit int,
+	cursor *pagination.Cursor,
+	query string,
+) ([]*taskdomain.Task, *string, error) {
+	return s.fn(organizationID, userID, limit, cursor, query)
 }
 
 func withActor(req *http.Request, organizationID, userID uuid.UUID, role string) *http.Request {
@@ -49,10 +46,13 @@ func TestHandler_Inbox(t *testing.T) {
 	task := testTask()
 
 	service := &inboxService{
-		fn: func(gotOrganizationID, gotUserID uuid.UUID) ([]*taskdomain.Task, error) {
+		fn: func(gotOrganizationID, gotUserID uuid.UUID, limit int, cursor *pagination.Cursor, query string) ([]*taskdomain.Task, *string, error) {
 			require.Equal(t, organizationID, gotOrganizationID)
 			require.Equal(t, userID, gotUserID)
-			return []*taskdomain.Task{task}, nil
+			require.Equal(t, 50, limit)
+			require.Nil(t, cursor)
+			require.Equal(t, "", query)
+			return []*taskdomain.Task{task}, nil, nil
 		},
 	}
 
@@ -66,10 +66,11 @@ func TestHandler_Inbox(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	var response []taskdomain.TaskResponse
+	var response pagination.Page[taskdomain.TaskResponse]
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
-	require.Len(t, response, 1)
-	require.Equal(t, "Fix login", response[0].Title)
+	require.Len(t, response.Items, 1)
+	require.Nil(t, response.NextCursor)
+	require.Equal(t, "Fix login", response.Items[0].Title)
 }
 
 func TestHandler_Inbox_Unauthorized(t *testing.T) {
@@ -82,6 +83,38 @@ func TestHandler_Inbox_Unauthorized(t *testing.T) {
 	handler.Inbox(rec, req)
 
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestHandler_Inbox_SearchQuery(t *testing.T) {
+	organizationID := testOrganizationID()
+	userID := testUserID()
+	task := testTask()
+
+	service := &inboxService{
+		fn: func(gotOrganizationID, gotUserID uuid.UUID, limit int, cursor *pagination.Cursor, query string) ([]*taskdomain.Task, *string, error) {
+			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, userID, gotUserID)
+			require.Equal(t, 50, limit)
+			require.Nil(t, cursor)
+			require.Equal(t, "login", query)
+			return []*taskdomain.Task{task}, nil, nil
+		},
+	}
+
+	handler := taskhandler.NewHandler(service)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/inbox/tasks?q=login", nil)
+	req = withActor(req, organizationID, userID, "member")
+
+	rec := httptest.NewRecorder()
+	handler.Inbox(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response pagination.Page[taskdomain.TaskResponse]
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Len(t, response.Items, 1)
+	require.Equal(t, "Fix login", response.Items[0].Title)
 }
 
 func TestHandler_Update_TitleAndAssignee(t *testing.T) {

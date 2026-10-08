@@ -5,11 +5,11 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/chuuch/gorest/internal/api"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	"github.com/chuuch/gorest/internal/organization/usecase"
-	"github.com/chuuch/gorest/internal/requestcontext"
-	"github.com/chuuch/gorest/internal/validation"
+	"github.com/chuuch/gorest/internal/platform/api"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/validation"
 	"github.com/google/uuid"
 )
 
@@ -27,7 +27,7 @@ func (h *Handler) ListMembers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	members, err := h.service.ListMembers(r.Context(), organizationID)
+	members, err := h.service.ListMembers(r.Context(), organizationID, r.URL.Query().Get("q"))
 	if err != nil {
 		h.handleError(w, err)
 		return

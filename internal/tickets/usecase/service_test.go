@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	ticketfiledomain "github.com/chuuch/gorest/internal/ticketfiles/domain"
-	ticketfilepostgres "github.com/chuuch/gorest/internal/ticketfiles/postgres"
-	ticketfileusecase "github.com/chuuch/gorest/internal/ticketfiles/usecase"
 	ticketdomain "github.com/chuuch/gorest/internal/tickets/domain"
+	ticketfiledomain "github.com/chuuch/gorest/internal/tickets/files/domain"
+	ticketfilepostgres "github.com/chuuch/gorest/internal/tickets/files/postgres"
+	ticketfileusecase "github.com/chuuch/gorest/internal/tickets/files/usecase"
 	ticketpostgres "github.com/chuuch/gorest/internal/tickets/postgres"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"

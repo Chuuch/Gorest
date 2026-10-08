@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/chuuch/gorest/internal/database"
 	"github.com/chuuch/gorest/internal/invoices/domain"
+	"github.com/chuuch/gorest/internal/platform/database"
+	"github.com/chuuch/gorest/internal/platform/pagination"
+	"github.com/chuuch/gorest/internal/platform/search"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -204,8 +206,32 @@ func (r *Repository) GetByID(
 func (r *Repository) ListByClientID(
 	ctx context.Context,
 	organizationID, clientID uuid.UUID,
+	limit int,
+	cursor *pagination.Cursor,
+	query string,
+	statuses []string,
 ) ([]*domain.Invoice, error) {
-	const query = `
+	pattern := search.LikePattern(query)
+	args := []any{organizationID, clientID, pattern}
+
+	statusClause := ""
+	if len(statuses) > 0 {
+		args = append(args, statuses)
+		statusClause = fmt.Sprintf(" AND status = ANY($%d)", len(args))
+	}
+
+	cursorClause := ""
+	if cursor != nil {
+		args = append(args, cursor.CreatedAt, cursor.ID)
+		cursorClause = fmt.Sprintf(
+			" AND (created_at, id) < ($%d, $%d)",
+			len(args)-1,
+			len(args),
+		)
+	}
+
+	args = append(args, limit)
+	listSQL := fmt.Sprintf(`
 			SELECT
 				id,
 				organization_id,
@@ -250,10 +276,17 @@ func (r *Repository) ListByClientID(
 				updated_at
 			FROM invoices
 			WHERE organization_id = $1 AND client_id = $2
-			ORDER BY created_at DESC
-		`
+				AND (
+					$3 = ''
+					OR number ILIKE $3 ESCAPE '\'
+					OR client_name ILIKE $3 ESCAPE '\'
+					OR status ILIKE $3 ESCAPE '\'
+				)%s%s
+			ORDER BY created_at DESC, id DESC
+			LIMIT $%d
+		`, statusClause, cursorClause, len(args))
 
-	rows, err := r.db.Query(ctx, query, organizationID, clientID)
+	rows, err := r.db.Query(ctx, listSQL, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list invoices: %w", err)
 	}

@@ -5,10 +5,11 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/chuuch/gorest/internal/api"
 	"github.com/chuuch/gorest/internal/notifications/domain"
 	"github.com/chuuch/gorest/internal/notifications/usecase"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/api"
+	"github.com/chuuch/gorest/internal/platform/pagination"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	"github.com/google/uuid"
 )
 
@@ -27,9 +28,9 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	limit := 50
-	raw := r.URL.Query().Get("limit")
-	if raw != "" {
-		parsed, err := strconv.Atoi(raw)
+	rawLimit := r.URL.Query().Get("limit")
+	if rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
 		if err != nil || parsed < 1 {
 			api.WriteError(
 				w,
@@ -45,7 +46,22 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		limit = 100
 	}
 
-	items, err := h.service.List(r.Context(), organizationID, userID, limit)
+	var cursor *pagination.Cursor
+	if rawCursor := r.URL.Query().Get("cursor"); rawCursor != "" {
+		decoded, err := pagination.Decode(rawCursor)
+		if err != nil {
+			api.WriteError(
+				w,
+				http.StatusBadRequest,
+				"invalid_cursor",
+				"invalid cursor",
+			)
+			return
+		}
+		cursor = &decoded
+	}
+
+	items, nextCursor, err := h.service.List(r.Context(), organizationID, userID, limit, cursor)
 	if err != nil {
 		api.WriteError(
 			w,
@@ -61,7 +77,10 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		responses = append(responses, toResponse(item))
 	}
 
-	api.WriteJSON(w, http.StatusOK, responses)
+	api.WriteJSON(w, http.StatusOK, pagination.Page[domain.NotificationResponse]{
+		Items:      responses,
+		NextCursor: nextCursor,
+	})
 }
 
 func (h *Handler) MarkRead(w http.ResponseWriter, r *http.Request) {

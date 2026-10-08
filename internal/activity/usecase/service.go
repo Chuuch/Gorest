@@ -7,7 +7,8 @@ import (
 
 	"github.com/chuuch/gorest/internal/activity/domain"
 	"github.com/chuuch/gorest/internal/activity/repository"
-	"github.com/chuuch/gorest/internal/events"
+	"github.com/chuuch/gorest/internal/platform/events"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/google/uuid"
 )
 
@@ -17,7 +18,8 @@ type Service interface {
 		ctx context.Context,
 		organizationID uuid.UUID,
 		limit int,
-	) ([]*domain.Event, error)
+		cursor *pagination.Cursor,
+	) ([]*domain.Event, *string, error)
 }
 
 type service struct {
@@ -64,11 +66,18 @@ func (s *service) List(
 	ctx context.Context,
 	organizationID uuid.UUID,
 	limit int,
-) ([]*domain.Event, error) {
-	events, err := s.events.ListByOrganizationID(ctx, organizationID, limit)
+	cursor *pagination.Cursor,
+) ([]*domain.Event, *string, error) {
+	events, err := s.events.ListByOrganizationID(ctx, organizationID, limit+1, cursor)
 	if err != nil {
-		return nil, fmt.Errorf("list activity events: %w", err)
+		return nil, nil, fmt.Errorf("list activity events: %w", err)
 	}
 
-	return events, nil
+	page, next := pagination.NextCursor(events, limit, func(event *domain.Event) pagination.Cursor {
+		return pagination.Cursor{
+			CreatedAt: event.CreatedAt,
+			ID:        event.ID,
+		}
+	})
+	return page, next, nil
 }
