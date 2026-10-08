@@ -7,6 +7,7 @@ import (
 
 	"github.com/chuuch/gorest/internal/clients/domain"
 	"github.com/chuuch/gorest/internal/platform/database"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/chuuch/gorest/internal/platform/search"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -210,9 +211,19 @@ func (r *Repository) Delete(
 func (r *Repository) ListByOrganizationID(
 	ctx context.Context,
 	organizationID uuid.UUID,
+	limit int,
+	cursor *pagination.Cursor,
 	query string,
 ) ([]*domain.Client, error) {
-	const listSQL = `
+	pattern := search.LikePattern(query)
+
+	var (
+		listSQL string
+		args    []any
+	)
+
+	if cursor == nil {
+		listSQL = `
 			SELECT
 				id,
 				organization_id,
@@ -234,12 +245,41 @@ func (r *Repository) ListByOrganizationID(
 					OR name ILIKE $2 ESCAPE '\'
 					OR notes ILIKE $2 ESCAPE '\'
 				)
-			ORDER BY name ASC
+			ORDER BY created_at DESC, id DESC
+			LIMIT $3
 		`
+		args = []any{organizationID, pattern, limit}
+	} else {
+		listSQL = `
+			SELECT
+				id,
+				organization_id,
+				name,
+				notes,
+				legal_name,
+				vat_id,
+				address_line1,
+				address_line2,
+				city,
+				postal_code,
+				country,
+				created_at,
+				updated_at
+			FROM clients
+			WHERE organization_id = $1
+				AND (
+					$2 = ''
+					OR name ILIKE $2 ESCAPE '\'
+					OR notes ILIKE $2 ESCAPE '\'
+				)
+				AND (created_at, id) < ($3, $4)
+			ORDER BY created_at DESC, id DESC
+			LIMIT $5
+		`
+		args = []any{organizationID, pattern, cursor.CreatedAt, cursor.ID, limit}
+	}
 
-	pattern := search.LikePattern(query)
-
-	rows, err := r.db.Query(ctx, listSQL, organizationID, pattern)
+	rows, err := r.db.Query(ctx, listSQL, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list clients: %w", err)
 	}

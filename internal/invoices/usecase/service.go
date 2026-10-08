@@ -18,6 +18,7 @@ import (
 	orgrepository "github.com/chuuch/gorest/internal/organization/repository"
 	"github.com/chuuch/gorest/internal/platform/database"
 	"github.com/chuuch/gorest/internal/platform/mailer"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/chuuch/gorest/internal/platform/search"
 	"github.com/chuuch/gorest/internal/platform/taxid"
 	userrepository "github.com/chuuch/gorest/internal/user/repository"
@@ -26,7 +27,13 @@ import (
 )
 
 type Service interface {
-	List(ctx context.Context, organizationID, clientID uuid.UUID, query string) ([]*domain.Invoice, error)
+	List(
+		ctx context.Context,
+		organizationID, clientID uuid.UUID,
+		limit int,
+		cursor *pagination.Cursor,
+		query string,
+	) ([]*domain.Invoice, *string, error)
 	Get(ctx context.Context, organizationID, invoiceID uuid.UUID) (*domain.Invoice, error)
 	Create(ctx context.Context, organizationID, clientID uuid.UUID, actorRole orgdomain.Role, from, to time.Time) (*domain.Invoice, error)
 	Update(ctx context.Context, organizationID, invoiceID uuid.UUID, actorRole orgdomain.Role, from, to time.Time) (*domain.Invoice, error)
@@ -34,7 +41,13 @@ type Service interface {
 	Send(ctx context.Context, organizationID, invoiceID uuid.UUID, actorRole orgdomain.Role) (*domain.Invoice, error)
 	MarkPaid(ctx context.Context, organizationID, invoiceID uuid.UUID, actorRole orgdomain.Role) (*domain.Invoice, error)
 	PDF(ctx context.Context, organizationID, invoiceID uuid.UUID) ([]byte, string, error)
-	ListPortal(ctx context.Context, organizationID, clientID uuid.UUID, query string) ([]*domain.Invoice, error)
+	ListPortal(
+		ctx context.Context,
+		organizationID, clientID uuid.UUID,
+		limit int,
+		cursor *pagination.Cursor,
+		query string,
+	) ([]*domain.Invoice, *string, error)
 	GetPortal(ctx context.Context, organizationID, clientID, invoiceID uuid.UUID) (*domain.Invoice, error)
 	PDFPortal(ctx context.Context, organizationID, clientID, invoiceID uuid.UUID) ([]byte, string, error)
 }
@@ -75,18 +88,34 @@ func NewService(
 func (s *service) List(
 	ctx context.Context,
 	organizationID, clientID uuid.UUID,
+	limit int,
+	cursor *pagination.Cursor,
 	query string,
-) ([]*domain.Invoice, error) {
+) ([]*domain.Invoice, *string, error) {
 	if _, err := s.clients.GetByID(ctx, clientID, organizationID); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	invoices, err := s.invoices.ListByClientID(ctx, organizationID, clientID, search.Normalize(query))
+	invoices, err := s.invoices.ListByClientID(
+		ctx,
+		organizationID,
+		clientID,
+		limit+1,
+		cursor,
+		search.Normalize(query),
+		nil,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("list invoices: %w", err)
+		return nil, nil, fmt.Errorf("list invoices: %w", err)
 	}
 
-	return invoices, nil
+	page, next := pagination.NextCursor(invoices, limit, func(invoice *domain.Invoice) pagination.Cursor {
+		return pagination.Cursor{
+			CreatedAt: invoice.CreatedAt,
+			ID:        invoice.ID,
+		}
+	})
+	return page, next, nil
 }
 
 func (s *service) Get(
@@ -337,20 +366,30 @@ func (s *service) PDF(
 func (s *service) ListPortal(
 	ctx context.Context,
 	organizationID, clientID uuid.UUID,
+	limit int,
+	cursor *pagination.Cursor,
 	query string,
-) ([]*domain.Invoice, error) {
-	invoices, err := s.invoices.ListByClientID(ctx, organizationID, clientID, search.Normalize(query))
+) ([]*domain.Invoice, *string, error) {
+	invoices, err := s.invoices.ListByClientID(
+		ctx,
+		organizationID,
+		clientID,
+		limit+1,
+		cursor,
+		search.Normalize(query),
+		[]string{domain.StatusSent, domain.StatusPaid},
+	)
 	if err != nil {
-		return nil, fmt.Errorf("list portal invoices: %w", err)
+		return nil, nil, fmt.Errorf("list portal invoices: %w", err)
 	}
 
-	visible := make([]*domain.Invoice, 0, len(invoices))
-	for _, invoice := range invoices {
-		if invoice.Status == domain.StatusSent || invoice.Status == domain.StatusPaid {
-			visible = append(visible, invoice)
+	page, next := pagination.NextCursor(invoices, limit, func(invoice *domain.Invoice) pagination.Cursor {
+		return pagination.Cursor{
+			CreatedAt: invoice.CreatedAt,
+			ID:        invoice.ID,
 		}
-	}
-	return visible, nil
+	})
+	return page, next, nil
 }
 
 func (s *service) GetPortal(

@@ -9,6 +9,7 @@ import (
 	clientpostgres "github.com/chuuch/gorest/internal/clients/postgres"
 	clientusecase "github.com/chuuch/gorest/internal/clients/usecase"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
@@ -132,13 +133,15 @@ func TestClientService_CreateAndList(t *testing.T) {
 	require.Equal(t, "Northwind", client.Name)
 	require.Equal(t, organizationID, client.OrganizationID)
 
-	own, err := service.List(context.Background(), organizationID, "")
+	own, next, err := service.List(context.Background(), organizationID, 50, nil, "")
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Len(t, own, 1)
 	require.Equal(t, "Northwind", own[0].Name)
 
-	other, err := service.List(context.Background(), otherOrganizationID, "")
+	other, next, err := service.List(context.Background(), otherOrganizationID, 50, nil, "")
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Empty(t, other)
 }
 
@@ -340,8 +343,9 @@ func TestClientService_Delete(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	clients, err := service.List(context.Background(), organizationID, "")
+	clients, next, err := service.List(context.Background(), organizationID, 50, nil, "")
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Empty(t, clients)
 }
 
@@ -406,17 +410,53 @@ func TestClientService_List_Search(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	matched, err := service.List(context.Background(), organizationID, "north")
+	matched, next, err := service.List(context.Background(), organizationID, 50, nil, "north")
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Len(t, matched, 1)
 	require.Equal(t, "Northwind", matched[0].Name)
 
-	byNotes, err := service.List(context.Background(), organizationID, "software")
+	byNotes, next, err := service.List(context.Background(), organizationID, 50, nil, "software")
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Len(t, byNotes, 1)
 	require.Equal(t, "Contoso", byNotes[0].Name)
 
-	none, err := service.List(context.Background(), organizationID, "zzz")
+	none, next, err := service.List(context.Background(), organizationID, 50, nil, "zzz")
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Empty(t, none)
+}
+
+func TestClientService_List_Pagination(t *testing.T) {
+	db, cleanup := setupClientTestDatabase(t)
+	defer cleanup()
+
+	service := clientusecase.NewService(clientpostgres.NewRepository(db))
+	organizationID := seedOrganization(t, db, "Acme")
+
+	first, err := service.Create(context.Background(), organizationID, orgdomain.RoleOwner, clientdomain.CreateClientRequest{
+		Name: "Alpha Client",
+	})
+	require.NoError(t, err)
+
+	second, err := service.Create(context.Background(), organizationID, orgdomain.RoleOwner, clientdomain.CreateClientRequest{
+		Name: "Beta Client",
+	})
+	require.NoError(t, err)
+
+	page1, next, err := service.List(context.Background(), organizationID, 1, nil, "")
+	require.NoError(t, err)
+	require.NotNil(t, next)
+	require.Len(t, page1, 1)
+	require.Equal(t, second.ID, page1[0].ID)
+
+	cursor, err := pagination.Decode(*next)
+	require.NoError(t, err)
+
+	page2, next, err := service.List(context.Background(), organizationID, 1, &cursor, "")
+	require.NoError(t, err)
+	require.Nil(t, next)
+	require.Len(t, page2, 1)
+	require.Equal(t, first.ID, page2[0].ID)
 }

@@ -239,18 +239,21 @@ func TestTicketService_List_Search(t *testing.T) {
 		"Need help with billing export",
 	)
 
-	byTitle, err := service.List(context.Background(), organizationID, clientID, "login")
+	byTitle, next, err := service.List(context.Background(), organizationID, clientID, 50, nil, "login")
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Len(t, byTitle, 1)
 	require.Equal(t, "Login button broken", byTitle[0].Title)
 
-	byBody, err := service.List(context.Background(), organizationID, clientID, "billing")
+	byBody, next, err := service.List(context.Background(), organizationID, clientID, 50, nil, "billing")
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Len(t, byBody, 1)
 	require.Equal(t, "Invoice question", byBody[0].Title)
 
-	none, err := service.List(context.Background(), organizationID, clientID, "zzz")
+	none, next, err := service.List(context.Background(), organizationID, clientID, 50, nil, "zzz")
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Empty(t, none)
 }
 
@@ -275,12 +278,14 @@ func TestTicketService_ListOrganization_Search(t *testing.T) {
 		"Please add dark mode.",
 	)
 
-	matched, err := service.ListOrganization(context.Background(), organizationID, "login")
+	matched, next, err := service.ListOrganization(context.Background(), organizationID, 50, nil, "login")
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Len(t, matched, 1)
 	require.Equal(t, clientA, matched[0].ClientID)
 
-	none, err := service.ListOrganization(context.Background(), organizationID, "zzz")
+	none, next, err := service.ListOrganization(context.Background(), organizationID, 50, nil, "zzz")
 	require.NoError(t, err)
+	require.Nil(t, next)
 	require.Empty(t, none)
 }

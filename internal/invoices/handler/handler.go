@@ -12,6 +12,7 @@ import (
 	"github.com/chuuch/gorest/internal/invoices/usecase"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	"github.com/chuuch/gorest/internal/platform/api"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	"github.com/google/uuid"
 )
@@ -35,13 +36,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	invoices, err := h.service.List(r.Context(), organizationID, clientID, r.URL.Query().Get("q"))
-	if err != nil {
-		h.handleError(w, err)
-		return
-	}
-
-	h.writeList(w, invoices)
+	h.writeList(w, r, organizationID, clientID, false)
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
@@ -205,13 +200,7 @@ func (h *Handler) ListPortal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	invoices, err := h.service.ListPortal(r.Context(), organizationID, clientID, r.URL.Query().Get("q"))
-	if err != nil {
-		h.handleError(w, err)
-		return
-	}
-
-	h.writeList(w, invoices)
+	h.writeList(w, r, organizationID, clientID, true)
 }
 
 func (h *Handler) GetPortal(w http.ResponseWriter, r *http.Request) {
@@ -383,12 +372,54 @@ func (h *Handler) staffSession(
 	return organizationID, orgdomain.Role(role), true
 }
 
-func (h *Handler) writeList(w http.ResponseWriter, invoices []*invoicedomain.Invoice) {
+func (h *Handler) writeList(
+	w http.ResponseWriter,
+	r *http.Request,
+	organizationID, clientID uuid.UUID,
+	portal bool,
+) {
+	limit, cursor, ok := pagination.LimitAndCursor(w, r, api.WriteError)
+	if !ok {
+		return
+	}
+
+	var (
+		invoices   []*invoicedomain.Invoice
+		nextCursor *string
+		err        error
+	)
+	if portal {
+		invoices, nextCursor, err = h.service.ListPortal(
+			r.Context(),
+			organizationID,
+			clientID,
+			limit,
+			cursor,
+			r.URL.Query().Get("q"),
+		)
+	} else {
+		invoices, nextCursor, err = h.service.List(
+			r.Context(),
+			organizationID,
+			clientID,
+			limit,
+			cursor,
+			r.URL.Query().Get("q"),
+		)
+	}
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
 	responses := make([]invoicedomain.InvoiceResponse, 0, len(invoices))
 	for _, invoice := range invoices {
 		responses = append(responses, toResponse(invoice))
 	}
-	api.WriteJSON(w, http.StatusOK, responses)
+	api.WriteJSON(w, http.StatusOK, pagination.Page[invoicedomain.InvoiceResponse]{
+		Items:      responses,
+		NextCursor: nextCursor,
+	})
 }
 
 func (h *Handler) handleError(w http.ResponseWriter, err error) {

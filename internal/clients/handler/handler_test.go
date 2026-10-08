@@ -12,6 +12,7 @@ import (
 	clientdomain "github.com/chuuch/gorest/internal/clients/domain"
 	clienthandler "github.com/chuuch/gorest/internal/clients/handler"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -39,7 +40,7 @@ func withSession(req *http.Request, organizationID uuid.UUID, role string) *http
 }
 
 type mockService struct {
-	listFunc   func(uuid.UUID, string) ([]*clientdomain.Client, error)
+	listFunc   func(uuid.UUID, int, *pagination.Cursor, string) ([]*clientdomain.Client, *string, error)
 	createFunc func(uuid.UUID, orgdomain.Role, clientdomain.CreateClientRequest) (*clientdomain.Client, error)
 	updateFunc func(uuid.UUID, uuid.UUID, orgdomain.Role, clientdomain.UpdateClientRequest) (*clientdomain.Client, error)
 	deleteFunc func(uuid.UUID, uuid.UUID, orgdomain.Role) error
@@ -48,9 +49,11 @@ type mockService struct {
 func (m *mockService) List(
 	_ context.Context,
 	organizationID uuid.UUID,
+	limit int,
+	cursor *pagination.Cursor,
 	query string,
-) ([]*clientdomain.Client, error) {
-	return m.listFunc(organizationID, query)
+) ([]*clientdomain.Client, *string, error) {
+	return m.listFunc(organizationID, limit, cursor, query)
 }
 
 func (m *mockService) Create(
@@ -84,9 +87,12 @@ func TestHandler_List(t *testing.T) {
 	client := testClient()
 
 	service := &mockService{
-		listFunc: func(gotOrganizationID uuid.UUID, query string) ([]*clientdomain.Client, error) {
+		listFunc: func(gotOrganizationID uuid.UUID, limit int, cursor *pagination.Cursor, query string) ([]*clientdomain.Client, *string, error) {
 			require.Equal(t, organizationID, gotOrganizationID)
-			return []*clientdomain.Client{client}, nil
+			require.Equal(t, 50, limit)
+			require.Nil(t, cursor)
+			require.Empty(t, query)
+			return []*clientdomain.Client{client}, nil, nil
 		},
 	}
 
@@ -100,17 +106,18 @@ func TestHandler_List(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	var response []clientdomain.ClientResponse
+	var response pagination.Page[clientdomain.ClientResponse]
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
-	require.Len(t, response, 1)
-	require.Equal(t, client.Name, response[0].Name)
-	require.Equal(t, client.Notes, response[0].Notes)
+	require.Len(t, response.Items, 1)
+	require.Nil(t, response.NextCursor)
+	require.Equal(t, client.Name, response.Items[0].Name)
+	require.Equal(t, client.Notes, response.Items[0].Notes)
 }
 
 func TestHandler_List_Empty(t *testing.T) {
 	service := &mockService{
-		listFunc: func(uuid.UUID, string) ([]*clientdomain.Client, error) {
-			return []*clientdomain.Client{}, nil
+		listFunc: func(uuid.UUID, int, *pagination.Cursor, string) ([]*clientdomain.Client, *string, error) {
+			return []*clientdomain.Client{}, nil, nil
 		},
 	}
 
@@ -123,14 +130,18 @@ func TestHandler_List_Empty(t *testing.T) {
 	handler.List(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, "[]", rec.Body.String())
+
+	var response pagination.Page[clientdomain.ClientResponse]
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Empty(t, response.Items)
+	require.Nil(t, response.NextCursor)
 }
 
 func TestHandler_List_Unauthorized(t *testing.T) {
 	service := &mockService{
-		listFunc: func(uuid.UUID, string) ([]*clientdomain.Client, error) {
+		listFunc: func(uuid.UUID, int, *pagination.Cursor, string) ([]*clientdomain.Client, *string, error) {
 			t.Fatal("service should not be called")
-			return nil, nil
+			return nil, nil, nil
 		},
 	}
 
@@ -482,10 +493,12 @@ func TestHandler_List_SearchQuery(t *testing.T) {
 	client := testClient()
 
 	service := &mockService{
-		listFunc: func(gotOrganizationID uuid.UUID, query string) ([]*clientdomain.Client, error) {
+		listFunc: func(gotOrganizationID uuid.UUID, limit int, cursor *pagination.Cursor, query string) ([]*clientdomain.Client, *string, error) {
 			require.Equal(t, organizationID, gotOrganizationID)
+			require.Equal(t, 50, limit)
+			require.Nil(t, cursor)
 			require.Equal(t, "north", query)
-			return []*clientdomain.Client{client}, nil
+			return []*clientdomain.Client{client}, nil, nil
 		},
 	}
 
@@ -499,8 +512,8 @@ func TestHandler_List_SearchQuery(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	var response []clientdomain.ClientResponse
+	var response pagination.Page[clientdomain.ClientResponse]
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
-	require.Len(t, response, 1)
-	require.Equal(t, client.Name, response[0].Name)
+	require.Len(t, response.Items, 1)
+	require.Equal(t, client.Name, response.Items[0].Name)
 }
