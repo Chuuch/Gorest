@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	clientdomain "github.com/chuuch/gorest/internal/client/domain"
+	clientdomain "github.com/chuuch/gorest/internal/clients/domain"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	ticketdomain "github.com/chuuch/gorest/internal/tickets/domain"
 	tickethandler "github.com/chuuch/gorest/internal/tickets/handler"
 	"github.com/google/uuid"

@@ -7,7 +7,7 @@ import (
 
 	"github.com/chuuch/gorest/internal/activity/domain"
 	uc "github.com/chuuch/gorest/internal/activity/usecase"
-	"github.com/chuuch/gorest/internal/pagination"
+	"github.com/chuuch/gorest/internal/platform/pagination"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )

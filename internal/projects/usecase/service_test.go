@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	clientdomain "github.com/chuuch/gorest/internal/client/domain"
-	clientpostgres "github.com/chuuch/gorest/internal/client/postgres"
+	clientdomain "github.com/chuuch/gorest/internal/clients/domain"
+	clientpostgres "github.com/chuuch/gorest/internal/clients/postgres"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
 	projectpostgres "github.com/chuuch/gorest/internal/projects/postgres"

@@ -13,7 +13,7 @@ import (
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
 	orghandler "github.com/chuuch/gorest/internal/organization/handler"
 	orgusecase "github.com/chuuch/gorest/internal/organization/usecase"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )

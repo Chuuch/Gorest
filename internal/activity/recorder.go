@@ -7,7 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/chuuch/gorest/internal/activity/domain"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	"github.com/google/uuid"
 )
 

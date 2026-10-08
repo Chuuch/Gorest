@@ -3,9 +3,9 @@ package handler
 import (
 	"net/http"
 
-	"github.com/chuuch/gorest/internal/api"
 	"github.com/chuuch/gorest/internal/nav/usecase"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/api"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	"github.com/google/uuid"
 )
 

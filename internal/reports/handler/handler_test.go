@@ -9,9 +9,9 @@ import (
 	"time"
 
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	reportsdomain "github.com/chuuch/gorest/internal/reports/domain"
 	reporthandler "github.com/chuuch/gorest/internal/reports/handler"
-	"github.com/chuuch/gorest/internal/requestcontext"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )

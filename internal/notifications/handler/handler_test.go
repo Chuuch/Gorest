@@ -11,8 +11,8 @@ import (
 	"github.com/chuuch/gorest/internal/notifications"
 	"github.com/chuuch/gorest/internal/notifications/domain"
 	notificationhandler "github.com/chuuch/gorest/internal/notifications/handler"
-	"github.com/chuuch/gorest/internal/pagination"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/pagination"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )

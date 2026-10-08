@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
 	userhandler "github.com/chuuch/gorest/internal/user/handler"
 	"github.com/google/uuid"

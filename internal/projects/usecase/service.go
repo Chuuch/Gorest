@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	clientrepository "github.com/chuuch/gorest/internal/client/repository"
+	clientrepository "github.com/chuuch/gorest/internal/clients/repository"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	"github.com/chuuch/gorest/internal/platform/search"
 	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
 	projectrepository "github.com/chuuch/gorest/internal/projects/repository"
-	"github.com/chuuch/gorest/internal/search"
 	"github.com/google/uuid"
 )
 

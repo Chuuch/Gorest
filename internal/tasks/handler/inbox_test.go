@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	taskdomain "github.com/chuuch/gorest/internal/tasks/domain"
 	taskhandler "github.com/chuuch/gorest/internal/tasks/handler"
 	"github.com/google/uuid"

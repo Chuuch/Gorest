@@ -7,9 +7,9 @@ import (
 
 	"github.com/chuuch/gorest/internal/activity/domain"
 	"github.com/chuuch/gorest/internal/activity/usecase"
-	"github.com/chuuch/gorest/internal/api"
-	"github.com/chuuch/gorest/internal/pagination"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/api"
+	"github.com/chuuch/gorest/internal/platform/pagination"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 )
 
 type Handler struct {

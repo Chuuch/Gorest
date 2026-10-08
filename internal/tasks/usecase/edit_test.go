@@ -6,7 +6,7 @@ import (
 	"time"
 
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
-	"github.com/chuuch/gorest/internal/requestcontext"
+	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	taskdomain "github.com/chuuch/gorest/internal/tasks/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
