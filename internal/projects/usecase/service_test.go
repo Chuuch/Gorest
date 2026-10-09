@@ -89,6 +89,9 @@ func setupProjectTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 			client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
 			name TEXT NOT NULL,
 			notes TEXT NOT NULL DEFAULT '',
+			estimate_run_id UUID,
+			estimated_hours NUMERIC,
+			target_end_date DATE,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL,
 			CONSTRAINT projects_client_name_unique UNIQUE (client_id, name)

@@ -18,6 +18,7 @@ func newRouter(a *wiredApp) *http.ServeMux {
 	a.registerTasks(mux)
 	a.registerTickets(mux)
 	a.registerPortal(mux, loginLimiter, refreshLimiter)
+	a.registerEstimates(mux)
 
 	return mux
 }

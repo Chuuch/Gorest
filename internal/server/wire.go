@@ -15,6 +15,9 @@ import (
 	clientuserhandler "github.com/chuuch/gorest/internal/clients/users/handler"
 	clientuserpostgres "github.com/chuuch/gorest/internal/clients/users/postgres"
 	clientuserusecase "github.com/chuuch/gorest/internal/clients/users/usecase"
+	estimatehandler "github.com/chuuch/gorest/internal/estimates/handler"
+	estimatepostgres "github.com/chuuch/gorest/internal/estimates/postgres"
+	estimateusecase "github.com/chuuch/gorest/internal/estimates/usecase"
 	invoicehandler "github.com/chuuch/gorest/internal/invoices/handler"
 	invoicepostgres "github.com/chuuch/gorest/internal/invoices/postgres"
 	invoiceusecase "github.com/chuuch/gorest/internal/invoices/usecase"
@@ -87,6 +90,7 @@ type wiredApp struct {
 	invoiceHandler       *invoicehandler.Handler
 	navHandler           *navhandler.Handler
 	eventsHandler        *eventshandler.Handler
+	estimateHandler      *estimatehandler.Handler
 	tokenManager         security.TokenManager
 	idem                 *idempotency.Middleware
 }
@@ -255,6 +259,10 @@ func wireApp(
 	)
 	invoiceHandler := invoicehandler.NewHandler(invoiceService)
 
+	estimateRepository := estimatepostgres.NewRepository(db)
+	estimateService := estimateusecase.NewService(estimateRepository, projectRepository, clientRepository)
+	estimateHandler := estimatehandler.NewHandler(estimateService)
+
 	return &wiredApp{
 		userHandler:          userHandler,
 		authHandler:          authHandler,
@@ -275,6 +283,7 @@ func wireApp(
 		invoiceHandler:       invoiceHandler,
 		navHandler:           navHandler,
 		eventsHandler:        eventsHandler,
+		estimateHandler:      estimateHandler,
 		tokenManager:         tokenManager,
 		idem:                 idempotency.NewMiddleware(idempotency.NewPostgresStore(db)),
 	}

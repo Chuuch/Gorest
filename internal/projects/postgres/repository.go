@@ -34,10 +34,13 @@ func (r *Repository) Create(
 				client_id,
 				name,
 				notes,
+				estimate_run_id,
+				estimated_hours,
+				target_end_date,
 				created_at,
 				updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		`
 
 	_, err := database.QuerierFrom(ctx, r.db).Exec(
@@ -48,6 +51,9 @@ func (r *Repository) Create(
 		project.ClientID,
 		project.Name,
 		project.Notes,
+		project.EstimateRunID,
+		project.EstimatedHours,
+		project.TargetEndDate,
 		project.CreatedAt,
 		project.UpdatedAt,
 	)
@@ -74,6 +80,9 @@ func (r *Repository) GetByID(
 				client_id,
 				name,
 				notes,
+				estimate_run_id,
+				estimated_hours,
+				target_end_date,
 				created_at,
 				updated_at
 			FROM projects
@@ -93,6 +102,9 @@ func (r *Repository) GetByID(
 		&project.ClientID,
 		&project.Name,
 		&project.Notes,
+		&project.EstimateRunID,
+		&project.EstimatedHours,
+		&project.TargetEndDate,
 		&project.CreatedAt,
 		&project.UpdatedAt,
 	)
@@ -129,6 +141,9 @@ func (r *Repository) ListByClientID(
 				client_id,
 				name,
 				notes,
+				estimate_run_id,
+				estimated_hours,
+				target_end_date,
 				created_at,
 				updated_at
 			FROM projects
@@ -150,6 +165,9 @@ func (r *Repository) ListByClientID(
 				client_id,
 				name,
 				notes,
+				estimate_run_id,
+				estimated_hours,
+				target_end_date,
 				created_at,
 				updated_at
 			FROM projects
@@ -183,6 +201,9 @@ func (r *Repository) ListByClientID(
 			&project.ClientID,
 			&project.Name,
 			&project.Notes,
+			&project.EstimateRunID,
+			&project.EstimatedHours,
+			&project.TargetEndDate,
 			&project.CreatedAt,
 			&project.UpdatedAt,
 		); err != nil {
