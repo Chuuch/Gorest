@@ -12,6 +12,9 @@ type Project struct {
 	ClientID       uuid.UUID
 	Name           string
 	Notes          string
+	EstimateRunID  *uuid.UUID
+	EstimatedHours *float64
+	TargetEndDate  *time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
