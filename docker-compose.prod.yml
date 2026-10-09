@@ -1,0 +1,70 @@
+# Production overlay for Gorest.
+# Usage (on the VPS, from the Gorest repo):
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod up -d
+#
+# Local-only services (MinIO, Mailpit) get a profile so they do not start in prod.
+# Object storage → R2; email → Resend. Caddy (Flourish) reaches the API via flourish-edge.
+
+services:
+  postgres:
+    ports:
+      - '127.0.0.1:5432:5432'
+    restart: unless-stopped
+
+  minio:
+    profiles: ['local']
+
+  mailpit:
+    profiles: ['local']
+
+  api:
+    # Prefer a pre-built image in prod (set GOREST_IMAGE in .env.prod).
+    # First boot on the VPS can still `compose build` from the base file.
+    image: ${GOREST_IMAGE:-gorest-api:local}
+    container_name: gorest-api
+    environment:
+      GOREST_SERVER_HOST: 0.0.0.0
+      GOREST_DATABASE_HOST: postgres
+      GOREST_DATABASE_PORT: 5432
+      GOREST_DATABASE_SSL_MODE: disable
+      GOREST_LOGGER_LEVEL: info
+      GOREST_LOGGER_FORMAT: json
+      GOREST_LOGGER_ADD_SOURCE: 'false'
+      GOREST_AUTH_COOKIE_SECURE: 'true'
+      # R2 + Resend come from .env.prod (do not hardcode secrets here).
+      GOREST_STORAGE_ENDPOINT: ${GOREST_STORAGE_ENDPOINT}
+      GOREST_STORAGE_PUBLIC_ENDPOINT: ${GOREST_STORAGE_PUBLIC_ENDPOINT}
+      GOREST_STORAGE_REGION: ${GOREST_STORAGE_REGION:-auto}
+      GOREST_STORAGE_USE_PATH_STYLE: ${GOREST_STORAGE_USE_PATH_STYLE:-false}
+      GOREST_MAILER_DRIVER: resend
+      GOREST_MAILER_FROM: ${GOREST_MAILER_FROM}
+      GOREST_APP_PUBLIC_URL: ${GOREST_APP_PUBLIC_URL}
+      GOREST_APP_ENVIRONMENT: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - default
+      - edge
+
+  prometheus:
+    restart: unless-stopped
+
+  loki:
+    restart: unless-stopped
+    volumes:
+      - ./deployments/loki/loki.prod.yml:/etc/loki/config.yml:ro
+      - loki_data:/loki
+
+  promtail:
+    restart: unless-stopped
+
+  grafana:
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:3000:3000'
+
+networks:
+  edge:
+    name: flourish-edge
+    external: true
