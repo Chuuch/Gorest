@@ -147,6 +147,134 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) CreateIntake(w http.ResponseWriter, r *http.Request) {
+	organizationID, userID, role, ok := h.session(w, r)
+	if !ok {
+		return
+	}
+
+	var req domain.CreateIntakeRequest
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		api.WriteError(w, http.StatusBadRequest, "invalid_request", "invalid request body")
+		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
+		return
+	}
+	out, err := h.service.CreateIntake(r.Context(), organizationID, userID, role, req)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+	api.WriteJSON(w, http.StatusCreated, out)
+}
+
+func (h *Handler) GetIntake(w http.ResponseWriter, r *http.Request) {
+	organizationID, _, _, ok := h.session(w, r)
+	if !ok {
+		return
+	}
+	id, ok := h.intakeID(w, r)
+	if !ok {
+		return
+	}
+	intake, err := h.service.GetIntake(r.Context(), organizationID, id)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+	api.WriteJSON(w, http.StatusOK, toIntakeResponse(intake))
+}
+
+func (h *Handler) ListIntakes(w http.ResponseWriter, r *http.Request) {
+	organizationID, _, _, ok := h.session(w, r)
+	if !ok {
+		return
+	}
+	limit, cursor, ok := pagination.LimitAndCursor(w, r, api.WriteError)
+	if !ok {
+		return
+	}
+	items, next, err := h.service.ListIntakes(r.Context(), organizationID, limit, cursor, r.URL.Query().Get("status"))
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	out := make([]domain.IntakeResponse, 0, len(items))
+	for _, intake := range items {
+		out = append(out, toIntakeResponse(intake))
+	}
+	for _, intake := range items {
+		out = append(out, toIntakeResponse(intake))
+	}
+	api.WriteJSON(w, http.StatusOK, pagination.Page[domain.IntakeResponse]{
+		Items: out, NextCursor: next,
+	})
+}
+
+func (h *Handler) GetPublicIntake(w http.ResponseWriter, r *http.Request) {
+	out, err := h.service.GetPublicIntake(r.Context(), r.PathValue("token"))
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
+func (h *Handler) SubmitIntake(w http.ResponseWriter, r *http.Request) {
+	var req domain.SubmitIntakeRequest
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		api.WriteError(w, http.StatusBadRequest, "invalid_request", "invalid request body")
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		api.WriteValidationError(w, validation.Errors(err))
+		return
+	}
+	if err := h.service.SubmitIntake(r.Context(), r.PathValue("token"), req); err != nil {
+		h.handleError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) intakeID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		api.WriteError(w, http.StatusBadRequest, "invalid_intake_id", "invalid intake id")
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
+func toIntakeResponse(intake *domain.EstimateIntake) domain.IntakeResponse {
+	out := domain.IntakeResponse{
+		ID:              intake.ID,
+		OrganizationID:  intake.OrganizationID,
+		CreatedByUserID: intake.CreatedByUserID,
+		Category:        intake.Category,
+		Mode:            intake.Mode,
+		Status:          intake.Status,
+		ExpiresAt:       intake.ExpiresAt,
+		RespondentEmail: intake.RespondentEmail,
+		RespondentName:  intake.RespondentName,
+		CompanyName:     intake.CompanyName,
+		ProjectName:     intake.ProjectName,
+		ClientID:        intake.ClientID,
+		Scope:           intake.Scope,
+		SubmittedAt:     intake.SubmittedAt,
+		CreatedAt:       intake.CreatedAt,
+	}
+	if intake.PreferredDeadline != nil {
+		d := intake.PreferredDeadline.Format("2006-01-02")
+		out.PreferredDeadline = &d
+	}
+	return out
+}
+
 func (h *Handler) estimateID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
@@ -189,6 +317,20 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 		api.WriteError(w, http.StatusConflict, "project_name_already_exists", "project name already exists")
 	case errors.Is(err, projectdomain.ErrForbidden):
 		api.WriteError(w, http.StatusForbidden, "forbidden", "forbidden")
+	case errors.Is(err, domain.ErrIntakeNotFound):
+		api.WriteError(w, http.StatusNotFound, "intake_not_found", "intake not found")
+	case errors.Is(err, domain.ErrIntakeExpired):
+		api.WriteError(w, http.StatusGone, "intake_expired", "intake expired")
+	case errors.Is(err, domain.ErrIntakeSubmitted):
+		api.WriteError(w, http.StatusConflict, "intake_already_submitted", "intake already submitted")
+	case errors.Is(err, domain.ErrIntakeConsumed):
+		api.WriteError(w, http.StatusConflict, "intake_already_consumed", "intake already consumed")
+	case errors.Is(err, domain.ErrIntakeNotPending):
+		api.WriteError(w, http.StatusConflict, "intake_not_pending", "intake not pending")
+	case errors.Is(err, domain.ErrIntakeNotSubmitted):
+		api.WriteError(w, http.StatusConflict, "intake_not_submitted", "intake is not submitted")
+	case errors.Is(err, domain.ErrInvalidIntakeScope):
+		api.WriteError(w, http.StatusBadRequest, "innvalid_intake_scope", err.Error())
 	default:
 		api.WriteError(w, http.StatusInternalServerError, "internal_error", "internal error")
 	}

@@ -132,3 +132,25 @@ func clientIP(r *http.Request) string {
 	}
 	return host
 }
+
+func (l *Limiter) IntakeGet(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := "intake-get:" + clientIP(r)
+		if !l.Allow(key) {
+			api.WriteError(w, http.StatusTooManyRequests, "rate_limited", "too many requests")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (l *Limiter) IntakeSubmit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := "intake-submit:" + clientIP(r)
+		if !l.Allow(key) {
+			api.WriteError(w, http.StatusTooManyRequests, "rate_limited", "too many requests")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
