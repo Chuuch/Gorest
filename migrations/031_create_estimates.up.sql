@@ -43,11 +43,12 @@ CREATE TABLE estimate_runs (
   currency TEXT NOT NULL DEFAULT 'EUR',
   input_json JSONB NOT NULL,
   result_json JSONB NOT NULL,
+  estimated_hours NUMERIC,
   estimated_timeline_days INTEGER,
   hours_per_month NUMERIC,
   minimum_price_cents INTEGER NOT NULL,
   recommended_price_cents INTEGER NOT NULL,
-  risk_label TEXT NOT NULL,
+  risk_level TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL,
   CONSTRAINT estimate_runs_currency_check CHECK (currency = 'EUR')
 );

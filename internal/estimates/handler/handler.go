@@ -207,9 +207,6 @@ func (h *Handler) ListIntakes(w http.ResponseWriter, r *http.Request) {
 	for _, intake := range items {
 		out = append(out, toIntakeResponse(intake))
 	}
-	for _, intake := range items {
-		out = append(out, toIntakeResponse(intake))
-	}
 	api.WriteJSON(w, http.StatusOK, pagination.Page[domain.IntakeResponse]{
 		Items: out, NextCursor: next,
 	})

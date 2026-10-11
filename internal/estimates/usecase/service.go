@@ -251,6 +251,9 @@ func (s *service) CreateIntake(
 	}
 
 	now := time.Now().UTC()
+	email := strings.TrimSpace(strings.ToLower(req.RespondentEmail))
+	name := strings.TrimSpace(req.RespondentName)
+
 	intake := &domain.EstimateIntake{
 		ID:              uuid.New(),
 		OrganizationID:  organizationID,
@@ -262,14 +265,33 @@ func (s *service) CreateIntake(
 		ExpiresAt:       now.Add(s.intakeTTL),
 		CreatedAt:       now,
 	}
+	intake.RespondentEmail = &email
+	if name != "" {
+		intake.RespondentName = &name
+	}
+
 	if err := s.estimates.CreateIntake(ctx, intake); err != nil {
 		return nil, err
+	}
+
+	intakeURL := s.publicURL + "/intake/" + raw
+	subject, text, html, err := estimates.InviteMail(name, estimates.CategoryLabel(req.Category), intakeURL)
+	if err != nil {
+		return nil, fmt.Errorf("render intake invite mail: %w", err)
+	}
+	if err := s.mailer.Send(ctx, mailer.Message{
+		To:      email,
+		Subject: subject,
+		Text:    text,
+		HTML:    html,
+	}); err != nil {
+		return nil, fmt.Errorf("send intake invite mail: %w", err)
 	}
 
 	return &domain.CreateIntakeResponse{
 		Intake: toIntakeResponse(intake),
 		Token:  raw,
-		URL:    s.publicURL + "/intake/" + raw,
+		URL:    intakeURL,
 	}, nil
 }
 
@@ -449,7 +471,7 @@ func toIntakeResponse(intake *domain.EstimateIntake) domain.IntakeResponse {
 	out := domain.IntakeResponse{
 		ID:              intake.ID,
 		OrganizationID:  intake.OrganizationID,
-		CreatedByUserID: intake.OrganizationID,
+		CreatedByUserID: intake.CreatedByUserID,
 		Category:        intake.Category,
 		Mode:            intake.Mode,
 		Status:          intake.Status,

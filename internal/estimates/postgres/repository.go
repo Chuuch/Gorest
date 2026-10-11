@@ -114,54 +114,41 @@ func (r *Repository) List(
 		listSQL string
 		args    []any
 	)
+
+	const selectCols = `
+			id,
+			organization_id,
+			created_by_user_id,
+			intake_id,
+			client_id,
+			category,
+			mode,
+			catalog_version_id,
+			currency,
+			input_json,
+			result_json,
+			estimated_hours,
+			estimated_timeline_days,
+			hours_per_month,
+			minimum_price_cents,
+			recommended_price_cents,
+			risk_level,
+			created_at
+		`
+
 	if cursor == nil {
 		listSQL = `
-			SELECT
-				id,
-				organization_id,
-				created_by_user_id,
-				intake_id,
-				client_id,
-				input_json,
-				result_json,
-				estimated_hours,
-				estimated_timeline_days,
-				hours_per_month,
-				minimum_price_cents,
-				recommended_price_cents,
-				risk_level,
-				created_at
+			SELECT` + selectCols + `
 			FROM estimate_runs
 			WHERE organization_id = $1
 				AND ($2::uuid IS NULL OR client_id = $2)
-				AND (
-					$3::timestamptz IS NULL OR (created_at, id) < ($3::timestamptz, $4::uuid)
-				)
 			ORDER BY created_at DESC, id DESC
-			LIMIT $5
+			LIMIT $3
 		`
 		args = []any{organizationID, clientID, limit}
 	} else {
 		listSQL = `
-			SELECT
-				id,
-				organization_id,
-				created_by_user_id,
-				intake_id,
-				client_id,
-				category,
-				mode,
-				catalog_version_id,
-				currency,
-				input_json,
-				result_json,
-				estimated_hours,
-				estimated_timeline_days,
-				hours_per_month,
-				minimum_price_cents,
-				recommended_price_cents,
-				risk_level,
-				created_at
+			SELECT` + selectCols + `
 			FROM estimate_runs
 			WHERE organization_id = $1
 				AND ($2::uuid IS NULL OR client_id = $2)

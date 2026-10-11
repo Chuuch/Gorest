@@ -8,8 +8,10 @@ import (
 )
 
 type CreateIntakeRequest struct {
-	Category string `json:"category" validate:"required,oneof=website design branding custom_web custom_mobile marketing"`
-	Mode     string `json:"mode" validate:"required,oneof=project retainer"`
+	Category        string `json:"category" validate:"required,oneof=website design branding custom_web custom_mobile marketing"`
+	Mode            string `json:"mode" validate:"required,oneof=project retainer"`
+	RespondentEmail string `json:"respondent_email" validate:"required,email"`
+	RespondentName  string `json:"respondent_name" validate:"omitempty,min=1,max=200"`
 }
 
 type CreateIntakeResponse struct {
