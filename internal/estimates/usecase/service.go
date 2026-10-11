@@ -471,7 +471,7 @@ func toIntakeResponse(intake *domain.EstimateIntake) domain.IntakeResponse {
 	out := domain.IntakeResponse{
 		ID:              intake.ID,
 		OrganizationID:  intake.OrganizationID,
-		CreatedByUserID: intake.OrganizationID,
+		CreatedByUserID: intake.CreatedByUserID,
 		Category:        intake.Category,
 		Mode:            intake.Mode,
 		Status:          intake.Status,
