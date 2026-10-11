@@ -260,7 +260,15 @@ func wireApp(
 	invoiceHandler := invoicehandler.NewHandler(invoiceService)
 
 	estimateRepository := estimatepostgres.NewRepository(db)
-	estimateService := estimateusecase.NewService(estimateRepository, projectRepository, clientRepository)
+	estimateService := estimateusecase.NewService(
+		estimateRepository,
+		projectRepository,
+		clientRepository,
+		tokenManager,
+		mailSender,
+		cfg.Auth.EstimateIntakeTTL,
+		cfg.App.PublicURL,
+	)
 	estimateHandler := estimatehandler.NewHandler(estimateService)
 
 	return &wiredApp{
