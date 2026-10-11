@@ -121,7 +121,7 @@ func (r *Repository) Update(
 			UPDATE tickets
 			SET
 					status = $1,
-					updated_at = $2
+					updated_at = $2,
 					version = version + 1
 			WHERE id = $3 AND organization_id = $4 AND version = $5
 		RETURNING version
