@@ -40,6 +40,9 @@ import (
 	filepostgres "github.com/chuuch/gorest/internal/projects/files/postgres"
 	fileusecase "github.com/chuuch/gorest/internal/projects/files/usecase"
 	projecthandler "github.com/chuuch/gorest/internal/projects/handler"
+	phasehandler "github.com/chuuch/gorest/internal/projects/phases/handler"
+	phasepostgres "github.com/chuuch/gorest/internal/projects/phases/postgres"
+	phaseusecase "github.com/chuuch/gorest/internal/projects/phases/usecase"
 	projectpostgres "github.com/chuuch/gorest/internal/projects/postgres"
 	projectusecase "github.com/chuuch/gorest/internal/projects/usecase"
 	reporthandler "github.com/chuuch/gorest/internal/reports/handler"
@@ -91,6 +94,7 @@ type wiredApp struct {
 	navHandler           *navhandler.Handler
 	eventsHandler        *eventshandler.Handler
 	estimateHandler      *estimatehandler.Handler
+	phaseHandler         *phasehandler.Handler
 	tokenManager         security.TokenManager
 	idem                 *idempotency.Middleware
 }
@@ -186,6 +190,10 @@ func wireApp(
 	projectService := projectusecase.NewService(projectRepository, clientRepository)
 	projectHandler := projecthandler.NewHandler(projectService)
 
+	phaseRepository := phasepostgres.NewRepository(db)
+	phaseService := phaseusecase.NewService(phaseRepository, projectRepository)
+	phaseHandler := phasehandler.NewHandler(phaseService)
+
 	ticketRepository := ticketpostgres.NewRepository(db)
 	ticketService := ticketusecase.EnableNotifications(
 		ticketusecase.NewService(ticketRepository, clientRepository),
@@ -195,7 +203,13 @@ func wireApp(
 
 	taskRepository := taskpostgres.NewRepository(db)
 	taskService := taskusecase.EnableNotifications(
-		taskusecase.NewService(taskRepository, projectRepository, ticketRepository, membershipRepository),
+		taskusecase.NewService(
+			taskRepository,
+			projectRepository,
+			ticketRepository,
+			membershipRepository,
+			phaseService,
+		),
 		notificationService,
 	)
 	taskHandler := taskhandler.NewHandler(taskService).WithActivity(activityService)
@@ -292,6 +306,7 @@ func wireApp(
 		navHandler:           navHandler,
 		eventsHandler:        eventsHandler,
 		estimateHandler:      estimateHandler,
+		phaseHandler:         phaseHandler,
 		tokenManager:         tokenManager,
 		idem:                 idempotency.NewMiddleware(idempotency.NewPostgresStore(db)),
 	}

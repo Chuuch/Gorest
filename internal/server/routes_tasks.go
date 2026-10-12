@@ -20,6 +20,10 @@ func (a *wiredApp) registerTasks(mux *http.ServeMux) {
 	mux.Handle("POST /api/v1/projects/{id}/files", a.staffIdempotent(a.fileHandler.Create))
 	mux.Handle("DELETE /api/v1/files/{id}", a.staff(a.fileHandler.Delete))
 
+	mux.Handle("GET /api/v1/projects/{id}/phases", a.staff(a.phaseHandler.List))
+	mux.Handle("POST /api/v1/projects/{id}/phases", a.staffIdempotent(a.phaseHandler.Create))
+	mux.Handle("PATCH /api/v1/phases/{id}", a.staff(a.phaseHandler.Update))
+
 	mux.Handle("GET /api/v1/tasks/{id}/comments", a.staff(a.commentHandler.List))
 	mux.Handle("POST /api/v1/tasks/{id}/comments", a.staff(a.commentHandler.Create))
 	mux.Handle("PATCH /api/v1/comments/{id}", a.staff(a.commentHandler.Update))

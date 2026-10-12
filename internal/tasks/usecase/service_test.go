@@ -20,6 +20,12 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
+type stubPhases struct{}
+
+func (stubPhases) EnsureDefaults(context.Context, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
 func setupTaskTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 	t.Helper()
 
@@ -318,6 +324,7 @@ func setupTaskService(db *pgxpool.Pool) taskusecase.Service {
 		projectpostgres.NewRepository(db),
 		ticketpostgres.NewRepository(db),
 		orgpostgres.NewMembershipRepository(db),
+		stubPhases{},
 	)
 }
 

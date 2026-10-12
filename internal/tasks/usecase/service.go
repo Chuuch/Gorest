@@ -61,11 +61,16 @@ type Service interface {
 	) (*taskdomain.Task, error)
 }
 
+type phaseDefaults interface {
+	EnsureDefaults(ctx context.Context, organizationID, projectID uuid.UUID) error
+}
+
 type service struct {
 	tasks       taskrepository.TaskRepository
 	projects    projectrepository.ProjectRepository
 	tickets     ticketrepository.TicketRepository
 	memberships orgrepository.MembershipRepository
+	phases      phaseDefaults
 	notify      notifications.Publisher
 }
 
@@ -74,12 +79,14 @@ func NewService(
 	projects projectrepository.ProjectRepository,
 	tickets ticketrepository.TicketRepository,
 	memberships orgrepository.MembershipRepository,
+	phases phaseDefaults,
 ) Service {
 	return &service{
 		tasks:       tasks,
 		projects:    projects,
 		tickets:     tickets,
 		memberships: memberships,
+		phases:      phases,
 		notify:      notifications.Nop{},
 	}
 }
@@ -323,6 +330,10 @@ func (s *service) Convert(
 
 	if err := s.tasks.Create(ctx, task); err != nil {
 		return nil, err
+	}
+
+	if err := s.phases.EnsureDefaults(ctx, organizationID, project.ID); err != nil {
+		return nil, fmt.Errorf("ensure project phases: %w", err)
 	}
 
 	if ticket.Status != ticketdomain.StatusInProgress {
