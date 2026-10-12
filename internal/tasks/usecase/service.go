@@ -17,6 +17,7 @@ import (
 	projectrepository "github.com/chuuch/gorest/internal/projects/repository"
 	taskdomain "github.com/chuuch/gorest/internal/tasks/domain"
 	taskrepository "github.com/chuuch/gorest/internal/tasks/repository"
+	ticketdomain "github.com/chuuch/gorest/internal/tickets/domain"
 	ticketrepository "github.com/chuuch/gorest/internal/tickets/repository"
 	"github.com/google/uuid"
 )
@@ -324,6 +325,24 @@ func (s *service) Convert(
 		return nil, err
 	}
 
+	if ticket.Status != ticketdomain.StatusInProgress {
+		ticket.Status = ticketdomain.StatusInProgress
+		ticket.UpdatedAt = now
+		if err := s.tickets.Update(ctx, ticket); err != nil {
+			return nil, fmt.Errorf("set ticket in progress: %w", err)
+		}
+		notifications.NotifyUser(
+			ctx,
+			s.notify,
+			organizationID,
+			ticket.UserID,
+			notificationdomain.KindTicketStatusChanged,
+			notificationdomain.EntityTicket,
+			string(ticketdomain.StatusInProgress),
+			ticket.ID,
+		)
+	}
+
 	notifications.NotifyUser(
 		ctx,
 		s.notify,
@@ -331,7 +350,7 @@ func (s *service) Convert(
 		ticket.UserID,
 		notificationdomain.KindTicketConverted,
 		notificationdomain.EntityTicket,
-		ticket.Title,
+		string(ticketdomain.StatusInProgress),
 		ticket.ID,
 	)
 

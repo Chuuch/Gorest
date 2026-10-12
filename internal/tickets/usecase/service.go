@@ -202,7 +202,7 @@ func (s *service) Update(
 			ticket.UserID,
 			notificationdomain.KindTicketStatusChanged,
 			notificationdomain.EntityTicket,
-			ticket.Title,
+			string(ticket.Status),
 			ticket.ID,
 		)
 	}
