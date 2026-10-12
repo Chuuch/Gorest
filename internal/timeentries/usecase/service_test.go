@@ -97,17 +97,21 @@ func setupTimeEntryTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 			organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
 			project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
 			ticket_id UUID,
+			phase_id UUID,
 			title TEXT NOT NULL,
 			notes TEXT NOT NULL DEFAULT '',
 			status TEXT NOT NULL,
 			completed_at TIMESTAMPTZ NULL,
 			created_by UUID REFERENCES users(id) ON DELETE RESTRICT,
 			assignee_id UUID REFERENCES users(id) ON DELETE SET NULL,
+			starts_on DATE,
+			due_on DATE,
 			version INTEGER NOT NULL DEFAULT 1,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL,
 			CONSTRAINT tasks_project_title_unique UNIQUE (project_id, title),
-			CONSTRAINT tasks_status_check CHECK (status IN ('todo', 'in_progress', 'done'))
+			CONSTRAINT tasks_status_check CHECK (status IN ('todo', 'in_progress', 'done')),
+			CONSTRAINT tasks_dates_check CHECK (starts_on IS NULL OR due_on IS NULL OR starts_on <= due_on)
 		)
 	`)
 	require.NoError(t, err)

@@ -22,6 +22,9 @@ type Task struct {
 	Title          string
 	Notes          string
 	Status         Status
+	PhaseID        *uuid.UUID
+	StartsOn       *time.Time
+	DueOn          *time.Time
 	CompletedAt    *time.Time
 	CreatedBy      *uuid.UUID
 	AssigneeID     *uuid.UUID

@@ -14,6 +14,7 @@ import (
 	"github.com/chuuch/gorest/internal/platform/requestcontext"
 	"github.com/chuuch/gorest/internal/platform/search"
 	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
+	phasedomain "github.com/chuuch/gorest/internal/projects/phases/domain"
 	projectrepository "github.com/chuuch/gorest/internal/projects/repository"
 	taskdomain "github.com/chuuch/gorest/internal/tasks/domain"
 	taskrepository "github.com/chuuch/gorest/internal/tasks/repository"
@@ -61,8 +62,9 @@ type Service interface {
 	) (*taskdomain.Task, error)
 }
 
-type phaseDefaults interface {
+type phaseSupport interface {
 	EnsureDefaults(ctx context.Context, organizationID, projectID uuid.UUID) error
+	GetByID(ctx context.Context, id, organizationID uuid.UUID) (*phasedomain.Phase, error)
 }
 
 type service struct {
@@ -70,7 +72,7 @@ type service struct {
 	projects    projectrepository.ProjectRepository
 	tickets     ticketrepository.TicketRepository
 	memberships orgrepository.MembershipRepository
-	phases      phaseDefaults
+	phases      phaseSupport
 	notify      notifications.Publisher
 }
 
@@ -79,7 +81,7 @@ func NewService(
 	projects projectrepository.ProjectRepository,
 	tickets ticketrepository.TicketRepository,
 	memberships orgrepository.MembershipRepository,
-	phases phaseDefaults,
+	phases phaseSupport,
 ) Service {
 	return &service{
 		tasks:       tasks,
@@ -175,6 +177,16 @@ func (s *service) Create(
 		return nil, err
 	}
 
+	phaseID, err := s.resolvePhase(ctx, organizationID, projectID, req.PhaseID)
+	if err != nil {
+		return nil, err
+	}
+
+	startsOn, dueOn, err := parseTaskDates(req.StartsOn, req.DueOn)
+	if err != nil {
+		return nil, err
+	}
+
 	now := time.Now().UTC()
 	status := taskdomain.Status(req.Status)
 	createdBy := actorUserID(ctx)
@@ -183,12 +195,15 @@ func (s *service) Create(
 		ID:             uuid.New(),
 		OrganizationID: organizationID,
 		ProjectID:      projectID,
+		PhaseID:        phaseID,
 		Title:          req.Title,
 		Notes:          req.Notes,
 		Status:         status,
 		CompletedAt:    completedAtFor(status, nil, now),
 		CreatedBy:      createdBy,
 		AssigneeID:     assigneeID,
+		StartsOn:       startsOn,
+		DueOn:          dueOn,
 		Version:        1,
 		CreatedAt:      now,
 		UpdatedAt:      now,
@@ -229,6 +244,34 @@ func (s *service) Update(
 			return nil, err
 		}
 		task.AssigneeID = assigneeID
+	}
+
+	if req.PhaseID.Set {
+		phaseID, err := s.resolvePhase(ctx, organizationID, task.ProjectID, req.PhaseID.Value)
+		if err != nil {
+			return nil, err
+		}
+		task.PhaseID = phaseID
+	}
+
+	if req.StartsOn != nil {
+		startsOn, _, err := parseTaskDates(req.StartsOn, nil)
+		if err != nil {
+			return nil, err
+		}
+		task.StartsOn = startsOn
+	}
+
+	if req.DueOn != nil {
+		_, dueOn, err := parseTaskDates(nil, req.DueOn)
+		if err != nil {
+			return nil, err
+		}
+		task.DueOn = dueOn
+	}
+
+	if task.StartsOn != nil && task.DueOn != nil && task.StartsOn.After(*task.DueOn) {
+		return nil, taskdomain.ErrInvalidTaskDates
 	}
 
 	task.Status = status
@@ -390,6 +433,56 @@ func (s *service) resolveAssignee(
 	}
 
 	return assigneeID, nil
+}
+
+func (s *service) resolvePhase(
+	ctx context.Context,
+	organizationID, projectID uuid.UUID,
+	phaseID *uuid.UUID,
+) (*uuid.UUID, error) {
+	if phaseID == nil {
+		return nil, nil
+	}
+
+	phase, err := s.phases.GetByID(ctx, *phaseID, organizationID)
+	if err != nil {
+		if errors.Is(err, phasedomain.ErrPhaseNotFound) {
+			return nil, taskdomain.ErrPhaseNotFound
+		}
+		return nil, err
+	}
+
+	if phase.ProjectID != projectID {
+		return nil, taskdomain.ErrPhaseWrongProject
+	}
+
+	return phaseID, nil
+}
+
+func parseTaskDates(startsOn, dueOn *string) (*time.Time, *time.Time, error) {
+	var start, due *time.Time
+
+	if startsOn != nil {
+		day, err := time.Parse("2006-01-02", *startsOn)
+		if err != nil {
+			return nil, nil, taskdomain.ErrInvalidTaskDates
+		}
+		start = &day
+	}
+
+	if dueOn != nil {
+		day, err := time.Parse("2006-01-02", *dueOn)
+		if err != nil {
+			return nil, nil, taskdomain.ErrInvalidTaskDates
+		}
+		due = &day
+	}
+
+	if start != nil && due != nil && start.After(*due) {
+		return nil, nil, taskdomain.ErrInvalidTaskDates
+	}
+
+	return start, due, nil
 }
 
 func actorUserID(ctx context.Context) *uuid.UUID {
