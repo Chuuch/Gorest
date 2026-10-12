@@ -21,6 +21,8 @@ type Message struct {
 	ProjectID       *uuid.UUID
 	Summary         string
 	RecipientUserID uuid.UUID
+	ActorUserID     uuid.UUID
+	IncludeActor    bool
 	Staff           bool
 }
 
@@ -78,6 +80,37 @@ func NotifyUser(
 		ProjectID:       projectID,
 		Summary:         activity.Summary(summary),
 		RecipientUserID: recipientID,
+	})
+	if err != nil {
+		slog.Error("publish notification", "error", err)
+	}
+}
+
+// NotifyStaffAs notifies every staff member (including actorID) using actorID as the
+// notification actor. Use for public/system events where context has no user.
+func NotifyStaffAs(
+	ctx context.Context,
+	pub Publisher,
+	organizationID, actorID uuid.UUID,
+	kind, entityType, summary string,
+	entityID uuid.UUID,
+	clientID, projectID *uuid.UUID,
+) {
+	if pub == nil || actorID == uuid.Nil {
+		return
+	}
+
+	err := pub.Publish(ctx, Message{
+		OrganizationID: organizationID,
+		Kind:           kind,
+		EntityType:     entityType,
+		EntityID:       entityID,
+		ClientID:       clientID,
+		ProjectID:      projectID,
+		Summary:        activity.Summary(summary),
+		ActorUserID:    actorID,
+		IncludeActor:   true,
+		Staff:          true,
 	})
 	if err != nil {
 		slog.Error("publish notification", "error", err)

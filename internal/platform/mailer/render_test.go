@@ -9,6 +9,7 @@ import (
 
 func TestRenderTransactional(t *testing.T) {
 	html, err := mailer.RenderTransactional(mailer.Transactional{
+		BrandName:   "Acme Agency",
 		Heading:     "You're invited",
 		Body:        "You've been invited to join Acme.",
 		ActionURL:   "http://localhost:5173/accept-invite?token=abc",
@@ -16,14 +17,27 @@ func TestRenderTransactional(t *testing.T) {
 		Expiry:      "This link expires in 7 days.",
 	})
 	require.NoError(t, err)
-	require.Contains(t, html, "Flourish")
+	require.Contains(t, html, "Acme Agency")
+	require.NotContains(t, html, ">Flourish<")
 	require.Contains(t, html, "You&#39;re invited")
 	require.Contains(t, html, "You&#39;ve been invited to join Acme.")
 	require.Contains(t, html, "Set your password")
-	require.Contains(t, html, "http://localhost:5173/accept-invite?token=abc")
-	require.Contains(t, html, "#ff5c00")
-	require.Contains(t, html, "#f3f6f4")
+	require.Contains(t, html, `href="http://localhost:5173/accept-invite?token=abc"`)
+	require.NotContains(t, html, "word-break: break-all")
+	require.Contains(t, html, "#cf9fff")
+	require.Contains(t, html, "#f5f5f5")
 	require.Contains(t, html, "This link expires in 7 days.")
+}
+
+func TestRenderTransactional_OmitsEmptyAction(t *testing.T) {
+	html, err := mailer.RenderTransactional(mailer.Transactional{
+		Heading: "Thanks — we got it!",
+		Body:    "Hi there, we received your enquiry.",
+	})
+	require.NoError(t, err)
+	require.Contains(t, html, "Thanks — we got it!")
+	require.NotContains(t, html, "background-color: #cf9fff")
+	require.NotContains(t, html, "<a")
 }
 
 func TestRenderTransactional_EscapesHTML(t *testing.T) {
@@ -77,7 +91,6 @@ func TestRenderInvoice(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.Contains(t, html, "Flourish")
 	require.Contains(t, html, "INV-2026-0001")
 	require.Contains(t, html, "Acme EOOD")
 	require.Contains(t, html, "VAT BG123456789")
@@ -90,7 +103,7 @@ func TestRenderInvoice(t *testing.T) {
 	require.Contains(t, html, "€45.00")
 	require.Contains(t, html, "VAT reverse charge")
 	require.Contains(t, html, "IBAN BG80BNBG96611020345678")
-	require.Contains(t, html, "#ff5c00")
+	require.Contains(t, html, "#cf9fff")
 	require.Contains(t, html, "http://localhost:5173/portal")
 }
 

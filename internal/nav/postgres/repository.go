@@ -55,6 +55,24 @@ func (r *Repository) CountActiveTickets(
 	return count, nil
 }
 
+func (r *Repository) CountSubmittedIntakes(
+	ctx context.Context,
+	organizationID uuid.UUID,
+) (int, error) {
+	const query = `
+			SELECT COUNT(*)
+			FROM estimate_intakes
+			WHERE organization_id = $1
+				AND status = 'submitted'
+		`
+
+	var count int
+	if err := r.db.QueryRow(ctx, query, organizationID).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count submitted intakes: %w", err)
+	}
+	return count, nil
+}
+
 func (r *Repository) CountUnreadNotifications(
 	ctx context.Context,
 	organizationID, recipientID uuid.UUID,

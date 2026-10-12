@@ -35,6 +35,23 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.writeProjectPage(w, r, organizationID, clientID)
+}
+
+func (h *Handler) ListPortal(w http.ResponseWriter, r *http.Request) {
+	organizationID, clientID, ok := h.portalSession(w, r)
+	if !ok {
+		return
+	}
+
+	h.writeProjectPage(w, r, organizationID, clientID)
+}
+
+func (h *Handler) writeProjectPage(
+	w http.ResponseWriter,
+	r *http.Request,
+	organizationID, clientID uuid.UUID,
+) {
 	limit, cursor, ok := pagination.LimitAndCursor(w, r, api.WriteError)
 	if !ok {
 		return
@@ -239,6 +256,23 @@ func (h *Handler) session(
 	}
 
 	return organizationID, orgdomain.Role(role), true
+}
+
+func (h *Handler) portalSession(
+	w http.ResponseWriter,
+	r *http.Request,
+) (uuid.UUID, uuid.UUID, bool) {
+	organizationID, ok := requestcontext.OrganizationID(r.Context())
+	if !ok {
+		api.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		return uuid.Nil, uuid.Nil, false
+	}
+	clientID, ok := requestcontext.ClientID(r.Context())
+	if !ok {
+		api.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		return uuid.Nil, uuid.Nil, false
+	}
+	return organizationID, clientID, true
 }
 
 func (h *Handler) handleError(w http.ResponseWriter, err error) {

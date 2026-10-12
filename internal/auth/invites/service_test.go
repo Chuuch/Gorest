@@ -119,6 +119,8 @@ func setupInviteService(t *testing.T, db *pgxpool.Pool, ttl, resetTTL time.Durat
 			ttl,
 			resetTTL,
 			testPublicURL,
+			nil,
+			nil,
 		),
 		users:     users,
 		mailer:    mail,
@@ -155,7 +157,7 @@ func TestInviteService_IssueAndAccept(t *testing.T) {
 	require.Contains(t, deps.mailer.messages[0].Text, testPublicURL+"/accept-invite?token=")
 	require.Contains(t, deps.mailer.messages[0].HTML, "Set your password")
 	require.Contains(t, deps.mailer.messages[0].HTML, testPublicURL+"/accept-invite?token=")
-	require.Contains(t, deps.mailer.messages[0].HTML, "#ff5c00")
+	require.Contains(t, deps.mailer.messages[0].HTML, "#cf9fff")
 
 	raw := tokenFromMail(t, deps.mailer.messages[0].Text, "/accept-invite?token=")
 
@@ -232,7 +234,7 @@ func TestInviteService_RequestResetAndReset(t *testing.T) {
 	require.Contains(t, deps.mailer.messages[0].Text, testPublicURL+"/reset-password?token=")
 	require.Contains(t, deps.mailer.messages[0].HTML, "Reset your password")
 	require.Contains(t, deps.mailer.messages[0].HTML, testPublicURL+"/reset-password?token=")
-	require.Contains(t, deps.mailer.messages[0].HTML, "#ff5c00")
+	require.Contains(t, deps.mailer.messages[0].HTML, "#cf9fff")
 
 	raw := tokenFromMail(t, deps.mailer.messages[0].Text, "/reset-password?token=")
 

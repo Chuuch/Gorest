@@ -12,7 +12,10 @@ import (
 	"github.com/chuuch/gorest/internal/estimates/domain"
 	"github.com/chuuch/gorest/internal/estimates/engine"
 	estimaterepository "github.com/chuuch/gorest/internal/estimates/repository"
+	"github.com/chuuch/gorest/internal/notifications"
+	notificationdomain "github.com/chuuch/gorest/internal/notifications/domain"
 	orgdomain "github.com/chuuch/gorest/internal/organization/domain"
+	orgrepository "github.com/chuuch/gorest/internal/organization/repository"
 	"github.com/chuuch/gorest/internal/platform/mailer"
 	"github.com/chuuch/gorest/internal/platform/pagination"
 	projectdomain "github.com/chuuch/gorest/internal/projects/domain"
@@ -62,35 +65,49 @@ type Service interface {
 }
 
 type service struct {
-	estimates estimaterepository.EstimateRepository
-	projects  projectrepository.ProjectRepository
-	clients   clientrepository.ClientRepository
-	tokens    security.TokenManager
-	mailer    mailer.Mailer
-	catalog   engine.Catalog
-	intakeTTL time.Duration
-	publicURL string
+	estimates     estimaterepository.EstimateRepository
+	projects      projectrepository.ProjectRepository
+	clients       clientrepository.ClientRepository
+	organizations orgrepository.OrganizationRepository
+	tokens        security.TokenManager
+	mailer        mailer.Mailer
+	catalog       engine.Catalog
+	intakeTTL     time.Duration
+	publicURL     string
+	notify        notifications.Publisher
 }
 
 func NewService(
 	estimates estimaterepository.EstimateRepository,
 	projects projectrepository.ProjectRepository,
 	clients clientrepository.ClientRepository,
+	organizations orgrepository.OrganizationRepository,
 	tokens security.TokenManager,
 	mail mailer.Mailer,
 	intakeTTL time.Duration,
 	publicURL string,
 ) Service {
 	return &service{
-		estimates: estimates,
-		projects:  projects,
-		clients:   clients,
-		tokens:    tokens,
-		mailer:    mail,
-		catalog:   engine.DefaultCatalog(),
-		intakeTTL: intakeTTL,
-		publicURL: strings.TrimRight(publicURL, "/"),
+		estimates:     estimates,
+		projects:      projects,
+		clients:       clients,
+		organizations: organizations,
+		tokens:        tokens,
+		mailer:        mail,
+		catalog:       engine.DefaultCatalog(),
+		intakeTTL:     intakeTTL,
+		publicURL:     strings.TrimRight(publicURL, "/"),
+		notify:        notifications.Nop{},
 	}
+}
+
+func EnableNotifications(s Service, pub notifications.Publisher) Service {
+	impl, ok := s.(*service)
+	if !ok || pub == nil {
+		return s
+	}
+	impl.notify = pub
+	return impl
 }
 
 func (s *service) Catalog() domain.CatalogResponse {
@@ -275,7 +292,16 @@ func (s *service) CreateIntake(
 	}
 
 	intakeURL := s.publicURL + "/intake/" + raw
-	subject, text, html, err := estimates.InviteMail(name, estimates.CategoryLabel(req.Category), intakeURL)
+	brand, err := s.brandName(ctx, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	subject, text, html, err := estimates.InviteMail(
+		name,
+		estimates.CategoryLabel(req.Category),
+		intakeURL,
+		brand,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("render intake invite mail: %w", err)
 	}
@@ -392,7 +418,11 @@ func (s *service) SubmitIntake(ctx context.Context, rawToken string, req domain.
 		return err
 	}
 
-	subject, text, html, err := estimates.ConfirmationMail(name, project)
+	brand, err := s.brandName(ctx, intake.OrganizationID)
+	if err != nil {
+		return err
+	}
+	subject, text, html, err := estimates.ConfirmationMail(name, project, brand)
 	if err != nil {
 		return fmt.Errorf("render confirmation mail: %w", err)
 	}
@@ -401,6 +431,27 @@ func (s *service) SubmitIntake(ctx context.Context, rawToken string, req domain.
 	}); err != nil {
 		return fmt.Errorf("send confirmation mail: %w", err)
 	}
+
+	summary := project
+	if summary == "" {
+		summary = company
+	}
+	if summary == "" {
+		summary = estimates.CategoryLabel(intake.Category)
+	}
+	notifications.NotifyStaffAs(
+		ctx,
+		s.notify,
+		intake.OrganizationID,
+		intake.CreatedByUserID,
+		notificationdomain.KindIntakeSubmitted,
+		notificationdomain.EntityIntake,
+		summary,
+		intake.ID,
+		nil,
+		nil,
+	)
+
 	return nil
 }
 
@@ -422,6 +473,17 @@ func (s *service) ensureIntakeUsable(intake *domain.EstimateIntake) error {
 		return domain.ErrIntakeExpired
 	}
 	return nil
+}
+
+func (s *service) brandName(ctx context.Context, organizationID uuid.UUID) (string, error) {
+	if s.organizations == nil {
+		return mailer.BrandName(""), nil
+	}
+	org, err := s.organizations.GetByID(ctx, organizationID)
+	if err != nil {
+		return "", fmt.Errorf("get organization: %w", err)
+	}
+	return mailer.BrandName(org.Name), nil
 }
 
 func (s *service) expireIfNeeded(ctx context.Context, intake *domain.EstimateIntake) error {

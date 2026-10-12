@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/chuuch/gorest/internal/auth/security"
+	orgrepository "github.com/chuuch/gorest/internal/organization/repository"
 	"github.com/chuuch/gorest/internal/platform/database"
 	"github.com/chuuch/gorest/internal/platform/mailer"
 	userdomain "github.com/chuuch/gorest/internal/user/domain"
@@ -42,15 +43,17 @@ type MailTokens interface {
 }
 
 type service struct {
-	tokens    TokenStore
-	users     userusecase.Service
-	security  security.TokenManager
-	mailer    mailer.Mailer
-	revoker   SessionRevoker
-	db        *pgxpool.Pool
-	ttl       time.Duration
-	resetTTL  time.Duration
-	publicURL string
+	tokens      TokenStore
+	users       userusecase.Service
+	memberships orgrepository.MembershipRepository
+	orgs        orgrepository.OrganizationRepository
+	security    security.TokenManager
+	mailer      mailer.Mailer
+	revoker     SessionRevoker
+	db          *pgxpool.Pool
+	ttl         time.Duration
+	resetTTL    time.Duration
+	publicURL   string
 }
 
 func NewService(
@@ -63,17 +66,21 @@ func NewService(
 	ttl time.Duration,
 	resetTTL time.Duration,
 	publicURL string,
+	memberships orgrepository.MembershipRepository,
+	orgs orgrepository.OrganizationRepository,
 ) MailTokens {
 	return &service{
-		tokens:    tokens,
-		users:     users,
-		security:  security,
-		mailer:    mailer,
-		revoker:   revoker,
-		db:        db,
-		ttl:       ttl,
-		resetTTL:  resetTTL,
-		publicURL: strings.TrimRight(publicURL, "/"),
+		tokens:      tokens,
+		users:       users,
+		memberships: memberships,
+		orgs:        orgs,
+		security:    security,
+		mailer:      mailer,
+		revoker:     revoker,
+		db:          db,
+		ttl:         ttl,
+		resetTTL:    resetTTL,
+		publicURL:   strings.TrimRight(publicURL, "/"),
 	}
 }
 
@@ -180,11 +187,13 @@ func (s *service) RequestReset(ctx context.Context, email string) error {
 	}
 
 	resetURL := s.publicURL + "/reset-password?token=" + raw
-	subject := "Reset your Flourish password"
+	brand := s.brandForUser(ctx, user.ID)
+	subject := "Reset your " + brand + " password"
 	text := "Reset your password:\n" + resetURL + "\n\nThis link expires in 1 hour.\n"
 	html, err := mailer.RenderTransactional(mailer.Transactional{
+		BrandName:   brand,
 		Heading:     "Reset your password",
-		Body:        "Use the button below to choose a new password for your Flourish account.",
+		Body:        "Use the button below to choose a new password for your " + brand + " account.",
 		ActionURL:   resetURL,
 		ActionLabel: "Reset your password",
 		Expiry:      "This link expires in 1 hour.",
@@ -267,12 +276,9 @@ func (s *service) Reset(ctx context.Context, rawToken, password string) error {
 }
 
 func inviteMail(in IssueInput, acceptURL string) (string, string, string, error) {
-	org := in.OrganizationName
-	if org == "" {
-		org = "Flourish"
-	}
+	org := mailer.BrandName(in.OrganizationName)
 
-	subject := "You're invited to " + org + " on Flourish"
+	subject := "You're invited to " + org
 	who := "join " + org
 	if in.Kind == KindPortal {
 		client := in.ClientName
@@ -280,7 +286,7 @@ func inviteMail(in IssueInput, acceptURL string) (string, string, string, error)
 			client = "a client portal"
 		}
 		who = "the " + client + " portal at " + org
-		subject = "You're invited to " + client + " on Flourish"
+		subject = "You're invited to " + client
 	}
 
 	text := "You've been invited to " + who + ".\n\n" +
@@ -288,6 +294,7 @@ func inviteMail(in IssueInput, acceptURL string) (string, string, string, error)
 		"This link expires in 7 days.\n"
 
 	html, err := mailer.RenderTransactional(mailer.Transactional{
+		BrandName:   org,
 		Heading:     "You're invited",
 		Body:        "You've been invited to " + who + ".",
 		ActionURL:   acceptURL,
@@ -299,4 +306,19 @@ func inviteMail(in IssueInput, acceptURL string) (string, string, string, error)
 	}
 
 	return subject, text, html, nil
+}
+
+func (s *service) brandForUser(ctx context.Context, userID uuid.UUID) string {
+	if s.memberships == nil || s.orgs == nil {
+		return mailer.BrandName("")
+	}
+	membership, err := s.memberships.GetByUserID(ctx, userID)
+	if err != nil {
+		return mailer.BrandName("")
+	}
+	org, err := s.orgs.GetByID(ctx, membership.OrganizationID)
+	if err != nil {
+		return mailer.BrandName("")
+	}
+	return mailer.BrandName(org.Name)
 }

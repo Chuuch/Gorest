@@ -40,5 +40,6 @@ func (a *wiredApp) registerPortal(
 	mux.Handle("GET /api/v1/client-auth/invoices/{id}/pdf", a.portal(a.invoiceHandler.PDFPortal))
 	mux.Handle("GET /api/v1/client-auth/events", a.portal(a.eventsHandler.Portal))
 
+	mux.Handle("GET /api/v1/client-auth/projects", a.portal(a.projectHandler.ListPortal))
 	mux.Handle("GET /api/v1/client-auth/projects/{id}/phases", a.portal(a.phaseHandler.ListPortal))
 }

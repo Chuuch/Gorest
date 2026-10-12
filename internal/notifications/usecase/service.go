@@ -55,9 +55,13 @@ func EnableRealtime(s Service, hub *events.Hub) Service {
 }
 
 func (s *service) Publish(ctx context.Context, msg notifications.Message) error {
-	actorID, ok := requestcontext.UserID(ctx)
-	if !ok {
-		return nil
+	actorID := msg.ActorUserID
+	if actorID == uuid.Nil {
+		var ok bool
+		actorID, ok = requestcontext.UserID(ctx)
+		if !ok {
+			return nil
+		}
 	}
 
 	recipientIDs, err := s.recipients(ctx, msg, actorID)
@@ -67,10 +71,6 @@ func (s *service) Publish(ctx context.Context, msg notifications.Message) error 
 
 	now := time.Now().UTC()
 	for _, recipientID := range recipientIDs {
-		if recipientID == actorID {
-			continue
-		}
-
 		item := &domain.Notification{
 			ID:             uuid.New(),
 			OrganizationID: msg.OrganizationID,
@@ -114,7 +114,7 @@ func (s *service) recipients(
 
 	ids := make([]uuid.UUID, 0, len(memberships))
 	for _, membership := range memberships {
-		if membership.UserID == actorID {
+		if membership.UserID == actorID && !msg.IncludeActor {
 			continue
 		}
 		ids = append(ids, membership.UserID)

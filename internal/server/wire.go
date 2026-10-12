@@ -129,6 +129,8 @@ func wireApp(
 		cfg.Auth.InviteTTL,
 		cfg.Auth.ResetTTL,
 		cfg.App.PublicURL,
+		membershipRepository,
+		organizationRepository,
 	)
 
 	authService := authusecase.NewService(
@@ -274,14 +276,18 @@ func wireApp(
 	invoiceHandler := invoicehandler.NewHandler(invoiceService)
 
 	estimateRepository := estimatepostgres.NewRepository(db)
-	estimateService := estimateusecase.NewService(
-		estimateRepository,
-		projectRepository,
-		clientRepository,
-		tokenManager,
-		mailSender,
-		cfg.Auth.EstimateIntakeTTL,
-		cfg.App.PublicURL,
+	estimateService := estimateusecase.EnableNotifications(
+		estimateusecase.NewService(
+			estimateRepository,
+			projectRepository,
+			clientRepository,
+			organizationRepository,
+			tokenManager,
+			mailSender,
+			cfg.Auth.EstimateIntakeTTL,
+			cfg.App.PublicURL,
+		),
+		notificationService,
 	)
 	estimateHandler := estimatehandler.NewHandler(estimateService)
 

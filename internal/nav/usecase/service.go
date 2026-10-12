@@ -48,9 +48,15 @@ func (s *service) Counts(
 		return domain.Counts{}, err
 	}
 
+	intakes, err := s.repo.CountSubmittedIntakes(ctx, organizationID)
+	if err != nil {
+		return domain.Counts{}, err
+	}
+
 	return domain.Counts{
 		Tasks:               tasks,
 		Tickets:             tickets,
+		SubmittedIntakes:    intakes,
 		UnreadNotifications: unread,
 	}, nil
 }

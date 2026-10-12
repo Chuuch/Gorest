@@ -14,11 +14,13 @@ const (
 	KindTicketStaffComment  = "ticket_staff_comment"
 	KindTicketStatusChanged = "ticket_status_changed"
 	KindTicketConverted     = "ticket_converted"
+	KindIntakeSubmitted     = "intake_submitted"
 
 	EntityTicket        = "ticket"
 	EntityTask          = "task"
 	EntityComment       = "comment"
 	EntityTicketComment = "ticket_comment"
+	EntityIntake        = "intake"
 )
 
 type Notification struct {

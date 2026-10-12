@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"html/template"
+	"strings"
 )
 
 //go:embed templates/*.html
@@ -19,6 +20,7 @@ var invoiceTpl = template.Must(
 )
 
 type Transactional struct {
+	BrandName   string
 	Heading     string
 	Body        string
 	ActionURL   string
@@ -66,6 +68,7 @@ type InvoiceMail struct {
 }
 
 func RenderTransactional(data Transactional) (string, error) {
+	data.BrandName = BrandName(data.BrandName)
 	var buf bytes.Buffer
 	if err := transactional.Execute(&buf, data); err != nil {
 		return "", fmt.Errorf("render mail: %w", err)
@@ -74,9 +77,18 @@ func RenderTransactional(data Transactional) (string, error) {
 }
 
 func RenderInvoice(data InvoiceMail) (string, error) {
+	data.AgencyName = BrandName(data.AgencyName)
 	var buf bytes.Buffer
 	if err := invoiceTpl.Execute(&buf, data); err != nil {
 		return "", fmt.Errorf("render invoice mail: %w", err)
 	}
 	return buf.String(), nil
+}
+
+// BrandName returns the agency/organization name, or Flourish when empty.
+func BrandName(name string) string {
+	if trimmed := strings.TrimSpace(name); trimmed != "" {
+		return trimmed
+	}
+	return "Flourish"
 }
