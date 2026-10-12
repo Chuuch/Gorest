@@ -141,7 +141,6 @@ func (r *Repository) ListByProjectID(
 			&phase.ID,
 			&phase.OrganizationID,
 			&phase.ProjectID,
-			&phase.SortOrder,
 			&phase.Name,
 			&phase.SortOrder,
 			&phase.Status,
