@@ -411,6 +411,22 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 			"assignee is not a member",
 		)
 
+	case errors.Is(err, taskdomain.ErrInvalidTaskDates):
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid_task_dates",
+			"invalid task dates",
+		)
+
+	case errors.Is(err, taskdomain.ErrPhaseWrongProject):
+		api.WriteError(
+			w,
+			http.StatusBadRequest,
+			"phase_wrong_project",
+			"phase does not belong to project",
+		)
+
 	case errors.Is(err, taskdomain.ErrTaskVersionMismatch):
 		api.WriteError(
 			w,
@@ -443,6 +459,14 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 			"ticket not found",
 		)
 
+	case errors.Is(err, taskdomain.ErrPhaseNotFound):
+		api.WriteError(
+			w,
+			http.StatusNotFound,
+			"phase_not_found",
+			"phase not found",
+		)
+
 	case errors.Is(err, taskdomain.ErrTaskNotFound):
 		api.WriteError(
 			w,
@@ -462,11 +486,12 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 }
 
 func toResponse(task *taskdomain.Task) taskdomain.TaskResponse {
-	return taskdomain.TaskResponse{
+	out := taskdomain.TaskResponse{
 		ID:             task.ID,
 		OrganizationID: task.OrganizationID,
 		ProjectID:      task.ProjectID,
 		TicketID:       task.TicketID,
+		PhaseID:        task.PhaseID,
 		Title:          task.Title,
 		Notes:          task.Notes,
 		Status:         task.Status,
@@ -477,4 +502,13 @@ func toResponse(task *taskdomain.Task) taskdomain.TaskResponse {
 		CreatedAt:      task.CreatedAt,
 		UpdatedAt:      task.UpdatedAt,
 	}
+	if task.StartsOn != nil {
+		d := task.StartsOn.Format("2006-01-02")
+		out.StartsOn = &d
+	}
+	if task.DueOn != nil {
+		d := task.DueOn.Format("2006-01-02")
+		out.DueOn = &d
+	}
+	return out
 }

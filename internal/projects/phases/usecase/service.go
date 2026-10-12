@@ -31,6 +31,7 @@ type Service interface {
 		req phasedomain.UpdatePhaseRequest,
 	) (*phasedomain.Phase, error)
 	EnsureDefaults(ctx context.Context, organizationID, projectID uuid.UUID) error
+	GetByID(ctx context.Context, id, organizationID uuid.UUID) (*phasedomain.Phase, error)
 }
 
 var defaultPhaseNames = []string{
@@ -113,6 +114,13 @@ func (s *service) EnsureDefaults(
 		}
 	}
 	return nil
+}
+
+func (s *service) GetByID(
+	ctx context.Context,
+	id, organizationID uuid.UUID,
+) (*phasedomain.Phase, error) {
+	return s.phases.GetByID(ctx, id, organizationID)
 }
 
 func (s *service) Create(

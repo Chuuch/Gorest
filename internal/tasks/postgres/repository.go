@@ -28,12 +28,15 @@ const taskColumns = `
 		organization_id,
 		project_id,
 		ticket_id,
+		phase_id,
 		title,
 		notes,
 		status,
 		completed_at,
 		created_by,
 		assignee_id,
+		starts_on,
+		due_on,
 		"version",
 		created_at,
 		updated_at
@@ -45,12 +48,15 @@ func scanTask(scanner interface{ Scan(dest ...any) error }, task *domain.Task) e
 		&task.OrganizationID,
 		&task.ProjectID,
 		&task.TicketID,
+		&task.PhaseID,
 		&task.Title,
 		&task.Notes,
 		&task.Status,
 		&task.CompletedAt,
 		&task.CreatedBy,
 		&task.AssigneeID,
+		&task.StartsOn,
+		&task.DueOn,
 		&task.Version,
 		&task.CreatedAt,
 		&task.UpdatedAt,
@@ -67,17 +73,20 @@ func (r *Repository) Create(
 				organization_id,
 				project_id,
 				ticket_id,
+				phase_id,
 				title,
 				notes,
 				status,
 				completed_at,
 				created_by,
 				assignee_id,
+				starts_on,
+				due_on,
 				"version",
 				created_at,
 				updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 		`
 
 	_, err := database.QuerierFrom(ctx, r.db).Exec(
@@ -87,12 +96,15 @@ func (r *Repository) Create(
 		task.OrganizationID,
 		task.ProjectID,
 		task.TicketID,
+		task.PhaseID,
 		task.Title,
 		task.Notes,
 		task.Status,
 		task.CompletedAt,
 		task.CreatedBy,
 		task.AssigneeID,
+		task.StartsOn,
+		task.DueOn,
 		task.Version,
 		task.CreatedAt,
 		task.UpdatedAt,
@@ -152,9 +164,12 @@ func (r *Repository) Update(
 					status = $3,
 					completed_at = $4,
 					assignee_id = $5,
-					updated_at = $6,
+					phase_id = $6,
+					starts_on = $7,
+					due_on = $8,
+					updated_at = $9,
 					"version" = tasks."version" + 1
-			WHERE id = $7 AND organization_id = $8 AND "version" = $9
+			WHERE id = $10 AND organization_id = $11 AND "version" = $12
 			RETURNING "version"
 		`
 
@@ -166,6 +181,9 @@ func (r *Repository) Update(
 		task.Status,
 		task.CompletedAt,
 		task.AssigneeID,
+		task.PhaseID,
+		task.StartsOn,
+		task.DueOn,
 		task.UpdatedAt,
 		task.ID,
 		task.OrganizationID,
