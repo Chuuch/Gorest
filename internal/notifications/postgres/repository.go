@@ -29,10 +29,12 @@ func (r *Repository) Create(ctx context.Context, notification *domain.Notificati
 				kind,
 				entity_type,
 				entity_id,
+				client_id,
+				project_id,
 				summary,
 				created_at
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		`
 
 	_, err := database.QuerierFrom(ctx, r.db).Exec(
@@ -45,6 +47,8 @@ func (r *Repository) Create(ctx context.Context, notification *domain.Notificati
 		notification.Kind,
 		notification.EntityType,
 		notification.EntityID,
+		notification.ClientID,
+		notification.ProjectID,
 		notification.Summary,
 		notification.CreatedAt,
 	)
@@ -78,12 +82,16 @@ func (r *Repository) ListByRecipientID(
 				n.kind,
 				n.entity_type,
 				n.entity_id,
+				n.client_id,
+				n.project_id,
 				n.summary,
 				n.read_at,
 				n.created_at
 			FROM notifications n
 			JOIN users u ON u.id = n.actor_id
-			WHERE n.organization_id = $1 AND n.recipient_id = $2
+			WHERE n.organization_id = $1
+				AND n.recipient_id = $2
+				AND n.read_at IS NULL
 			ORDER BY n.created_at DESC, n.id DESC
 			LIMIT $3
 		`
@@ -100,13 +108,16 @@ func (r *Repository) ListByRecipientID(
 					n.kind,
 					n.entity_type,
 					n.entity_id,
+					n.client_id,
+					n.project_id,
 					n.summary,
 					n.read_at,
 					n.created_at
 				FROM notifications n
 				JOIN users u ON u.id = n.actor_id
-				WHERE n.organization_id = $1 
+				WHERE n.organization_id = $1
 					AND n.recipient_id = $2
+					AND n.read_at IS NULL
 					AND (n.created_at, n.id) < ($3, $4)
 				ORDER BY n.created_at DESC, n.id DESC
 				LIMIT $5
@@ -133,6 +144,8 @@ func (r *Repository) ListByRecipientID(
 			&item.Kind,
 			&item.EntityType,
 			&item.EntityID,
+			&item.ClientID,
+			&item.ProjectID,
 			&item.Summary,
 			&item.ReadAt,
 			&item.CreatedAt,

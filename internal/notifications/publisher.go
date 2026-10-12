@@ -17,6 +17,8 @@ type Message struct {
 	Kind            string
 	EntityType      string
 	EntityID        uuid.UUID
+	ClientID        *uuid.UUID
+	ProjectID       *uuid.UUID
 	Summary         string
 	RecipientUserID uuid.UUID
 	Staff           bool
@@ -34,6 +36,7 @@ func NotifyStaff(
 	organizationID uuid.UUID,
 	kind, entityType, summary string,
 	entityID uuid.UUID,
+	clientID, projectID *uuid.UUID,
 ) {
 	if pub == nil {
 		return
@@ -44,6 +47,8 @@ func NotifyStaff(
 		Kind:           kind,
 		EntityType:     entityType,
 		EntityID:       entityID,
+		ClientID:       clientID,
+		ProjectID:      projectID,
 		Summary:        activity.Summary(summary),
 		Staff:          true,
 	})
@@ -58,6 +63,7 @@ func NotifyUser(
 	organizationID, recipientID uuid.UUID,
 	kind, entityType, summary string,
 	entityID uuid.UUID,
+	clientID, projectID *uuid.UUID,
 ) {
 	if pub == nil || recipientID == uuid.Nil {
 		return
@@ -68,6 +74,8 @@ func NotifyUser(
 		Kind:            kind,
 		EntityType:      entityType,
 		EntityID:        entityID,
+		ClientID:        clientID,
+		ProjectID:       projectID,
 		Summary:         activity.Summary(summary),
 		RecipientUserID: recipientID,
 	})

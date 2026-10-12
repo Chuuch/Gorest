@@ -31,6 +31,8 @@ type Notification struct {
 	Kind             string
 	EntityType       string
 	EntityID         uuid.UUID
+	ClientID         *uuid.UUID
+	ProjectID        *uuid.UUID
 	Summary          string
 	ReadAt           *time.Time
 	CreatedAt        time.Time

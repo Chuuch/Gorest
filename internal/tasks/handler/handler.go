@@ -490,6 +490,7 @@ func toResponse(task *taskdomain.Task) taskdomain.TaskResponse {
 		ID:             task.ID,
 		OrganizationID: task.OrganizationID,
 		ProjectID:      task.ProjectID,
+		ClientID:       task.ClientID,
 		TicketID:       task.TicketID,
 		PhaseID:        task.PhaseID,
 		Title:          task.Title,

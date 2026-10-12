@@ -16,6 +16,8 @@ type NotificationResponse struct {
 	Kind             string     `json:"kind"`
 	EntityType       string     `json:"entity_type"`
 	EntityID         uuid.UUID  `json:"entity_id"`
+	ClientID         *uuid.UUID `json:"client_id"`
+	ProjectID        *uuid.UUID `json:"project_id"`
 	Summary          string     `json:"summary"`
 	ReadAt           *time.Time `json:"read_at"`
 	CreatedAt        time.Time  `json:"created_at"`

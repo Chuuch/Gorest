@@ -18,6 +18,7 @@ type Task struct {
 	ID             uuid.UUID
 	OrganizationID uuid.UUID
 	ProjectID      uuid.UUID
+	ClientID       uuid.UUID
 	TicketID       *uuid.UUID
 	Title          string
 	Notes          string

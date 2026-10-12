@@ -70,13 +70,18 @@ func (o *OptionalPhaseID) UnmarshalJSON(data []byte) error {
 }
 
 type ConvertTicketRequest struct {
-	ProjectID uuid.UUID `json:"project_id" validate:"required"`
+	ProjectID  uuid.UUID  `json:"project_id" validate:"required"`
+	AssigneeID *uuid.UUID `json:"assignee_id"`
+	PhaseID    *uuid.UUID `json:"phase_id"`
+	StartsOn   *string    `json:"starts_on" validate:"omitempty,datetime=2006-01-02"`
+	DueOn      *string    `json:"due_on" validate:"omitempty,datetime=2006-01-02"`
 }
 
 type TaskResponse struct {
 	ID             uuid.UUID  `json:"id"`
 	OrganizationID uuid.UUID  `json:"organization_id"`
 	ProjectID      uuid.UUID  `json:"project_id"`
+	ClientID       uuid.UUID  `json:"client_id"`
 	TicketID       *uuid.UUID `json:"ticket_id"`
 	PhaseID        *uuid.UUID `json:"phase_id"`
 	Title          string     `json:"title"`

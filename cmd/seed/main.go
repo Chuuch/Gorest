@@ -217,14 +217,16 @@ func main() {
 
 	_, err = tx.Exec(ctx, `
 		INSERT INTO notifications (
-			id, organization_id, recipient_id, actor_id, kind, entity_type, entity_id, summary, read_at, created_at
+			id, organization_id, recipient_id, actor_id, kind, entity_type, entity_id,
+			client_id, project_id, summary, read_at, created_at
 		) VALUES
-		($1, $2, $3, $4, 'ticket_opened', 'ticket', $5, 'New ticket: Checkout button broken', NULL, $9),
-		($6, $2, $7, $3, 'task_assigned', 'task', $8, 'You were assigned Fix mobile checkout', NULL, $9),
-		($10, $2, $3, $7, 'task_commented', 'comment', $11, 'Morgan Member commented on Fix mobile checkout', $9, $9)
+		($1, $2, $3, $4, 'ticket_opened', 'ticket', $5, $11, NULL, 'New ticket: Checkout button broken', NULL, $9),
+		($6, $2, $7, $3, 'task_assigned', 'task', $8, $11, $12, 'You were assigned Fix mobile checkout', NULL, $9),
+		($10, $2, $3, $7, 'task_commented', 'task', $8, $11, $12, 'Morgan Member commented on Fix mobile checkout', $9, $9)
 	`, uuid.New(), orgID, ownerID, portalID, ticketOpenID,
 		uuid.New(), memberID, taskTodoID, now,
-		uuid.New(), uuid.New())
+		uuid.New(),
+		northwindID, websiteID)
 	if err != nil {
 		log.Fatalf("notifications: %v", err)
 	}

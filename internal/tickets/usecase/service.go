@@ -162,6 +162,7 @@ func (s *service) Create(
 		return nil, err
 	}
 
+	clientIDCopy := clientID
 	notifications.NotifyStaff(
 		ctx,
 		s.notify,
@@ -170,6 +171,8 @@ func (s *service) Create(
 		notificationdomain.EntityTicket,
 		ticket.Title,
 		ticket.ID,
+		&clientIDCopy,
+		nil,
 	)
 
 	return ticket, nil
@@ -195,6 +198,7 @@ func (s *service) Update(
 	}
 
 	if previous != ticket.Status {
+		clientID := ticket.ClientID
 		notifications.NotifyUser(
 			ctx,
 			s.notify,
@@ -204,6 +208,8 @@ func (s *service) Update(
 			notificationdomain.EntityTicket,
 			string(ticket.Status),
 			ticket.ID,
+			&clientID,
+			nil,
 		)
 	}
 

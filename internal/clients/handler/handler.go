@@ -263,6 +263,14 @@ func (h *Handler) handleError(w http.ResponseWriter, err error) {
 			"client not found",
 		)
 
+	case errors.Is(err, clientdomain.ErrClientHasInvoices):
+		api.WriteError(
+			w,
+			http.StatusConflict,
+			"client_has_invoices",
+			"delete invoices for this client before deleting the client",
+		)
+
 	default:
 		api.WriteError(
 			w,

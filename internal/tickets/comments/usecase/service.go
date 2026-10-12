@@ -122,15 +122,18 @@ func (s *service) Create(
 		return nil, err
 	}
 
+	clientID := ticket.ClientID
 	if portalClientID != uuid.Nil {
 		notifications.NotifyStaff(
 			ctx,
 			s.notify,
 			organizationID,
 			notificationdomain.KindTicketClientComment,
-			notificationdomain.EntityTicketComment,
+			notificationdomain.EntityTicket,
 			ticket.Title,
-			comment.ID,
+			ticket.ID,
+			&clientID,
+			nil,
 		)
 	} else {
 		notifications.NotifyUser(
@@ -139,9 +142,11 @@ func (s *service) Create(
 			organizationID,
 			ticket.UserID,
 			notificationdomain.KindTicketStaffComment,
-			notificationdomain.EntityTicketComment,
+			notificationdomain.EntityTicket,
 			ticket.Title,
-			comment.ID,
+			ticket.ID,
+			&clientID,
+			nil,
 		)
 	}
 

@@ -21,13 +21,20 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
-type stubPhases struct{}
+type stubPhases struct {
+	phases map[uuid.UUID]*phasedomain.Phase
+}
 
 func (stubPhases) EnsureDefaults(context.Context, uuid.UUID, uuid.UUID) error {
 	return nil
 }
 
-func (stubPhases) GetByID(context.Context, uuid.UUID, uuid.UUID) (*phasedomain.Phase, error) {
+func (s stubPhases) GetByID(_ context.Context, id, _ uuid.UUID) (*phasedomain.Phase, error) {
+	if s.phases != nil {
+		if phase, ok := s.phases[id]; ok {
+			return phase, nil
+		}
+	}
 	return nil, phasedomain.ErrPhaseNotFound
 }
 
@@ -132,6 +139,7 @@ func setupTaskTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 				CONSTRAINT memberships_user_id_unique UNIQUE (user_id)
 			)
 		`)
+	require.NoError(t, err)
 
 	_, err = db.Exec(ctx, `
 		CREATE TABLE tasks (
@@ -327,6 +335,29 @@ func seedTicket(
 	return ticketID
 }
 
+func seedMembership(
+	t *testing.T,
+	db *pgxpool.Pool,
+	organizationID, userID uuid.UUID,
+	role string,
+) {
+	t.Helper()
+
+	_, err := db.Exec(
+		context.Background(),
+		`
+			INSERT INTO memberships (id, organization_id, user_id, role, created_at)
+			VALUES ($1, $2, $3, $4, $5)
+		`,
+		uuid.New(),
+		organizationID,
+		userID,
+		role,
+		time.Now().UTC(),
+	)
+	require.NoError(t, err)
+}
+
 func setupTaskService(db *pgxpool.Pool) taskusecase.Service {
 	return taskusecase.NewService(
 		taskpostgres.NewRepository(db),
@@ -334,6 +365,16 @@ func setupTaskService(db *pgxpool.Pool) taskusecase.Service {
 		ticketpostgres.NewRepository(db),
 		orgpostgres.NewMembershipRepository(db),
 		stubPhases{},
+	)
+}
+
+func setupTaskServiceWithPhases(db *pgxpool.Pool, phases stubPhases) taskusecase.Service {
+	return taskusecase.NewService(
+		taskpostgres.NewRepository(db),
+		projectpostgres.NewRepository(db),
+		ticketpostgres.NewRepository(db),
+		orgpostgres.NewMembershipRepository(db),
+		phases,
 	)
 }
 
@@ -729,6 +770,7 @@ func TestTaskService_Convert(t *testing.T) {
 	require.Equal(t, "Clicking Sign in does nothing on mobile.", task.Notes)
 	require.Equal(t, taskdomain.StatusTodo, task.Status)
 	require.Equal(t, projectID, task.ProjectID)
+	require.Equal(t, clientID, task.ClientID)
 	require.NotNil(t, task.TicketID)
 	require.Equal(t, ticketID, *task.TicketID)
 	require.Equal(t, 1, task.Version)
@@ -751,6 +793,7 @@ func TestTaskService_Convert(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, otherProjectID, second.ProjectID)
+	require.Equal(t, clientID, second.ClientID)
 	require.Equal(t, 1, second.Version)
 
 	_, err = service.Convert(
@@ -761,6 +804,56 @@ func TestTaskService_Convert(t *testing.T) {
 		taskdomain.ConvertTicketRequest{ProjectID: otherClientProjectID},
 	)
 	require.ErrorIs(t, err, projectdomain.ErrProjectNotFound)
+}
+
+func TestTaskService_Convert_WithScheduleFields(t *testing.T) {
+	db, cleanup := setupTaskTestDatabase(t)
+	defer cleanup()
+
+	userID := seedUser(t, db, "pat@example.com")
+	assigneeID := seedUser(t, db, "ada@example.com")
+	organizationID := seedOrganization(t, db, "Acme")
+	seedMembership(t, db, organizationID, assigneeID, "member")
+	clientID := seedClient(t, db, organizationID, "Northwind")
+	projectID := seedProject(t, db, organizationID, clientID, "Website")
+	ticketID := seedTicket(t, db, organizationID, clientID, userID, "Login button broken")
+	phaseID := uuid.New()
+	service := setupTaskServiceWithPhases(db, stubPhases{
+		phases: map[uuid.UUID]*phasedomain.Phase{
+			phaseID: {
+				ID:             phaseID,
+				OrganizationID: organizationID,
+				ProjectID:      projectID,
+				Name:           "Discovery",
+			},
+		},
+	})
+	startsOn := "2026-10-20"
+	dueOn := "2026-10-27"
+
+	task, err := service.Convert(
+		context.Background(),
+		organizationID,
+		ticketID,
+		orgdomain.RoleOwner,
+		taskdomain.ConvertTicketRequest{
+			ProjectID:  projectID,
+			AssigneeID: &assigneeID,
+			PhaseID:    &phaseID,
+			StartsOn:   &startsOn,
+			DueOn:      &dueOn,
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, clientID, task.ClientID)
+	require.NotNil(t, task.AssigneeID)
+	require.Equal(t, assigneeID, *task.AssigneeID)
+	require.NotNil(t, task.PhaseID)
+	require.Equal(t, phaseID, *task.PhaseID)
+	require.NotNil(t, task.StartsOn)
+	require.Equal(t, "2026-10-20", task.StartsOn.Format("2006-01-02"))
+	require.NotNil(t, task.DueOn)
+	require.Equal(t, "2026-10-27", task.DueOn.Format("2006-01-02"))
 }
 
 func TestTaskService_Convert_MemberCanConvert(t *testing.T) {

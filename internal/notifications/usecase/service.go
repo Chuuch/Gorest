@@ -79,6 +79,8 @@ func (s *service) Publish(ctx context.Context, msg notifications.Message) error 
 			Kind:           msg.Kind,
 			EntityType:     msg.EntityType,
 			EntityID:       msg.EntityID,
+			ClientID:       msg.ClientID,
+			ProjectID:      msg.ProjectID,
 			Summary:        msg.Summary,
 			CreatedAt:      now,
 		}

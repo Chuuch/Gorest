@@ -24,22 +24,28 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 }
 
 const taskColumns = `
-		id,
-		organization_id,
-		project_id,
-		ticket_id,
-		phase_id,
-		title,
-		notes,
-		status,
-		completed_at,
-		created_by,
-		assignee_id,
-		starts_on,
-		due_on,
-		"version",
-		created_at,
-		updated_at
+		t.id,
+		t.organization_id,
+		t.project_id,
+		p.client_id,
+		t.ticket_id,
+		t.phase_id,
+		t.title,
+		t.notes,
+		t.status,
+		t.completed_at,
+		t.created_by,
+		t.assignee_id,
+		t.starts_on,
+		t.due_on,
+		t."version",
+		t.created_at,
+		t.updated_at
+	`
+
+const taskFrom = `
+		FROM tasks t
+		JOIN projects p ON p.id = t.project_id AND p.organization_id = t.organization_id
 	`
 
 func scanTask(scanner interface{ Scan(dest ...any) error }, task *domain.Task) error {
@@ -47,6 +53,7 @@ func scanTask(scanner interface{ Scan(dest ...any) error }, task *domain.Task) e
 		&task.ID,
 		&task.OrganizationID,
 		&task.ProjectID,
+		&task.ClientID,
 		&task.TicketID,
 		&task.PhaseID,
 		&task.Title,
@@ -129,8 +136,8 @@ func (r *Repository) GetByID(
 ) (*domain.Task, error) {
 	const query = `
 			SELECT ` + taskColumns + `
-			FROM tasks
-			WHERE id = $1 AND organization_id = $2
+			` + taskFrom + `
+			WHERE t.id = $1 AND t.organization_id = $2
 		`
 
 	var task domain.Task
@@ -243,29 +250,29 @@ func (r *Repository) ListByProjectID(
 	if cursor == nil {
 		listSQL = `
 			SELECT ` + taskColumns + `
-			FROM tasks
-			WHERE organization_id = $1 AND project_id = $2
+			` + taskFrom + `
+			WHERE t.organization_id = $1 AND t.project_id = $2
 				AND (
 					$3 = ''
-					OR title ILIKE $3 ESCAPE '\'
-					OR notes ILIKE $3 ESCAPE '\'
+					OR t.title ILIKE $3 ESCAPE '\'
+					OR t.notes ILIKE $3 ESCAPE '\'
 				)
-			ORDER BY created_at DESC, id DESC
+			ORDER BY t.created_at DESC, t.id DESC
 			LIMIT $4
 		`
 		args = []any{organizationID, projectID, pattern, limit}
 	} else {
 		listSQL = `
 			SELECT ` + taskColumns + `
-			FROM tasks
-			WHERE organization_id = $1 AND project_id = $2
+			` + taskFrom + `
+			WHERE t.organization_id = $1 AND t.project_id = $2
 				AND (
 					$3 = ''
-					OR title ILIKE $3 ESCAPE '\'
-					OR notes ILIKE $3 ESCAPE '\'
+					OR t.title ILIKE $3 ESCAPE '\'
+					OR t.notes ILIKE $3 ESCAPE '\'
 				)
-				AND (created_at, id) < ($4, $5)
-			ORDER BY created_at DESC, id DESC
+				AND (t.created_at, t.id) < ($4, $5)
+			ORDER BY t.created_at DESC, t.id DESC
 			LIMIT $6
 		`
 		args = []any{organizationID, projectID, pattern, cursor.CreatedAt, cursor.ID, limit}
@@ -291,31 +298,31 @@ func (r *Repository) ListInbox(
 	if cursor == nil {
 		listSQL = `
 			SELECT ` + taskColumns + `
-			FROM tasks
-			WHERE organization_id = $1
-				AND (assignee_id = $2 OR assignee_id IS NULL)
+			` + taskFrom + `
+			WHERE t.organization_id = $1
+				AND (t.assignee_id = $2 OR t.assignee_id IS NULL)
 				AND (
 					$3 = ''
-					OR title ILIKE $3 ESCAPE '\'
-					OR notes ILIKE $3 ESCAPE '\'
+					OR t.title ILIKE $3 ESCAPE '\'
+					OR t.notes ILIKE $3 ESCAPE '\'
 				)
-			ORDER BY created_at DESC, id DESC
+			ORDER BY t.created_at DESC, t.id DESC
 			LIMIT $4
 		`
 		args = []any{organizationID, userID, pattern, limit}
 	} else {
 		listSQL = `
 			SELECT ` + taskColumns + `
-			FROM tasks
-			WHERE organization_id = $1
-				AND (assignee_id = $2 OR assignee_id IS NULL)
+			` + taskFrom + `
+			WHERE t.organization_id = $1
+				AND (t.assignee_id = $2 OR t.assignee_id IS NULL)
 				AND (
 					$3 = ''
-					OR title ILIKE $3 ESCAPE '\'
-					OR notes ILIKE $3 ESCAPE '\'
+					OR t.title ILIKE $3 ESCAPE '\'
+					OR t.notes ILIKE $3 ESCAPE '\'
 				)
-				AND (created_at, id) < ($4, $5)
-			ORDER BY created_at DESC, id DESC
+				AND (t.created_at, t.id) < ($4, $5)
+			ORDER BY t.created_at DESC, t.id DESC
 			LIMIT $6
 		`
 		args = []any{organizationID, userID, pattern, cursor.CreatedAt, cursor.ID, limit}

@@ -163,6 +163,8 @@ func toResponse(item *domain.Notification) domain.NotificationResponse {
 		Kind:             item.Kind,
 		EntityType:       item.EntityType,
 		EntityID:         item.EntityID,
+		ClientID:         item.ClientID,
+		ProjectID:        item.ProjectID,
 		Summary:          item.Summary,
 		ReadAt:           item.ReadAt,
 		CreatedAt:        item.CreatedAt,

@@ -43,18 +43,25 @@ type Service interface {
 	) error
 }
 
+type phaseSupport interface {
+	EnsureDefaults(ctx context.Context, organizationID, projectID uuid.UUID) error
+}
+
 type service struct {
 	projects projectrepository.ProjectRepository
 	clients  clientrepository.ClientRepository
+	phases   phaseSupport
 }
 
 func NewService(
 	projects projectrepository.ProjectRepository,
 	clients clientrepository.ClientRepository,
+	phases phaseSupport,
 ) Service {
 	return &service{
 		projects: projects,
 		clients:  clients,
+		phases:   phases,
 	}
 }
 
@@ -118,6 +125,12 @@ func (s *service) Create(
 
 	if err := s.projects.Create(ctx, project); err != nil {
 		return nil, err
+	}
+
+	if s.phases != nil {
+		if err := s.phases.EnsureDefaults(ctx, organizationID, project.ID); err != nil {
+			return nil, fmt.Errorf("ensure project phases: %w", err)
+		}
 	}
 
 	return project, nil

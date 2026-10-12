@@ -102,15 +102,19 @@ func (s *service) Create(
 	}
 
 	if task.AssigneeID != nil {
+		clientID := task.ClientID
+		projectID := task.ProjectID
 		notifications.NotifyUser(
 			ctx,
 			s.notify,
 			organizationID,
 			*task.AssigneeID,
 			notificationdomain.KindTaskCommented,
-			notificationdomain.EntityComment,
+			notificationdomain.EntityTask,
 			task.Title,
-			comment.ID,
+			task.ID,
+			&clientID,
+			&projectID,
 		)
 	}
 

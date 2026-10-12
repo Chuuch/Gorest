@@ -82,6 +82,8 @@ func setupNotificationTestDatabase(t *testing.T) (*pgxpool.Pool, func()) {
 			kind TEXT NOT NULL,
 			entity_type TEXT NOT NULL,
 			entity_id UUID NOT NULL,
+			client_id UUID,
+			project_id UUID,
 			summary TEXT NOT NULL DEFAULT '',
 			read_at TIMESTAMPTZ,
 			created_at TIMESTAMPTZ NOT NULL
@@ -187,11 +189,13 @@ func TestPublish_StaffSkipsActor(t *testing.T) {
 	ctx := requestcontext.WithUserID(context.Background(), adaID)
 	ticketID := uuid.New()
 
+	clientID := uuid.New()
 	require.NoError(t, service.Publish(ctx, notifications.Message{
 		OrganizationID: organizationID,
 		Kind:           domain.KindTicketOpened,
 		EntityType:     domain.EntityTicket,
 		EntityID:       ticketID,
+		ClientID:       &clientID,
 		Summary:        "Login broken",
 		Staff:          true,
 	}))
@@ -206,6 +210,9 @@ func TestPublish_StaffSkipsActor(t *testing.T) {
 	require.Equal(t, "Ada", items[0].ActorDisplayName)
 	require.Equal(t, domain.KindTicketOpened, items[0].Kind)
 	require.Equal(t, "Login broken", items[0].Summary)
+	require.NotNil(t, items[0].ClientID)
+	require.Equal(t, clientID, *items[0].ClientID)
+	require.Nil(t, items[0].ProjectID)
 	require.Nil(t, items[0].ReadAt)
 
 	own, next, err := service.List(ctx, organizationID, adaID, 50, nil)
@@ -304,8 +311,7 @@ func TestMarkRead(t *testing.T) {
 	read, next, err := service.List(ctx, organizationID, benID, 50, nil)
 	require.NoError(t, err)
 	require.Nil(t, next)
-	require.Len(t, read, 1)
-	require.NotNil(t, read[0].ReadAt)
+	require.Empty(t, read)
 }
 
 func TestMarkRead_NotFound(t *testing.T) {

@@ -187,12 +187,12 @@ func wireApp(
 	clientHandler := clienthandler.NewHandler(clientService)
 
 	projectRepository := projectpostgres.NewRepository(db)
-	projectService := projectusecase.NewService(projectRepository, clientRepository)
-	projectHandler := projecthandler.NewHandler(projectService)
-
 	phaseRepository := phasepostgres.NewRepository(db)
 	phaseService := phaseusecase.NewService(phaseRepository, projectRepository)
 	phaseHandler := phasehandler.NewHandler(phaseService)
+
+	projectService := projectusecase.NewService(projectRepository, clientRepository, phaseService)
+	projectHandler := projecthandler.NewHandler(projectService)
 
 	ticketRepository := ticketpostgres.NewRepository(db)
 	ticketService := ticketusecase.EnableNotifications(

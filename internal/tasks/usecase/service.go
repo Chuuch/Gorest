@@ -168,7 +168,8 @@ func (s *service) Create(
 	_ orgdomain.Role,
 	req taskdomain.CreateTaskRequest,
 ) (*taskdomain.Task, error) {
-	if _, err := s.projects.GetByID(ctx, projectID, organizationID); err != nil {
+	project, err := s.projects.GetByID(ctx, projectID, organizationID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -195,6 +196,7 @@ func (s *service) Create(
 		ID:             uuid.New(),
 		OrganizationID: organizationID,
 		ProjectID:      projectID,
+		ClientID:       project.ClientID,
 		PhaseID:        phaseID,
 		Title:          req.Title,
 		Notes:          req.Notes,
@@ -284,6 +286,8 @@ func (s *service) Update(
 	}
 
 	if assigneeChanged(previousAssignee, task.AssigneeID) && task.AssigneeID != nil {
+		clientID := task.ClientID
+		projectID := task.ProjectID
 		notifications.NotifyUser(
 			ctx,
 			s.notify,
@@ -293,6 +297,8 @@ func (s *service) Update(
 			notificationdomain.EntityTask,
 			task.Title,
 			task.ID,
+			&clientID,
+			&projectID,
 		)
 	}
 
@@ -353,19 +359,45 @@ func (s *service) Convert(
 		}
 	}
 
+	assigneeID, err := s.resolveAssignee(ctx, organizationID, req.AssigneeID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.phases.EnsureDefaults(ctx, organizationID, project.ID); err != nil {
+		return nil, fmt.Errorf("ensure project phases: %w", err)
+	}
+
+	phaseID, err := s.resolvePhase(ctx, organizationID, project.ID, req.PhaseID)
+	if err != nil {
+		return nil, err
+	}
+
+	startsOn, dueOn, err := parseTaskDates(req.StartsOn, req.DueOn)
+	if err != nil {
+		return nil, err
+	}
+
 	now := time.Now().UTC()
 	ticketIDCopy := ticket.ID
 	createdBy := actorUserID(ctx)
+	clientID := ticket.ClientID
+	projectID := project.ID
 
 	task := &taskdomain.Task{
 		ID:             uuid.New(),
 		OrganizationID: organizationID,
 		ProjectID:      project.ID,
+		ClientID:       project.ClientID,
 		TicketID:       &ticketIDCopy,
+		PhaseID:        phaseID,
 		Title:          ticket.Title,
 		Notes:          ticket.Body,
 		Status:         taskdomain.StatusTodo,
 		CreatedBy:      createdBy,
+		AssigneeID:     assigneeID,
+		StartsOn:       startsOn,
+		DueOn:          dueOn,
 		Version:        1,
 		CreatedAt:      now,
 		UpdatedAt:      now,
@@ -375,8 +407,19 @@ func (s *service) Convert(
 		return nil, err
 	}
 
-	if err := s.phases.EnsureDefaults(ctx, organizationID, project.ID); err != nil {
-		return nil, fmt.Errorf("ensure project phases: %w", err)
+	if assigneeID != nil {
+		notifications.NotifyUser(
+			ctx,
+			s.notify,
+			organizationID,
+			*assigneeID,
+			notificationdomain.KindTaskAssigned,
+			notificationdomain.EntityTask,
+			task.Title,
+			task.ID,
+			&clientID,
+			&projectID,
+		)
 	}
 
 	if ticket.Status != ticketdomain.StatusInProgress {
@@ -394,6 +437,8 @@ func (s *service) Convert(
 			notificationdomain.EntityTicket,
 			string(ticketdomain.StatusInProgress),
 			ticket.ID,
+			&clientID,
+			nil,
 		)
 	}
 
@@ -406,6 +451,8 @@ func (s *service) Convert(
 		notificationdomain.EntityTicket,
 		string(ticketdomain.StatusInProgress),
 		ticket.ID,
+		&clientID,
+		&projectID,
 	)
 
 	return task, nil

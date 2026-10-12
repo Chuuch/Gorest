@@ -165,10 +165,20 @@ func seedClient(
 	return clientID
 }
 
+type stubPhases struct {
+	called []uuid.UUID
+}
+
+func (s *stubPhases) EnsureDefaults(_ context.Context, _, projectID uuid.UUID) error {
+	s.called = append(s.called, projectID)
+	return nil
+}
+
 func setupProjectService(db *pgxpool.Pool) projectusecase.Service {
 	return projectusecase.NewService(
 		projectpostgres.NewRepository(db),
 		clientpostgres.NewRepository(db),
+		&stubPhases{},
 	)
 }
 
@@ -176,7 +186,12 @@ func TestProjectService_CreateAndList(t *testing.T) {
 	db, cleanup := setupProjectTestDatabase(t)
 	defer cleanup()
 
-	service := setupProjectService(db)
+	phases := &stubPhases{}
+	service := projectusecase.NewService(
+		projectpostgres.NewRepository(db),
+		clientpostgres.NewRepository(db),
+		phases,
+	)
 	organizationID := seedOrganization(t, db, "Acme")
 	otherOrganizationID := seedOrganization(t, db, "Other")
 	clientID := seedClient(t, db, organizationID, "Northwind")
@@ -196,6 +211,7 @@ func TestProjectService_CreateAndList(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "Website", project.Name)
 	require.Equal(t, clientID, project.ClientID)
+	require.Equal(t, []uuid.UUID{project.ID}, phases.called)
 
 	own, next, err := service.List(context.Background(), organizationID, clientID, 50, nil, "")
 	require.NoError(t, err)

@@ -199,6 +199,10 @@ func (r *Repository) Delete(
 		organizationID,
 	)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			return domain.ErrClientHasInvoices
+		}
 		return fmt.Errorf("delete client: %w", err)
 	}
 
